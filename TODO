@@ -1,0 +1,15 @@
+HIGH LEVEL
+
+- Test on actual VM images
+
+- Add code to take a directory as a command line option
+
+LOW LEVEL
+
+- Replace ugly pointer comparison in walk_dupe_block()
+
+- Wrap bytes <-> blocks conversions
+
+- Possibly use mmap (with madvise) for the checksumming phase
+
+- Do checksumming in seperate threads

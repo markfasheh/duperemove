@@ -1,0 +1,4 @@
+*.o
+duperemove
+btrfs-extent-same
+*~
