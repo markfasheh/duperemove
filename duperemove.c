@@ -295,6 +295,7 @@ static void usage(const char *prog)
 	printf("specified, all regular files inside of it will be scanned.\n");
 	printf("\n\t<switches>\n");
 	printf("\t-b bsize\tUse bsize blocks - specify in kilobytes. Default is %d.\n", DEFAULT_BLOCKSIZE / 1024);
+	printf("\t-D\t\tDe-dupe the results - only works on btrfs.\n");
 	printf("\t-v\t\tBe verbose.\n");
 	printf("\t-d\t\tPrint debug messages, forces -v if selected.\n");
 	printf("\t-h\t\tPrints this help text.\n");
