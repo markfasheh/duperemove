@@ -50,9 +50,9 @@ struct btrfs_ioctl_same_extent_info {
 struct btrfs_ioctl_same_args {
 	uint64_t logical_offset;	/* in - start of extent in source */
 	uint64_t length;		/* in - length of extent */
-	uint16_t total_files;		/* in - total elements in info array */
-	uint16_t files_deduped;		/* out - number of files that got deduped */
-	uint32_t reserved;
+	uint16_t dest_count;		/* in - total elements in info array */
+	uint16_t reserved1;		/* out - number of files that got deduped */
+	uint32_t reserved2;
 	struct btrfs_ioctl_same_extent_info info[0];
 };
 
@@ -87,7 +87,7 @@ int main(int argc, char **argv)
 	srcf = argv[2];
 	same->length = atoll(argv[1]);
 	same->logical_offset = atoll(argv[3]);
-	same->total_files = numfiles;
+	same->dest_count = numfiles;
 
 	ret = open(srcf, O_RDONLY);
 	if (ret < 0) {
@@ -101,7 +101,7 @@ int main(int argc, char **argv)
 	printf("(%llu, %llu): %s\n", (unsigned long long)same->logical_offset,
 	       (unsigned long long)same->length, srcf);
 
-	for (i = 0; i < same->total_files; i++) {
+	for (i = 0; i < same->dest_count; i++) {
 		destf = argv[4 + (i * 2)];
 
 		ret = open(destf, O_RDONLY);
@@ -128,9 +128,9 @@ int main(int argc, char **argv)
 		return -ret;
 	}
 
-	printf("%u of %u files deduped\n", same->files_deduped, same->total_files);
+	printf("%u files asked to be deduped\n", same->dest_count);
 
-	for (i = 0; i < same->total_files; i++) {
+	for (i = 0; i < same->dest_count; i++) {
 		info = &same->info[i];
 
 		printf("i: %d, status: %d, bytes_deduped: %llu\n", i,
