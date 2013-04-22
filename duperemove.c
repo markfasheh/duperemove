@@ -121,7 +121,7 @@ static void print_results(struct results_tree *res, struct filerec *files,
 		len = dext->de_len;
 		len_blocks = len / blocksize;
 
-		printf("%u extents had length %llu (%llu) for a score of %llu.\n",
+		printf("(dext: 0x%p) %u extents had length %llu (%llu) for a score of %llu.\n", (void *)dext,
 		       dext->de_num_dupes, (unsigned long long)len_blocks,
 		       (unsigned long long)len,
 		       (unsigned long long)dext->de_score);
@@ -180,7 +180,7 @@ static void dedupe_results(struct results_tree *res, struct filerec *files,
 			       (unsigned long long)extent->e_loff);
 
 			if (ctxt == NULL) {
-				ctxt = new_dedupe_ctxt(res->num_dupes - 1,
+				ctxt = new_dedupe_ctxt(dext->de_num_dupes,
 						       extent->e_loff, len,
 						       files[extent->e_file].fd,
 						       extent->e_file);
@@ -531,12 +531,8 @@ int main(int argc, char **argv)
 	debug_print_tree(&tree, files, numfiles);
 
 	for (i = 0; i < numfiles; i++) {
-		for (j = i; j < numfiles; j++) {
-			if (i == j)
-				continue;
-
+		for (j = i + 1; j < numfiles; j++)
 			find_file_dupes(&files[i], &files[j], j, &res);
-		}
 	}
 
 	if (debug) {

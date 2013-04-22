@@ -30,7 +30,7 @@ struct btrfs_ioctl_same_extent_info {
 struct btrfs_ioctl_same_args {
 	uint64_t logical_offset;	/* in - start of extent in source */
 	uint64_t length;		/* in - length of extent */
-	uint16_t total_files;		/* in - total elements in info array */
+	uint16_t dest_count;		/* in - total elements in info array */
 	uint16_t files_deduped;		/* out - number of files that got deduped */
 	uint32_t reserved;
 	struct btrfs_ioctl_same_extent_info info[0];

@@ -4,7 +4,8 @@
 #include "btrfs-ioctl.h"
 
 struct dedupe_ctxt {
-	unsigned int	max_extents;
+	unsigned int	max_extents;	/* used for sanity checking */
+
 	uint64_t	len;
 	int		ioctl_fd;
 	unsigned int	ioctl_fd_index;
@@ -28,6 +29,6 @@ void get_dedupe_result(struct dedupe_ctxt *ctxt, int idx, int *status,
 
 static inline int num_dedupe_requests(struct dedupe_ctxt *ctxt)
 {
-	return ctxt->same->total_files;
+	return ctxt->same->dest_count;
 }
 #endif	/* __BTRFS_IOCTL_H__ */
