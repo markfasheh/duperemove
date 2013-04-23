@@ -60,6 +60,32 @@ struct filerec {
 	struct list_head	extent_list;
 };
 
+static int filerec_open(struct filerec *file)
+{
+	int fd;
+
+	if (file->fd == -1) {
+		fd = open(file->filename, O_RDONLY);
+		if (fd == -1) {
+			fprintf(stderr, "Could not open \"%s\"\n",
+				file->filename);
+			return errno;
+		}
+
+		file->fd = fd;
+	}
+
+	return 0;
+}
+
+static void filerec_close(struct filerec *file)
+{
+	if (file->fd == -1) {
+		close(file->fd);
+		file->fd = -1;
+	}
+}
+
 static void debug_print_block(struct file_block *e, struct filerec *files)
 {
 	printf("%s\tloff: %llu lblock: %llu\n", files[e->b_file].filename,
@@ -179,6 +205,10 @@ static void dedupe_results(struct results_tree *res, struct filerec *files,
 			       (unsigned long long)extent->e_loff / blocksize,
 			       (unsigned long long)extent->e_loff);
 
+			ret = filerec_open(&files[extent->e_file]);
+			if (ret)
+				continue;
+
 			if (ctxt == NULL) {
 				ctxt = new_dedupe_ctxt(dext->de_num_dupes,
 						       extent->e_loff, len,
@@ -220,6 +250,8 @@ static void dedupe_results(struct results_tree *res, struct filerec *files,
 			       "\tstatus: %d\n", files[filerec_index].filename,
 			       (unsigned long long)target_loff,
 			       (unsigned long long)target_bytes, status);
+
+			filerec_close(&files[filerec_index]);
 		}
 
 next:
@@ -241,6 +273,10 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file,
 	struct file_block *prev = NULL;
 
 	vprintf("csum: %s\n", file->filename);
+
+	ret = filerec_open(file);
+	if (ret)
+		return ret;
 
 	ret = off = 0;
 
@@ -282,6 +318,8 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file,
 
 		off += bytes;
 	}
+
+	filerec_close(file);
 
 	return ret;
 }
@@ -360,16 +398,9 @@ static int parse_options(int argc, char **argv, struct filerec **files,
 		return ENOMEM;
 
 	for (i = 0; i < *numfiles; i++) {
-		int fd;
 		const char *name = argv[i + optind];
 
-		fd = open(name, O_RDONLY);
-		if (fd == -1) {
-			fprintf(stderr, "Could not open \"%s\"\n", name);
-			return errno;
-		}
-
-		f[i].fd = fd;
+		f[i].fd = -1;
 		f[i].filename = name;
 		INIT_LIST_HEAD(&f[i].block_list);
 		INIT_LIST_HEAD(&f[i].extent_list);
