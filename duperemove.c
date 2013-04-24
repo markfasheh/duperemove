@@ -286,12 +286,16 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 static int populate_hash_tree(struct hash_tree *tree)
 {
 	int ret = -1;
-	struct filerec *file;
+	struct filerec *file, *tmp;
 
-	list_for_each_entry(file, &filerec_list, rec_list) {
+	list_for_each_entry_safe(file, tmp, &filerec_list, rec_list) {
 		ret = csum_whole_file(tree, file);
-		if (ret)
-			break;
+		if (ret) {
+			fprintf(stderr, "Skipping file due to error %d, %s\n",
+				ret, file->filename);
+			remove_hashed_blocks(tree, file);
+			filerec_free(file);
+		}
 	}
 
 	return ret;

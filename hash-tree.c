@@ -112,6 +112,37 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 	return 0;
 }
 
+static void remove_hashed_block(struct hash_tree *tree,
+				struct file_block *block)
+{
+	struct dupe_blocks_list *blocklist = block->b_parent;
+
+	if (blocklist->dl_num_elem == 0)
+		abort();
+
+	list_del(&block->b_file_next);
+	list_del(&block->b_list);
+
+	blocklist->dl_num_elem--;
+	if (blocklist->dl_num_elem == 0) {
+		rb_erase(&blocklist->dl_node, &tree->root);
+		tree->num_hashes--;
+
+		free(blocklist);
+	}
+
+	free(block);
+	tree->num_blocks--;
+}
+
+void remove_hashed_blocks(struct hash_tree *tree, struct filerec *file)
+{
+	struct file_block *block, *tmp;
+
+	list_for_each_entry_safe(block, tmp, &file->block_list, b_file_next)
+		remove_hashed_block(tree, block);
+}
+
 void for_each_dupe(struct file_block *block, struct filerec *file,
 		   for_each_dupe_t func, void *priv)
 {

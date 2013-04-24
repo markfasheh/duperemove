@@ -21,15 +21,15 @@ struct file_block {
 	unsigned int	b_seen;
 	uint64_t	b_loff;
 
-	struct list_head	b_list;  /* For d_list, all blocks
+	struct list_head	b_list;  /* For dl_list, all blocks
 					  * with this md5. */
 
-	struct list_head	b_file_next; /* Points to the next logical
-					      * extent for this file. */
+	struct list_head	b_file_next; /* filerec->block_list */
 };
 
 int insert_hashed_block(struct hash_tree *tree, unsigned char *digest,
 			struct filerec *file, uint64_t loff);
+void remove_hashed_blocks(struct hash_tree *tree, struct filerec *file);
 
 typedef int (for_each_dupe_t)(struct file_block *, void *);
 void for_each_dupe(struct file_block *block, struct filerec *file,
