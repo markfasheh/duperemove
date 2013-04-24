@@ -15,13 +15,14 @@
 
 #include <stdlib.h>
 
+#include "filerec.h"
 #include "dedupe.h"
 
 void free_dedupe_ctxt(struct dedupe_ctxt *ctxt)
 {
 	if (ctxt) {
-		if (ctxt->filerec_index)
-			free(ctxt->filerec_index);
+		if (ctxt->filerec_array)
+			free(ctxt->filerec_array);
 		if (ctxt->same)
 			free(ctxt->same);
 		free(ctxt);
@@ -29,8 +30,7 @@ void free_dedupe_ctxt(struct dedupe_ctxt *ctxt)
 }
 
 struct dedupe_ctxt *new_dedupe_ctxt(unsigned int max_extents, uint64_t loff,
-				    uint64_t elen,  int fd,
-				    unsigned int filerec_index)
+				    uint64_t elen, struct filerec *ioctl_file)
 {
 	struct dedupe_ctxt *ctxt = calloc(1, sizeof(*ctxt));
 	struct btrfs_ioctl_same_args *same;
@@ -39,8 +39,9 @@ struct dedupe_ctxt *new_dedupe_ctxt(unsigned int max_extents, uint64_t loff,
 	if (ctxt == NULL)
 		return NULL;
 
-	ctxt->filerec_index = calloc(max_extents - 1, sizeof(unsigned int));
-	if (ctxt->filerec_index == NULL) {
+	ctxt->filerec_array = calloc(max_extents - 1,
+				     sizeof(*ctxt->filerec_array));
+	if (ctxt->filerec_array == NULL) {
 		free(ctxt);
 		return NULL;
 	}
@@ -49,7 +50,7 @@ struct dedupe_ctxt *new_dedupe_ctxt(unsigned int max_extents, uint64_t loff,
 		(max_extents - 1) * sizeof(struct btrfs_ioctl_same_extent_info);
 	same = calloc(1, same_size);
 	if (same == NULL) {
-		free(ctxt->filerec_index);
+		free(ctxt->filerec_array);
 		free(ctxt);
 		return NULL;
 	}
@@ -58,15 +59,14 @@ struct dedupe_ctxt *new_dedupe_ctxt(unsigned int max_extents, uint64_t loff,
 
 	ctxt->max_extents = max_extents;
 	ctxt->len = ctxt->same->length = elen;
-	ctxt->ioctl_fd = fd;
-	ctxt->ioctl_fd_index = filerec_index;
-	ctxt->ioctl_fd_off = same->logical_offset = loff;
+	ctxt->ioctl_file = ioctl_file;
+	ctxt->ioctl_file_off = same->logical_offset = loff;
 
 	return ctxt;
 }
 
 void add_extent_to_dedupe(struct dedupe_ctxt *ctxt, uint64_t loff, uint64_t len,
-			  int fd, unsigned int filerec_index)
+			  struct filerec *file)
 {
 	int i = ctxt->same->dest_count;
 	struct btrfs_ioctl_same_args *same = ctxt->same;
@@ -75,24 +75,24 @@ void add_extent_to_dedupe(struct dedupe_ctxt *ctxt, uint64_t loff, uint64_t len,
 		abort();
 
 	same->info[i].logical_offset = loff;
-	same->info[i].fd = fd;
-	ctxt->filerec_index[i] = filerec_index;
+	same->info[i].fd = file->fd;
+	ctxt->filerec_array[i] = file;
 	same->dest_count++;
 }
 
 int dedupe_extents(struct dedupe_ctxt *ctxt)
 {
-	return btrfs_extent_same(ctxt->ioctl_fd, ctxt->same);
+	return btrfs_extent_same(ctxt->ioctl_file->fd, ctxt->same);
 }
 
 void get_dedupe_result(struct dedupe_ctxt *ctxt, int idx, int *status,
 		       uint64_t *off, uint64_t *bytes_deduped,
-		       unsigned int *filerec_index)
+		       struct filerec **file)
 {
 	struct btrfs_ioctl_same_extent_info *info = &ctxt->same->info[idx];
 
 	*status = info->status;
 	*off = info->logical_offset;
 	*bytes_deduped = info->bytes_deduped;
-	*filerec_index = ctxt->filerec_index[idx];
+	*file = ctxt->filerec_array[idx];
 }

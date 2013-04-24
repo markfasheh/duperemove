@@ -24,6 +24,7 @@
 #include "list.h"
 
 #include "csum.h"	/* for digest_len variable and DIGEST_LEN_MAX */
+#include "filerec.h"
 
 #include "hash-tree.h"
 
@@ -75,22 +76,22 @@ static struct dupe_blocks_list *find_block_list(struct hash_tree *tree,
 	return NULL;
 }
 
-struct file_block * insert_hashed_block(struct hash_tree *tree,
-					unsigned char *digest,
-					unsigned int fileid, uint64_t loff,
-					struct list_head *head)
+int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
+			struct filerec *file, uint64_t loff)
 {
 	struct file_block *e = malloc(sizeof(*e));
 	struct dupe_blocks_list *d;
 
 	if (!e)
-		return NULL;
+		return ENOMEM;
 
 	d = find_block_list(tree, digest);
 	if (d == NULL) {
 		d = calloc(1, sizeof(*d));
-		if (!d)
-			return NULL;
+		if (!d) {
+			free(e);
+			return ENOMEM;
+		}
 
 		memcpy(d->dl_hash, digest, digest_len);
 		rb_init_node(&d->dl_node);
@@ -99,33 +100,30 @@ struct file_block * insert_hashed_block(struct hash_tree *tree,
 		insert_block_list(tree, d);
 	}
 
-	e->b_file = fileid;
+	e->b_file = file;
 	e->b_loff = loff;
-	if (head)
-		list_add_tail(&e->b_file_next, head);
-	else
-		INIT_LIST_HEAD(&e->b_file_next);
+	list_add_tail(&e->b_file_next, &file->block_list);
 	e->b_parent = d;
 
 	d->dl_num_elem++;
 	list_add_tail(&e->b_list, &d->dl_list);
 
 	tree->num_blocks++;
-	return e;
+	return 0;
 }
 
-void for_each_dupe(struct file_block *block, unsigned int fileid,
-		  for_each_dupe_t func, void *priv)
+void for_each_dupe(struct file_block *block, struct filerec *file,
+		   for_each_dupe_t func, void *priv)
 {
 	struct dupe_blocks_list *parent = block->b_parent;
 	struct file_block *cur;
 
 	list_for_each_entry(cur, &parent->dl_list, b_list) {
-		/* Ignore self and any blocks from another fileid */
+		/* Ignore self and any blocks from another file */
 		if (cur == block)
 			continue;
 
-		if (cur->b_file != fileid)
+		if (cur->b_file != file)
 			continue;
 
 		if (func(cur, priv))

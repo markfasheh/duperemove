@@ -17,7 +17,7 @@ struct dupe_blocks_list {
 
 struct file_block {
 	struct dupe_blocks_list	*b_parent;
-	unsigned int	b_file;
+	struct filerec	*b_file;
 	unsigned int	b_seen;
 	uint64_t	b_loff;
 
@@ -28,14 +28,12 @@ struct file_block {
 					      * extent for this file. */
 };
 
-struct file_block * insert_hashed_block(struct hash_tree *tree,
-					unsigned char *digest,
-					unsigned int fileid, uint64_t loff,
-					struct list_head *head);
+int insert_hashed_block(struct hash_tree *tree, unsigned char *digest,
+			struct filerec *file, uint64_t loff);
 
 typedef int (for_each_dupe_t)(struct file_block *, void *);
-void for_each_dupe(struct file_block *block, unsigned int fileid,
-		  for_each_dupe_t func, void *priv);
+void for_each_dupe(struct file_block *block, struct filerec *file,
+		   for_each_dupe_t func, void *priv);
 
 int block_seen(struct file_block *block);
 void mark_block_seen(struct file_block *block);

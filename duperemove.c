@@ -27,6 +27,7 @@
 #include "rbtree.h"
 #include "list.h"
 #include "csum.h"
+#include "filerec.h"
 #include "hash-tree.h"
 #include "results-tree.h"
 #include "dedupe.h"
@@ -52,49 +53,16 @@ static unsigned char digest[DIGEST_LEN_MAX] = { 0, };
 
 static int run_dedupe = 0;
 
-struct filerec {
-	int		fd;
-	const char	*filename;
-
-	struct list_head	block_list;
-	struct list_head	extent_list;
-};
-
-static int filerec_open(struct filerec *file)
+static void debug_print_block(struct file_block *e)
 {
-	int fd;
+	struct filerec *f = e->b_file;
 
-	if (file->fd == -1) {
-		fd = open(file->filename, O_RDONLY);
-		if (fd == -1) {
-			fprintf(stderr, "Could not open \"%s\"\n",
-				file->filename);
-			return errno;
-		}
-
-		file->fd = fd;
-	}
-
-	return 0;
-}
-
-static void filerec_close(struct filerec *file)
-{
-	if (file->fd == -1) {
-		close(file->fd);
-		file->fd = -1;
-	}
-}
-
-static void debug_print_block(struct file_block *e, struct filerec *files)
-{
-	printf("%s\tloff: %llu lblock: %llu\n", files[e->b_file].filename,
+	printf("%s\tloff: %llu lblock: %llu\n", f->filename,
 	       (unsigned long long)e->b_loff,
 	       (unsigned long long)e->b_loff / blocksize);
 }
 
-static void debug_print_tree(struct hash_tree *tree, struct filerec *files,
-			     int numfiles)
+static void debug_print_tree(struct hash_tree *tree)
 {
 	struct rb_root *root = &tree->root;
 	struct rb_node *node = rb_first(root);
@@ -120,14 +88,13 @@ static void debug_print_tree(struct hash_tree *tree, struct filerec *files,
 
 		list_for_each(p, &dups->dl_list) {
 			block = list_entry(p, struct file_block, b_list);
-			debug_print_block(block, files);
+			debug_print_block(block);
 		}
 		node = rb_next(node);
 	}
 }
 
-static void print_results(struct results_tree *res, struct filerec *files,
-			  int numfiles)
+static void print_results(struct results_tree *res)
 {
 	struct rb_root *root = &res->root;
 	struct rb_node *node = rb_first(root);
@@ -158,7 +125,7 @@ static void print_results(struct results_tree *res, struct filerec *files,
 		}
 		list_for_each_entry(extent, &dext->de_extents, e_list) {
 			printf("%s\tstart block: %llu (%llu)\n",
-			       files[extent->e_file].filename,
+			       extent->e_file->filename,
 			       (unsigned long long)extent->e_loff / blocksize,
 			       (unsigned long long)extent->e_loff);
 		}
@@ -167,8 +134,7 @@ static void print_results(struct results_tree *res, struct filerec *files,
 	}
 }
 
-static void dedupe_results(struct results_tree *res, struct filerec *files,
-			   int numfiles)
+static void dedupe_results(struct results_tree *res)
 {
 	int ret, i;
 	struct rb_root *root = &res->root;
@@ -201,23 +167,21 @@ static void dedupe_results(struct results_tree *res, struct filerec *files,
 		}
 		list_for_each_entry(extent, &dext->de_extents, e_list) {
 			printf("%s\tstart block: %llu (%llu)\n",
-			       files[extent->e_file].filename,
+			       extent->e_file->filename,
 			       (unsigned long long)extent->e_loff / blocksize,
 			       (unsigned long long)extent->e_loff);
 
-			ret = filerec_open(&files[extent->e_file]);
+			ret = filerec_open(extent->e_file);
 			if (ret)
 				continue;
 
 			if (ctxt == NULL) {
 				ctxt = new_dedupe_ctxt(dext->de_num_dupes,
 						       extent->e_loff, len,
-						       files[extent->e_file].fd,
 						       extent->e_file);
 				abort_on(ctxt == NULL);
 			} else {
 				add_extent_to_dedupe(ctxt, extent->e_loff, len,
-						     files[extent->e_file].fd,
 						     extent->e_file);
 			}
 		}
@@ -234,24 +198,24 @@ static void dedupe_results(struct results_tree *res, struct filerec *files,
 		}
 
 		printf("Dedupe from: \"%s\"\toffset: %llu\tlen: %llu\n",
-		       files[ctxt->ioctl_fd_index].filename,
-		       (unsigned long long)ctxt->ioctl_fd_off,
+		       ctxt->ioctl_file->filename,
+		       (unsigned long long)ctxt->ioctl_file_off,
 		       (unsigned long long)ctxt->len);
 
 		for (i = 0; i < num_dedupe_requests(ctxt); i++) {
 			uint64_t target_loff, target_bytes;
 			int status;
-			unsigned int filerec_index;
+			struct filerec *f;
 
 			get_dedupe_result(ctxt, i, &status, &target_loff,
-					  &target_bytes, &filerec_index);
+					  &target_bytes, &f);
 
 			printf("\"%s\":\toffset: %llu\tdeduped bytes: %llu"
-			       "\tstatus: %d\n", files[filerec_index].filename,
+			       "\tstatus: %d\n", f->filename,
 			       (unsigned long long)target_loff,
 			       (unsigned long long)target_bytes, status);
 
-			filerec_close(&files[filerec_index]);
+			filerec_close(f);
 		}
 
 next:
@@ -264,13 +228,11 @@ next:
 	free_dedupe_ctxt(ctxt);
 }
 
-static int csum_whole_file(struct hash_tree *tree, struct filerec *file,
-			   int index)
+static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 {
 	int ret, expecting_eof = 0;
 	ssize_t bytes;
 	uint64_t off;
-	struct file_block *prev = NULL;
 
 	vprintf("csum: %s\n", file->filename);
 
@@ -309,12 +271,9 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file,
 
 		checksum_block(buf, bytes, digest);
 
-		prev = insert_hashed_block(tree, digest, index, off,
-					   &file->block_list);
-		if (prev == NULL) {
-			ret = ENOMEM;
+		ret = insert_hashed_block(tree, digest, file, off);
+		if (ret)
 			break;
-		}
 
 		off += bytes;
 	}
@@ -324,13 +283,13 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file,
 	return ret;
 }
 
-static int populate_hash_tree(struct hash_tree *tree,
-			      struct filerec *files, int numfiles)
+static int populate_hash_tree(struct hash_tree *tree)
 {
-	int i, ret = -1;
+	int ret = -1;
+	struct filerec *file;
 
-	for(i = 0; i < numfiles; i++) {
-		ret = csum_whole_file(tree, &files[i], i);
+	list_for_each_entry(file, &filerec_list, rec_list) {
+		ret = csum_whole_file(tree, file);
 		if (ret)
 			break;
 	}
@@ -357,11 +316,9 @@ static void usage(const char *prog)
 /*
  * Ok this is doing more than just parsing options.
  */
-static int parse_options(int argc, char **argv, struct filerec **files,
-			 int *numfiles)
+static int parse_options(int argc, char **argv)
 {
-	int i, c;
-	struct filerec *f;
+	int i, c, numfiles;
 
 	if (argc < 2)
 		return 1;
@@ -391,22 +348,15 @@ static int parse_options(int argc, char **argv, struct filerec **files,
 		}
 	}
 
-	*numfiles = argc - optind;
+	numfiles = argc - optind;
 
-	f = calloc(*numfiles, sizeof(struct filerec));
-	if (f == NULL)
-		return ENOMEM;
-
-	for (i = 0; i < *numfiles; i++) {
+	for (i = 0; i < numfiles; i++) {
 		const char *name = argv[i + optind];
 
-		f[i].fd = -1;
-		f[i].filename = name;
-		INIT_LIST_HEAD(&f[i].block_list);
-		INIT_LIST_HEAD(&f[i].extent_list);
+		if (!filerec_new(name))
+			fprintf(stderr, "Could not create record for %s\n",
+				name);
 	}
-
-	*files = f;
 
 	return 0;
 }
@@ -416,13 +366,15 @@ static void record_match(struct results_tree *res, unsigned char *digest,
 			 struct file_block **start, struct file_block **end)
 {
 	int ret;
-	int fileids[2];
 	uint64_t soff[2], eoff[2];
-	struct list_head *list[2] = { &orig->extent_list, &walk->extent_list };
+	struct filerec *recs[2];
 	uint64_t len;
 
-	fileids[0] = start[0]->b_file;
-	fileids[1] = start[1]->b_file;
+	abort_on(start[0]->b_file != orig);
+	abort_on(start[1]->b_file != walk);
+
+	recs[0] = start[0]->b_file;
+	recs[1] = start[1]->b_file;
 
 	soff[0] = start[0]->b_loff;
 	soff[1] = start[1]->b_loff;
@@ -432,7 +384,7 @@ static void record_match(struct results_tree *res, unsigned char *digest,
 
 	len = eoff[0] - soff[0];
 
-	ret = insert_result(res, digest, fileids, soff, eoff, list);
+	ret = insert_result(res, digest, recs, soff, eoff);
 	abort_on(ret != 0);
 
 	dprintf("Duplicated extent of %llu blocks in files:\n%s\t\t%s\n",
@@ -504,7 +456,6 @@ out:
 }
 
 static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
-			    unsigned int walk_file_index,
 			    struct results_tree *res)
 {
 	struct file_block *cur;
@@ -523,26 +474,26 @@ static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
 		ctxt.walk_file = walk_file;
 		ctxt.orig = cur;
 		ctxt.res = res;
-		for_each_dupe(cur, walk_file_index, walk_dupe_block, &ctxt);
+		for_each_dupe(cur, walk_file, walk_dupe_block, &ctxt);
 	}
 	clear_all_seen_blocks();
 }
 
 int main(int argc, char **argv)
 {
-	int i, j, ret = 0;
+	int ret;
 	struct hash_tree tree;
 	struct results_tree res;
-	struct filerec *files = NULL;
-	int numfiles;
+	struct filerec *file, *file1, *file2;
 
 	if (init_hash())
 		return ENOMEM;
 
+	init_filerec();
 	init_hash_tree(&tree);
 	init_results_tree(&res);
 
-	if (parse_options(argc, argv, &files, &numfiles)) {
+	if (parse_options(argc, argv)) {
 		usage(argv[0]);
 		return EINVAL;
 	}
@@ -553,31 +504,34 @@ int main(int argc, char **argv)
 	if (!buf)
 		return ENOMEM;
 
-	ret = populate_hash_tree(&tree, files, numfiles);
+	ret = populate_hash_tree(&tree);
 	if (ret) {
 		fprintf(stderr, "Error while populating extent tree!\n");
 		goto out;
 	}
 
-	debug_print_tree(&tree, files, numfiles);
+	debug_print_tree(&tree);
 
-	for (i = 0; i < numfiles; i++) {
-		for (j = i + 1; j < numfiles; j++)
-			find_file_dupes(&files[i], &files[j], j, &res);
+	list_for_each_entry(file1, &filerec_list, rec_list) {
+		file2 = file1;
+		list_for_each_entry_from(file2, &filerec_list, rec_list) {
+			find_file_dupes(file1, file2, &res);
+		}
 	}
 
 	if (debug) {
-		print_results(&res, files, numfiles);
+		print_results(&res);
 		printf("\n\nRemoving overlapping extents\n\n");
 	}
 
-	for (i = 0; i < numfiles; i++)
-		remove_overlapping_extents(&res, &files[i].extent_list);
+	list_for_each_entry(file, &filerec_list, rec_list) {
+		remove_overlapping_extents(&res, file);
+	}
 
 	if (run_dedupe)
-		dedupe_results(&res, files, numfiles);
+		dedupe_results(&res);
 	else
-		print_results(&res, files, numfiles);
+		print_results(&res);
 
 out:
 	return ret;

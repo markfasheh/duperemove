@@ -25,6 +25,7 @@
 
 #include "csum.h"	/* for digest_len variable and DIGEST_LEN_MAX */
 
+#include "filerec.h"
 #include "results-tree.h"
 
 static struct extent *_alloc_extent(void)
@@ -37,12 +38,12 @@ static struct extent *_alloc_extent(void)
 	return e;
 }
 
-static struct extent *alloc_extent(unsigned int fileid, uint64_t loff)
+static struct extent *alloc_extent(struct filerec *file, uint64_t loff)
 {
 	struct extent *e = _alloc_extent();
 
 	if (e) {
-		e->e_file = fileid;
+		e->e_file = file;
 		e->e_loff = loff;
 	}
 	return e;
@@ -67,7 +68,7 @@ static int insert_extent_list(struct dupe_extents *dext, struct extent *e)
 }
 
 static void insert_dupe_extents(struct results_tree *res,
-			       struct dupe_extents *dext)
+				struct dupe_extents *dext)
 {
 	struct rb_node **p = &res->root.rb_node;
 	struct rb_node *parent = NULL;
@@ -138,11 +139,11 @@ static void insert_extent_list_free(struct dupe_extents *dext,
 }
 
 int insert_result(struct results_tree *res, unsigned char *digest,
-		  int fileids[2], uint64_t startoff[2], uint64_t endoff[2],
-		  struct list_head *head[2])
+		  struct filerec *recs[2], uint64_t startoff[2],
+		  uint64_t endoff[2])
 {
-	struct extent *e0 = alloc_extent(fileids[0], startoff[0]);
-	struct extent *e1 = alloc_extent(fileids[1], startoff[1]);
+	struct extent *e0 = alloc_extent(recs[0], startoff[0]);
+	struct extent *e1 = alloc_extent(recs[1], startoff[1]);
 	struct dupe_extents *dext;
 	uint64_t len = endoff[0] - startoff[0];
 
@@ -168,10 +169,10 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 	insert_extent_list_free(dext, &e0);
 	insert_extent_list_free(dext, &e1);
 
-	if (head && e0)
-		list_add_tail(&e0->e_file_extents, head[0]);
-	if (head && e1)
-		list_add_tail(&e1->e_file_extents, head[1]);
+	if (e0)
+		list_add_tail(&e0->e_file_extents, &recs[0]->extent_list);
+	if (e1)
+		list_add_tail(&e1->e_file_extents, &recs[1]->extent_list);
 
 	return 0;
 }
@@ -249,18 +250,17 @@ static int compare_extent(struct results_tree *res,
 	return 0;
 }
 
-void remove_overlapping_extents(struct results_tree *res,
-				struct list_head *head)
+void remove_overlapping_extents(struct results_tree *res, struct filerec *file)
 {
 	struct extent *orig;
 	struct list_head *next;
 
-	if (list_empty(head))
+	if (list_empty(&file->extent_list))
 		return;
 
 restart:
-	next = head->next;
-	while (next != head) {
+	next = file->extent_list.next;
+	while (next != &file->extent_list) {
 		orig = list_entry(next, struct extent, e_file_extents);
 
 		/*
@@ -268,7 +268,7 @@ restart:
 		 * compare_extent could have deleted up to two items,
 		 * either of which could be our loop cursor.
 		 */
-		if (compare_extent(res, orig, head))
+		if (compare_extent(res, orig, &file->extent_list))
 			goto restart;
 
 		next = next->next;
