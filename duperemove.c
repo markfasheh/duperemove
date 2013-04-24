@@ -18,11 +18,13 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <dirent.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <errno.h>
 #include <string.h>
+#include <linux/limits.h>
 
 #include "rbtree.h"
 #include "list.h"
@@ -50,8 +52,12 @@ static unsigned int blocksize = DEFAULT_BLOCKSIZE;
 static char *buf = NULL;
 
 static unsigned char digest[DIGEST_LEN_MAX] = { 0, };
+static char path[PATH_MAX] = { 0, };
+char *pathp = path;
+char *path_max = &path[PATH_MAX - 1];
 
 static int run_dedupe = 0;
+static int recurse_dirs = 0;
 
 static void debug_print_block(struct file_block *e)
 {
@@ -295,8 +301,8 @@ static int populate_hash_tree(struct hash_tree *tree)
 	list_for_each_entry_safe(file, tmp, &filerec_list, rec_list) {
 		ret = csum_whole_file(tree, file);
 		if (ret) {
-			fprintf(stderr, "Skipping file due to error %d, %s\n",
-				ret, file->filename);
+			fprintf(stderr, "Skipping file due to error %d (%s), "
+				"%s\n", ret, strerror(ret), file->filename);
 			remove_hashed_blocks(tree, file);
 			filerec_free(file);
 		}
@@ -315,10 +321,104 @@ static void usage(const char *prog)
 	printf("specified, all regular files inside of it will be scanned.\n");
 	printf("\n\t<switches>\n");
 	printf("\t-b bsize\tUse bsize blocks - specify in kilobytes. Default is %d.\n", DEFAULT_BLOCKSIZE / 1024);
+	printf("\t-r\t\tEnable recursive dir traversal.\n");
 	printf("\t-D\t\tDe-dupe the results - only works on btrfs.\n");
 	printf("\t-v\t\tBe verbose.\n");
 	printf("\t-d\t\tPrint debug messages, forces -v if selected.\n");
 	printf("\t-h\t\tPrints this help text.\n");
+}
+
+static void add_file(const char *name, int dirfd);
+
+static void walk_dir(const char *name)
+{
+	struct dirent *entry;
+	DIR *dirp;
+
+	if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
+		return;
+
+	dirp = opendir(path);
+	if (dirp == NULL) {
+		fprintf(stderr, "Error %d: %s while opening directory %s\n",
+			errno, strerror(errno), name);
+		return;
+	}
+
+	do {
+		errno = 0;
+		entry = readdir(dirp);
+		if (entry) {
+			if (entry->d_type == DT_REG ||
+			    (recurse_dirs && entry->d_type == DT_DIR))
+				add_file(entry->d_name, dirfd(dirp));
+		}
+	} while (entry != NULL);
+
+	if (errno) {
+		fprintf(stderr, "Error %d: %s while reading directory %s\n",
+			errno, strerror(errno), path);
+	}
+
+	closedir(dirp);
+}
+
+static void add_file(const char *name, int dirfd)
+{
+	int ret, len = strlen(name);
+	struct stat st;
+	char *pathtmp;
+
+	/* We can get this from walk_dir */
+	if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
+		return;
+
+	if (len > (path_max - pathp)) {
+		fprintf(stderr, "Path max exceeded: %s %s\n", path, name);
+		return;
+	}
+
+	pathtmp = pathp;
+	if (pathp == path)
+		ret = sprintf(pathp, "%s", name);
+	else
+		ret = sprintf(pathp, "/%s", name);
+	pathp += ret;
+
+	ret = fstatat(dirfd, name, &st, 0);
+	if (ret) {
+		fprintf(stderr, "Error %d: %s while stating file %s. "
+			"Skipping.\n",
+			errno, strerror(errno), path);
+		goto out;
+	}
+
+	if (S_ISDIR(st.st_mode)) {
+		walk_dir(name);
+		goto out;
+	}
+
+	if (!S_ISREG(st.st_mode)) {
+		fprintf(stderr, "Skipping non-regular file %s\n", path);
+		goto out;
+	}
+
+	ret = faccessat(dirfd, name, R_OK, 0);
+	if (ret) {
+		fprintf(stderr, "Error %d: %s while accessing file %s. "
+			"Skipping.\n",
+			errno, strerror(errno), path);
+		goto out;
+	}
+
+	if (filerec_new(path) == NULL) {
+		fprintf(stderr, "Out of memory while allocating file record "
+			"for: %s\n", path);
+		exit(ENOMEM);
+	}
+
+out:
+	pathp = pathtmp;
 }
 
 /*
@@ -331,7 +431,7 @@ static int parse_options(int argc, char **argv)
 	if (argc < 2)
 		return 1;
 
-	while ((c = getopt(argc, argv, "b:vdDh?")) != -1) {
+	while ((c = getopt(argc, argv, "b:vdDrh?")) != -1) {
 		switch (c) {
 		case 'b':
 			blocksize = atoi(optarg);
@@ -342,6 +442,9 @@ static int parse_options(int argc, char **argv)
 			break;
 		case 'D':
 			run_dedupe = 1;
+			break;
+		case 'r':
+			recurse_dirs = 1;
 			break;
 		case 'd':
 			debug = 1;
@@ -361,10 +464,13 @@ static int parse_options(int argc, char **argv)
 	for (i = 0; i < numfiles; i++) {
 		const char *name = argv[i + optind];
 
-		if (!filerec_new(name))
-			fprintf(stderr, "Could not create record for %s\n",
-				name);
+		add_file(name, AT_FDCWD);
 	}
+
+	/* This can happen if for example, all files passed in on
+	 * command line are bad. */
+	if (list_empty(&filerec_list))
+		return EINVAL;
 
 	return 0;
 }
