@@ -179,7 +179,11 @@ static void dedupe_results(struct results_tree *res)
 				ctxt = new_dedupe_ctxt(dext->de_num_dupes,
 						       extent->e_loff, len,
 						       extent->e_file);
-				abort_on(ctxt == NULL);
+				if (ctxt == NULL) {
+					fprintf(stderr, "Out of memory while "
+						"allocating dedupe context.\n");
+					return;
+				}
 			} else {
 				add_extent_to_dedupe(ctxt, extent->e_loff, len,
 						     extent->e_file);
@@ -389,7 +393,11 @@ static void record_match(struct results_tree *res, unsigned char *digest,
 	len = eoff[0] - soff[0];
 
 	ret = insert_result(res, digest, recs, soff, eoff);
-	abort_on(ret != 0);
+	if (ret) {
+		abort_on(ret != ENOMEM); /* Only error possible here. */
+		fprintf(stderr, "Out of memory while processing results\n");
+		exit(ENOMEM);
+	}
 
 	dprintf("Duplicated extent of %llu blocks in files:\n%s\t\t%s\n",
 		(unsigned long long)len / blocksize, orig->filename,
