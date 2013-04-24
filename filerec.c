@@ -55,8 +55,8 @@ int filerec_open(struct filerec *file)
 	if (file->fd == -1) {
 		fd = open(file->filename, O_RDONLY);
 		if (fd == -1) {
-			fprintf(stderr, "Could not open \"%s\"\n",
-				file->filename);
+			fprintf(stderr, "Error %d: %s while opening \"%s\"\n",
+				errno, strerror(errno), file->filename);
 			return errno;
 		}
 
@@ -68,7 +68,7 @@ int filerec_open(struct filerec *file)
 
 void filerec_close(struct filerec *file)
 {
-	if (file->fd == -1) {
+	if (file->fd != -1) {
 		close(file->fd);
 		file->fd = -1;
 	}
