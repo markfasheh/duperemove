@@ -59,6 +59,8 @@ char *path_max = &path[PATH_MAX - 1];
 static int run_dedupe = 0;
 static int recurse_dirs = 0;
 
+#define MAX_DEDUPES_PER_IOCTL	128
+
 static void debug_print_block(struct file_block *e)
 {
 	struct filerec *f = e->b_file;
@@ -140,9 +142,53 @@ static void print_results(struct results_tree *res)
 	}
 }
 
-static void dedupe_results(struct results_tree *res)
+static int run_dedupe_and_close_files(struct dedupe_ctxt **ret_ctxt)
 {
 	int ret, i;
+	struct dedupe_ctxt *ctxt = *ret_ctxt;
+
+	printf("Running dedupe.\n");
+
+	ret = dedupe_extents(ctxt);
+	if (ret) {
+		ret = errno;
+		fprintf(stderr,
+			"FAILURE: Dedupe ioctl returns %d: %s\n",
+			ret, strerror(ret));
+		goto cleanup;
+	}
+
+	printf("Dedupe from: \"%s\"\toffset: %llu\tlen: %llu\n",
+	       ctxt->ioctl_file->filename,
+	       (unsigned long long)ctxt->ioctl_file_off,
+	       (unsigned long long)ctxt->len);
+
+	for (i = 0; i < num_dedupe_requests(ctxt); i++) {
+		uint64_t target_loff, target_bytes;
+		int status;
+		struct filerec *f;
+
+		get_dedupe_result(ctxt, i, &status, &target_loff,
+				  &target_bytes, &f);
+
+		printf("\"%s\":\toffset: %llu\tdeduped bytes: %llu"
+		       "\tstatus: %d\n", f->filename,
+		       (unsigned long long)target_loff,
+		       (unsigned long long)target_bytes, status);
+
+		filerec_close(f);
+	}
+
+cleanup:
+	free_dedupe_ctxt(ctxt);
+	*ret_ctxt = NULL;
+
+	return ret;
+}
+
+static void dedupe_results(struct results_tree *res)
+{
+	int ret, dupes_added;
 	struct rb_root *root = &res->root;
 	struct rb_node *node = rb_first(root);
 	struct dupe_extents *dext;
@@ -161,25 +207,29 @@ static void dedupe_results(struct results_tree *res)
 
 		len = dext->de_len;
 		len_blocks = len / blocksize;
+		dupes_added = 0;
 
-		printf("%u extents had length %llu (%llu) for a score of %llu.\n",
-		       dext->de_num_dupes, (unsigned long long)len_blocks,
-		       (unsigned long long)len,
-		       (unsigned long long)dext->de_score);
+		vprintf("%u extents had length %llu (%llu) for a score of %llu.\n",
+			dext->de_num_dupes, (unsigned long long)len_blocks,
+			(unsigned long long)len,
+			(unsigned long long)dext->de_score);
 		if (verbose) {
 			printf("Hash is: ");
 			debug_print_digest(stdout, dext->de_hash);
 			printf("\n");
 		}
 		list_for_each_entry(extent, &dext->de_extents, e_list) {
-			printf("%s\tstart block: %llu (%llu)\n",
-			       extent->e_file->filename,
-			       (unsigned long long)extent->e_loff / blocksize,
-			       (unsigned long long)extent->e_loff);
+			vprintf("%s\tstart block: %llu (%llu)\n",
+				extent->e_file->filename,
+				(unsigned long long)extent->e_loff / blocksize,
+				(unsigned long long)extent->e_loff);
 
 			ret = filerec_open(extent->e_file);
-			if (ret)
+			if (ret) {
+				fprintf(stderr, "%s: Skipping dedupe.\n",
+					extent->e_file->filename);
 				continue;
+			}
 
 			if (ctxt == NULL) {
 				ctxt = new_dedupe_ctxt(dext->de_num_dupes,
@@ -193,49 +243,40 @@ static void dedupe_results(struct results_tree *res)
 			} else {
 				add_extent_to_dedupe(ctxt, extent->e_loff, len,
 						     extent->e_file);
+				dupes_added++;
+			}
+
+			if (dupes_added > MAX_DEDUPES_PER_IOCTL) {
+				ret = run_dedupe_and_close_files(&ctxt);
+				if (ret) {
+					fprintf(stderr,
+						"FAILURE: Dedupe ioctl returns %d: %s\n",
+						ret, strerror(ret));
+				}
+
+				dupes_added = 0;
 			}
 		}
 
-		printf("Running dedupe...\n");
-
-		ret = dedupe_extents(ctxt);
-		if (ret) {
-			ret = errno;
-			fprintf(stderr,
-				"FAILURE: Dedupe ioctl returns %d: %s\n",
-				ret, strerror(ret));
-			goto next;
+		if (dupes_added) {
+			ret = run_dedupe_and_close_files(&ctxt);
+			if (ret) {
+				fprintf(stderr,
+					"FAILURE: Dedupe ioctl returns %d: %s\n",
+					ret, strerror(ret));
+			}
 		}
 
-		printf("Dedupe from: \"%s\"\toffset: %llu\tlen: %llu\n",
-		       ctxt->ioctl_file->filename,
-		       (unsigned long long)ctxt->ioctl_file_off,
-		       (unsigned long long)ctxt->len);
-
-		for (i = 0; i < num_dedupe_requests(ctxt); i++) {
-			uint64_t target_loff, target_bytes;
-			int status;
-			struct filerec *f;
-
-			get_dedupe_result(ctxt, i, &status, &target_loff,
-					  &target_bytes, &f);
-
-			printf("\"%s\":\toffset: %llu\tdeduped bytes: %llu"
-			       "\tstatus: %d\n", f->filename,
-			       (unsigned long long)target_loff,
-			       (unsigned long long)target_bytes, status);
-
-			filerec_close(f);
-		}
-
-next:
+		/*
+		 * We might have allocated a context above but not
+		 * filled it with any extents, make sure to free it
+		 * here.
+		 */
 		free_dedupe_ctxt(ctxt);
 		ctxt = NULL;
 
 		node = rb_next(node);
 	}
-
-	free_dedupe_ctxt(ctxt);
 }
 
 static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
@@ -416,6 +457,8 @@ static void add_file(const char *name, int dirfd)
 			"for: %s\n", path);
 		exit(ENOMEM);
 	}
+
+	dprintf("added file: %s\n", path);
 
 out:
 	pathp = pathtmp;
