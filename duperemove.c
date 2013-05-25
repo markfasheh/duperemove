@@ -108,6 +108,7 @@ static void print_results(struct results_tree *res)
 	struct rb_node *node = rb_first(root);
 	struct dupe_extents *dext;
 	struct extent *extent;
+	uint64_t calc_bytes = 0;
 
 	printf("Found %u instances of duplicated extents\n", res->num_dupes);
 
@@ -121,28 +122,37 @@ static void print_results(struct results_tree *res)
 
 		len = dext->de_len;
 		len_blocks = len / blocksize;
+		calc_bytes += dext->de_score;
 
-		printf("(dext: 0x%p) %u extents had length %llu (%llu) for a score of %llu.\n", (void *)dext,
-		       dext->de_num_dupes, (unsigned long long)len_blocks,
-		       (unsigned long long)len,
-		       (unsigned long long)dext->de_score);
-		if (verbose) {
+		vprintf("(dext: 0x%p) %u extents had length %llu (%llu) for a"
+			" score of %llu.\n", (void *)dext,
+			dext->de_num_dupes, (unsigned long long)len_blocks,
+			(unsigned long long)len,
+			(unsigned long long)dext->de_score);
+		if (debug) {
 			printf("Hash is: ");
 			debug_print_digest(stdout, dext->de_hash);
 			printf("\n");
 		}
-		list_for_each_entry(extent, &dext->de_extents, e_list) {
-			printf("%s\tstart block: %llu (%llu)\n",
-			       extent->e_file->filename,
-			       (unsigned long long)extent->e_loff / blocksize,
-			       (unsigned long long)extent->e_loff);
+
+		if (verbose) {
+			list_for_each_entry(extent, &dext->de_extents, e_list) {
+				printf("%s\tstart block: %llu (%llu)\n",
+				       extent->e_file->filename,
+				       (unsigned long long)extent->e_loff / blocksize,
+				       (unsigned long long)extent->e_loff);
+			}
 		}
 
 		node = rb_next(node);
 	}
+
+	printf("Calculated %llu bytes of duplicated data.\n",
+	       (unsigned long long)calc_bytes);
 }
 
-static int run_dedupe_and_close_files(struct dedupe_ctxt **ret_ctxt)
+static int run_dedupe_and_close_files(struct dedupe_ctxt **ret_ctxt,
+				      uint64_t *bytes_deduped)
 {
 	int ret, i;
 	struct dedupe_ctxt *ctxt = *ret_ctxt;
@@ -177,6 +187,7 @@ static int run_dedupe_and_close_files(struct dedupe_ctxt **ret_ctxt)
 		       (unsigned long long)target_bytes, status);
 
 		filerec_close(f);
+		*bytes_deduped += target_bytes;
 	}
 
 cleanup:
@@ -194,8 +205,11 @@ static void dedupe_results(struct results_tree *res)
 	struct dupe_extents *dext;
 	struct extent *extent;
 	struct dedupe_ctxt *ctxt = NULL;
+	uint64_t actual_bytes = 0;
 
-	printf("Found %u instances of duplicated extents\n", res->num_dupes);
+	print_results(res);
+
+	printf("Deduping data...\n");
 
 	while (1) {
 		uint64_t len, len_blocks;
@@ -213,7 +227,7 @@ static void dedupe_results(struct results_tree *res)
 			dext->de_num_dupes, (unsigned long long)len_blocks,
 			(unsigned long long)len,
 			(unsigned long long)dext->de_score);
-		if (verbose) {
+		if (debug) {
 			printf("Hash is: ");
 			debug_print_digest(stdout, dext->de_hash);
 			printf("\n");
@@ -247,7 +261,8 @@ static void dedupe_results(struct results_tree *res)
 			}
 
 			if (dupes_added > MAX_DEDUPES_PER_IOCTL) {
-				ret = run_dedupe_and_close_files(&ctxt);
+				ret = run_dedupe_and_close_files(&ctxt,
+								 &actual_bytes);
 				if (ret) {
 					fprintf(stderr,
 						"FAILURE: Dedupe ioctl returns %d: %s\n",
@@ -259,7 +274,7 @@ static void dedupe_results(struct results_tree *res)
 		}
 
 		if (dupes_added) {
-			ret = run_dedupe_and_close_files(&ctxt);
+			ret = run_dedupe_and_close_files(&ctxt, &actual_bytes);
 			if (ret) {
 				fprintf(stderr,
 					"FAILURE: Dedupe ioctl returns %d: %s\n",
@@ -277,6 +292,8 @@ static void dedupe_results(struct results_tree *res)
 
 		node = rb_next(node);
 	}
+
+	printf("Deduped %llu bytes of data\n", (unsigned long long)actual_bytes);
 }
 
 static int csum_whole_file(struct hash_tree *tree, struct filerec *file)

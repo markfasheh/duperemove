@@ -62,7 +62,7 @@ static int insert_extent_list(struct dupe_extents *dext, struct extent *e)
 	dext->de_num_dupes++;
 	list_add_tail(&e->e_list, &dext->de_extents);
 
-	dext->de_score += dext->de_len;
+//	dext->de_score += dext->de_len;
 
 	return 0;
 }
@@ -146,6 +146,7 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 	struct extent *e1 = alloc_extent(recs[1], startoff[1]);
 	struct dupe_extents *dext;
 	uint64_t len = endoff[0] - startoff[0];
+	int add_score = 1;
 
 	if (!e0 || !e1)
 		return ENOMEM;
@@ -161,6 +162,9 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 		INIT_LIST_HEAD(&dext->de_extents);
 
 		insert_dupe_extents(res, dext);
+
+		dext->de_score = len;
+		add_score = 0;
 	}
 
 	if (dext->de_len != len)
@@ -169,10 +173,16 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 	insert_extent_list_free(dext, &e0);
 	insert_extent_list_free(dext, &e1);
 
-	if (e0)
+	if (e0) {
+		if (add_score)
+			dext->de_score += len;
 		list_add_tail(&e0->e_file_extents, &recs[0]->extent_list);
-	if (e1)
+	}
+	if (e1) {
+		if (add_score)
+			dext->de_score += len;
 		list_add_tail(&e1->e_file_extents, &recs[1]->extent_list);
+	}
 
 	return 0;
 }
