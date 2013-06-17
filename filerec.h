@@ -23,7 +23,7 @@ static inline void init_filerec(void)
 
 struct filerec *filerec_new(const char *filename);
 void filerec_free(struct filerec *file);
-int filerec_open(struct filerec *file);
+int filerec_open(struct filerec *file, int write);
 void filerec_close(struct filerec *file);
 
 #endif /* __FILEREC__ */

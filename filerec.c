@@ -48,15 +48,19 @@ void filerec_free(struct filerec *file)
 	}
 }
 
-int filerec_open(struct filerec *file)
+int filerec_open(struct filerec *file, int write)
 {
-	int fd;
+	int fd, flags = O_RDONLY;
+
+	if (write)
+		flags = O_RDWR;
 
 	if (file->fd == -1) {
-		fd = open(file->filename, O_RDONLY);
+		fd = open(file->filename, flags);
 		if (fd == -1) {
-			fprintf(stderr, "Error %d: %s while opening \"%s\"\n",
-				errno, strerror(errno), file->filename);
+			fprintf(stderr, "Error %d: %s while opening \"%s\" "
+				"(write=%d)\n",
+				errno, strerror(errno), file->filename, write);
 			return errno;
 		}
 

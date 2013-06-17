@@ -58,6 +58,7 @@ char *path_max = &path[PATH_MAX - 1];
 
 static int run_dedupe = 0;
 static int recurse_dirs = 0;
+static int target_rw = 1;
 
 #define MAX_DEDUPES_PER_IOCTL	128
 
@@ -238,7 +239,7 @@ static void dedupe_results(struct results_tree *res)
 				(unsigned long long)extent->e_loff / blocksize,
 				(unsigned long long)extent->e_loff);
 
-			ret = filerec_open(extent->e_file);
+			ret = filerec_open(extent->e_file, target_rw);
 			if (ret) {
 				fprintf(stderr, "%s: Skipping dedupe.\n",
 					extent->e_file->filename);
@@ -304,7 +305,7 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 
 	vprintf("csum: %s\n", file->filename);
 
-	ret = filerec_open(file);
+	ret = filerec_open(file, 0);
 	if (ret)
 		return ret;
 
@@ -373,14 +374,16 @@ static void usage(const char *prog)
 {
 	printf("duperemove %s\n", VERSTRING);
 	printf("Find duplicate extents and print them to stdout\n\n");
-	printf("Usage: %s [-v] [-d] [-h] [-b blocksize-in-K] OBJECTS\n", prog);
+	printf("Usage: %s [-r] [-D] [-A] [-b blocksize-in-K] [-v] [-d]"
+	       " OBJECTS\n", prog);
 	printf("Where \"OBJECTS\" is a list of files (or directories) which\n");
 	printf("we want to find duplicate extents in. If a directory is \n");
 	printf("specified, all regular files inside of it will be scanned.\n");
 	printf("\n\t<switches>\n");
-	printf("\t-b bsize\tUse bsize blocks - specify in kilobytes. Default is %d.\n", DEFAULT_BLOCKSIZE / 1024);
 	printf("\t-r\t\tEnable recursive dir traversal.\n");
 	printf("\t-D\t\tDe-dupe the results - only works on btrfs.\n");
+	printf("\t-A\t\tOpens files readonly when deduping. Primarily for use by privileged users on readonly snapshots\n");
+	printf("\t-b bsize\tUse bsize blocks - specify in kilobytes. Default is %d.\n", DEFAULT_BLOCKSIZE / 1024);
 	printf("\t-v\t\tBe verbose.\n");
 	printf("\t-d\t\tPrint debug messages, forces -v if selected.\n");
 	printf("\t-h\t\tPrints this help text.\n");
@@ -491,8 +494,11 @@ static int parse_options(int argc, char **argv)
 	if (argc < 2)
 		return 1;
 
-	while ((c = getopt(argc, argv, "b:vdDrh?")) != -1) {
+	while ((c = getopt(argc, argv, "Ab:vdDrh?")) != -1) {
 		switch (c) {
+		case 'A':
+			target_rw = 0;
+			break;
 		case 'b':
 			blocksize = atoi(optarg);
 			blocksize *= 1024;
