@@ -1,0 +1,43 @@
+.TH "duperemove" "8" "March 2014" "Version 0.04"
+.SH "NAME"
+duperemove \- Find duplicate extents and print them to stdout
+.SH "SYNOPSIS"
+\fBduperemove\fR \fI[options]\fR \fIfiles...\fI
+.SH "DESCRIPTION"
+.PP
+\fBduperemove\fR scans a file or set of files and looks for duplicated
+extents. If those are found, they are printed out. \fBduperemove\fR
+can also remove duplicates if the underlying file system supports
+it. \fIfiles\fR can refer to a list of regular files. If a directory
+is specified, all regular files within it will be also scanned.
+
+.SH "OPTIONS"
+.TP
+\fB\-r\fR
+Enable recursive dir traversal.
+
+.TP
+\fB\-D\fR
+De-dupe the results - only works on \fIbtrfs\fR.
+.TP
+
+\fB\-A\fR
+Opens files readonly when deduping. Primarily for us by privileged
+users on readonly snapshots.
+
+.TP
+\fB\-b size-in-kilobytes\fR
+Use the specified block size. Specified in Kilobytes - the default is
+\fB128\fR.
+
+.TP
+\fB\-v\fR
+Be verbose.
+
+.TP
+\fB\-h\fR
+Prints help text.
+
+.SH "SEE ALSO"
+.BR filesystems(5)
+.BR btrfs(8)

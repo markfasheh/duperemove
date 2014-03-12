@@ -1,0 +1,16 @@
+duperemove v0.04
+Find duplicate extents and print them to stdout
+
+Usage: ./duperemove [-r] [-D] [-A] [-b blocksize-in-K] [-v] [-d] OBJECTS
+Where "OBJECTS" is a list of files (or directories) which
+we want to find duplicate extents in. If a directory is 
+specified, all regular files inside of it will be scanned.
+
+	<switches>
+	-r		Enable recursive dir traversal.
+	-D		De-dupe the results - only works on btrfs.
+	-A		Opens files readonly when deduping. Primarily for use by privileged users on readonly snapshots
+	-b bsize	Use bsize blocks - specify in kilobytes. Default is 128.
+	-v		Be verbose.
+	-d		Print debug messages, forces -v if selected.
+	-h		Prints this help text.
