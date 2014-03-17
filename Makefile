@@ -5,12 +5,24 @@ LIBRARY_FLAGS=-lmhash
 
 MANPAGES=duperemove.8 btrfs-extent-same.8
 
-DIST_SOURCES=csum.c csum.h duperemove.c hash-tree.c hash-tree.h results-tree.c results-tree.h kernel.h LICENSE list.h Makefile rbtree.c rbtree.h rbtree.txt README TODO dedupe.c dedupe.h btrfs-ioctl.h filerec.c filerec.h $(MANPAGES) btrfs-extent-same.c
+DIST_SOURCES=csum-gcrypt.c csum-mhash.c csum.h duperemove.c hash-tree.c hash-tree.h results-tree.c results-tree.h kernel.h LICENSE list.h Makefile rbtree.c rbtree.h rbtree.txt README TODO dedupe.c dedupe.h btrfs-ioctl.h filerec.c filerec.h $(MANPAGES) btrfs-extent-same.c
 DIST=duperemove-$(RELEASE)
 DIST_TARBALL=$(DIST).tar.gz
 TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
 
-objects = duperemove.o rbtree.o csum.o hash-tree.o results-tree.o dedupe.o filerec.o
+hash_obj=csum-gcrypt.o
+gcrypt_CFLAGS=$(shell libgcrypt-config --cflags)
+gcrypt_LIBS=$(shell libgcrypt-config --libs)
+ifdef USE_MHASH
+	hash_obj=csum-mhash.o
+	gcrypt_CFLAGS=
+	gcrypt_LIBS=
+endif
+
+CFLAGS += $(gcrypt_CFLAGS)
+LIBRARY_FLAGS += $(gcrypt_LIBS)
+
+objects = duperemove.o rbtree.o hash-tree.o results-tree.o dedupe.o filerec.o $(hash_obj)
 progs = duperemove
 
 all: $(progs) kernel.h list.h btrfs-ioctl.h
@@ -28,4 +40,4 @@ btrfs-extent-same: btrfs-extent-same.c
 	$(CC) -Wall -o btrfs-extent-same btrfs-extent-same.c
 
 clean:
-	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same *~
+	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same csum-*.o *~
