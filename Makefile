@@ -1,7 +1,6 @@
 CC=gcc
 RELEASE=v0.04
 CFLAGS=-Wall -ggdb -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\"
-LIBRARY_FLAGS=-lmhash
 
 MANPAGES=duperemove.8 btrfs-extent-same.8
 
@@ -11,16 +10,16 @@ DIST_TARBALL=$(DIST).tar.gz
 TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
 
 hash_obj=csum-gcrypt.o
-gcrypt_CFLAGS=$(shell libgcrypt-config --cflags)
-gcrypt_LIBS=$(shell libgcrypt-config --libs)
+crypt_CFLAGS=$(shell libgcrypt-config --cflags)
+crypt_LIBS=$(shell libgcrypt-config --libs)
 ifdef USE_MHASH
 	hash_obj=csum-mhash.o
-	gcrypt_CFLAGS=
-	gcrypt_LIBS=
+	crypt_CFLAGS=
+	crypt_LIBS=-lmhash
 endif
 
-CFLAGS += $(gcrypt_CFLAGS)
-LIBRARY_FLAGS += $(gcrypt_LIBS)
+CFLAGS += $(crypt_CFLAGS)
+LIBRARY_FLAGS += $(crypt_LIBS)
 
 objects = duperemove.o rbtree.o hash-tree.o results-tree.o dedupe.o filerec.o $(hash_obj)
 progs = duperemove
