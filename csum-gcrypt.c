@@ -101,4 +101,6 @@ void finish_running_checksum(struct running_checksum *c, unsigned char *digest)
 	memcpy(digest, gcry_digest, digest_len);
 
 	gcry_md_close(c->hd);
+
+	free(c);
 }

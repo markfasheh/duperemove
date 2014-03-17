@@ -81,4 +81,5 @@ void add_to_running_checksum(struct running_checksum *c,
 void finish_running_checksum(struct running_checksum *c, unsigned char *digest)
 {
 	mhash_deinit(c->td, digest);
+	free(c);
 }
