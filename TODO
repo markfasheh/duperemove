@@ -1,12 +1,12 @@
-HIGH LEVEL
+- Allow checking for similar files by some criteria (approximate size,
+  file magic type, file extension, etc)
 
-- Test on actual VM images
+- Limit the window for duplicate extent calculation to limit overall time
+  spent looking for duplicates
 
-- Add code to take a directory as a command line option
-
-LOW LEVEL
-
-- Replace ugly pointer comparison in walk_dupe_block()
+- Store results of our search to speed up subsequent runs.
+  - In particular, store file system transaction ids so we can use the
+    equivalent of btrfs's find-new
 
 - Wrap bytes <-> blocks conversions
 
