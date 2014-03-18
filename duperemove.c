@@ -25,6 +25,7 @@
 #include <errno.h>
 #include <string.h>
 #include <linux/limits.h>
+#include <ctype.h>
 
 #include "rbtree.h"
 #include "list.h"
@@ -374,7 +375,7 @@ static void usage(const char *prog)
 {
 	printf("duperemove %s\n", VERSTRING);
 	printf("Find duplicate extents and print them to stdout\n\n");
-	printf("Usage: %s [-r] [-D] [-A] [-b blocksize-in-K] [-v] [-d]"
+	printf("Usage: %s [-r] [-D] [-A] [-b blocksize] [-v] [-d]"
 	       " OBJECTS\n", prog);
 	printf("Where \"OBJECTS\" is a list of files (or directories) which\n");
 	printf("we want to find duplicate extents in. If a directory is \n");
@@ -383,7 +384,8 @@ static void usage(const char *prog)
 	printf("\t-r\t\tEnable recursive dir traversal.\n");
 	printf("\t-D\t\tDe-dupe the results - only works on btrfs.\n");
 	printf("\t-A\t\tOpens files readonly when deduping. Primarily for use by privileged users on readonly snapshots\n");
-	printf("\t-b bsize\tUse bsize blocks - specify in kilobytes. Default is %d.\n", DEFAULT_BLOCKSIZE / 1024);
+	printf("\t-b bsize\tUse bsize blocks. Default is %dk.\n",
+	       DEFAULT_BLOCKSIZE / 1024);
 	printf("\t-v\t\tBe verbose.\n");
 	printf("\t-d\t\tPrint debug messages, forces -v if selected.\n");
 	printf("\t-h\t\tPrints this help text.\n");
@@ -485,6 +487,59 @@ out:
 }
 
 /*
+ * parse_size() taken from btrfs-progs/util.c
+ */
+uint64_t parse_size(char *s)
+{
+	int i;
+	char c;
+	uint64_t mult = 1;
+
+	for (i = 0; s && s[i] && isdigit(s[i]); i++) ;
+	if (!i) {
+		fprintf(stderr, "ERROR: size value is empty\n");
+		exit(50);
+	}
+
+	if (s[i]) {
+		c = tolower(s[i]);
+		switch (c) {
+		case 'e':
+			mult *= 1024;
+			/* fallthrough */
+		case 'p':
+			mult *= 1024;
+			/* fallthrough */
+		case 't':
+			mult *= 1024;
+			/* fallthrough */
+		case 'g':
+			mult *= 1024;
+			/* fallthrough */
+		case 'm':
+			mult *= 1024;
+			/* fallthrough */
+		case 'k':
+			mult *= 1024;
+			/* fallthrough */
+		case 'b':
+			break;
+		default:
+			fprintf(stderr, "ERROR: Unknown size descriptor "
+				"'%c'\n", c);
+			exit(1);
+		}
+	}
+	if (s[i] && s[i+1]) {
+		fprintf(stderr, "ERROR: Illegal suffix contains "
+			"character '%c' in wrong position\n",
+			s[i+1]);
+		exit(51);
+	}
+	return strtoull(s, NULL, 10) * mult;
+}
+
+/*
  * Ok this is doing more than just parsing options.
  */
 static int parse_options(int argc, char **argv)
@@ -500,8 +555,7 @@ static int parse_options(int argc, char **argv)
 			target_rw = 0;
 			break;
 		case 'b':
-			blocksize = atoi(optarg);
-			blocksize *= 1024;
+			blocksize = parse_size(optarg);
 			if (blocksize < MIN_BLOCKSIZE ||
 			    blocksize > MAX_BLOCKSIZE)
 				return EINVAL;
