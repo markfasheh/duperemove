@@ -16,3 +16,7 @@
 
 - Add an optional mode to do duplicate checking with resolution of extent
   owners (expensive).
+
+- Allow duperemove to take as input it's previous output so a user
+  could run in readonly mode, record dupes and then pass them later to
+  duperemove for potential deduplication.
