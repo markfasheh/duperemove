@@ -104,7 +104,7 @@ static void debug_print_tree(struct hash_tree *tree)
 	}
 }
 
-static void print_results(struct results_tree *res)
+static void print_dupes_table(struct results_tree *res)
 {
 	struct rb_root *root = &res->root;
 	struct rb_node *node = rb_first(root);
@@ -112,7 +112,9 @@ static void print_results(struct results_tree *res)
 	struct extent *extent;
 	uint64_t calc_bytes = 0;
 
-	printf("Found %u instances of duplicated extents\n", res->num_dupes);
+	printf("Simple read and compare of file data found %u instances of "
+	       "extents that might benefit from deduplication.\n",
+	       res->num_dupes);
 
 	if (res->num_dupes == 0)
 		return;
@@ -129,9 +131,9 @@ static void print_results(struct results_tree *res)
 		len_blocks = len / blocksize;
 		calc_bytes += dext->de_score;
 
-		vprintf("(dext: 0x%p) %u extents had length %llu (%llu) for a"
-			" score of %llu.\n", (void *)dext,
-			dext->de_num_dupes, (unsigned long long)len_blocks,
+		vprintf("%u extents had a length %llu Blocks (%llu) for a"
+			" score of %llu.\n", dext->de_num_dupes,
+			(unsigned long long)len_blocks,
 			(unsigned long long)len,
 			(unsigned long long)dext->de_score);
 		if (debug) {
@@ -140,20 +142,16 @@ static void print_results(struct results_tree *res)
 			printf("\n");
 		}
 
-		if (verbose) {
-			list_for_each_entry(extent, &dext->de_extents, e_list) {
-				printf("%s\tstart block: %llu (%llu)\n",
-				       extent->e_file->filename,
-				       (unsigned long long)extent->e_loff / blocksize,
-				       (unsigned long long)extent->e_loff);
-			}
+		printf("Start\t\tLength\t\tFilename\n");
+		list_for_each_entry(extent, &dext->de_extents, e_list) {
+			printf("%llu\t%llu\t\"%s\"\n",
+			       (unsigned long long)extent->e_loff,
+			       (unsigned long long)len,
+			       extent->e_file->filename);
 		}
 
 		node = rb_next(node);
 	}
-
-	printf("Calculated %llu bytes of duplicated data.\n",
-	       (unsigned long long)calc_bytes);
 }
 
 static int run_dedupe_and_close_files(struct dedupe_ctxt **ret_ctxt,
@@ -169,7 +167,7 @@ static int run_dedupe_and_close_files(struct dedupe_ctxt **ret_ctxt,
 	uint64_t target_loff, target_bytes;
 	struct filerec *f;
 
-	printf("Running dedupe.\n");
+	printf("Requesting dedupe pass from kernel.\n");
 
 	ret = dedupe_extents(ctxt);
 	if (ret) {
@@ -216,7 +214,7 @@ static void dedupe_results(struct results_tree *res)
 	struct dedupe_ctxt *ctxt = NULL;
 	uint64_t actual_bytes = 0;
 
-	print_results(res);
+	print_dupes_table(res);
 
 	if (RB_EMPTY_ROOT(root)) {
 		printf("Nothing to dedupe.\n");
@@ -305,7 +303,9 @@ static void dedupe_results(struct results_tree *res)
 		node = rb_next(node);
 	}
 
-	printf("Deduped %llu bytes of data\n", (unsigned long long)actual_bytes);
+	printf("Kernel reports %llu bytes of data processed. Actual disk "
+	       "savings will differ depending on how much of the data was "
+	       "previously deduplicated.\n", (unsigned long long)actual_bytes);
 }
 
 static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
@@ -314,7 +314,7 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 	ssize_t bytes;
 	uint64_t off;
 
-	vprintf("csum: %s\n", file->filename);
+	printf("csum: %s\n", file->filename);
 
 	ret = filerec_open(file, 0);
 	if (ret)
@@ -489,8 +489,6 @@ static void add_file(const char *name, int dirfd)
 			"for: %s\n", path);
 		exit(ENOMEM);
 	}
-
-	dprintf("added file: %s\n", path);
 
 out:
 	pathp = pathtmp;
@@ -746,7 +744,7 @@ int main(int argc, char **argv)
 		return EINVAL;
 	}
 
-	vprintf("Using %uK blocks\n", blocksize/1024);
+	printf("Using %uK blocks\n", blocksize/1024);
 
 	buf = malloc(blocksize);
 	if (!buf)
@@ -768,7 +766,7 @@ int main(int argc, char **argv)
 	}
 
 	if (debug) {
-		print_results(&res);
+		print_dupes_table(&res);
 		printf("\n\nRemoving overlapping extents\n\n");
 	}
 
@@ -779,7 +777,7 @@ int main(int argc, char **argv)
 	if (run_dedupe)
 		dedupe_results(&res);
 	else
-		print_results(&res);
+		print_dupes_table(&res);
 
 out:
 	return ret;
