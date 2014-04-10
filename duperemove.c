@@ -114,6 +114,9 @@ static void print_results(struct results_tree *res)
 
 	printf("Found %u instances of duplicated extents\n", res->num_dupes);
 
+	if (res->num_dupes == 0)
+		return;
+
 	while (1) {
 		uint64_t len, len_blocks;
 
@@ -156,8 +159,15 @@ static void print_results(struct results_tree *res)
 static int run_dedupe_and_close_files(struct dedupe_ctxt **ret_ctxt,
 				      uint64_t *bytes_deduped)
 {
-	int ret, i;
+	int ret, done = 0;
 	struct dedupe_ctxt *ctxt = *ret_ctxt;
+	struct filerec *ioctl_file;
+	uint64_t orig_file_off, orig_len;
+
+	/* For our target status loop */
+	int target_status;
+	uint64_t target_loff, target_bytes;
+	struct filerec *f;
 
 	printf("Running dedupe.\n");
 
@@ -170,23 +180,20 @@ static int run_dedupe_and_close_files(struct dedupe_ctxt **ret_ctxt,
 		goto cleanup;
 	}
 
-	printf("Dedupe from: \"%s\"\toffset: %llu\tlen: %llu\n",
-	       ctxt->ioctl_file->filename,
-	       (unsigned long long)ctxt->ioctl_file_off,
-	       (unsigned long long)ctxt->len);
+	get_target_dedupe_info(ctxt, &orig_file_off, &orig_len, &ioctl_file);
 
-	for (i = 0; i < num_dedupe_requests(ctxt); i++) {
-		uint64_t target_loff, target_bytes;
-		int status;
-		struct filerec *f;
+	vprintf("Ask for dedupe from: \"%s\"\toffset: %llu\tlen: %llu\n",
+		ioctl_file->filename,
+		(unsigned long long)orig_file_off,
+		(unsigned long long)orig_len);
 
-		get_dedupe_result(ctxt, i, &status, &target_loff,
-				  &target_bytes, &f);
-
-		printf("\"%s\":\toffset: %llu\tdeduped bytes: %llu"
-		       "\tstatus: %d\n", f->filename,
-		       (unsigned long long)target_loff,
-		       (unsigned long long)target_bytes, status);
+	while (!done) {
+		done = pop_one_dedupe_result(ctxt, &target_status, &target_loff,
+					     &target_bytes, &f);
+		vprintf("\"%s\":\toffset: %llu\tmaybe deduped bytes: %llu"
+			"\tstatus: %d\n", f->filename,
+			(unsigned long long)target_loff,
+			(unsigned long long)target_bytes, target_status);
 
 		filerec_close(f);
 		*bytes_deduped += target_bytes;
@@ -211,7 +218,10 @@ static void dedupe_results(struct results_tree *res)
 
 	print_results(res);
 
-	printf("Deduping data...\n");
+	if (RB_EMPTY_ROOT(root)) {
+		printf("Nothing to dedupe.\n");
+		return;
+	}
 
 	while (1) {
 		uint64_t len, len_blocks;

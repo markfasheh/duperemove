@@ -1,6 +1,7 @@
 #ifndef __FILEREC__
 #define __FILEREC__
 
+#include <stdint.h>
 #include "list.h"
 
 extern struct list_head filerec_list;
@@ -14,6 +15,16 @@ struct filerec {
 	struct list_head	extent_list;	/* head for results node list */
 
 	struct list_head	rec_list;	/* all filerecs */
+
+	/*
+	 * Used by dedupe code to track state of this file during a
+	 * dedupe request.
+	 */
+	uint64_t		dedupe_loff;
+	uint64_t		dedupe_total;
+	int			dedupe_status;
+	int			dedupe_idx;
+	struct list_head	dedupe_list;	/* see comment in dededupe.h */
 };
 
 static inline void init_filerec(void)
