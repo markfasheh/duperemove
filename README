@@ -4,7 +4,7 @@ Duperemove is a simple tool for finding duplicated extents and
 submitting them for deduplication. When given a list of files it will
 hash their contents on a block by block basis and compare those hashes
 to each other, finding and categorizing extents that match each
-other. When given the optional -D option, duperemove will submit those
+other. When given the -D option, duperemove will submit those
 extents for deduplication using the btrfs-extent-same ioctl.
 
 Duperemove has two major modes of operation one of which is a subset
@@ -39,7 +39,7 @@ duplicated extents found in our "read hash and compare" step will
 actually be submitted for deduplication. At the end, a total count of
 bytes that were processed by the kernel will be printed.
 
-Keep in mind, that the bytecount we report here (recieved from the
+Keep in mind, that the bytecount we report here (received from the
 kernel) is NOT the total amount deduplicated but rather a count of the
 amount of data it also found to be identical.
 
