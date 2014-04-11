@@ -1,5 +1,5 @@
 CC=gcc
-RELEASE=v0.05
+RELEASE=v0.06
 CFLAGS=-Wall -ggdb -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\"
 
 MANPAGES=duperemove.8 btrfs-extent-same.8
