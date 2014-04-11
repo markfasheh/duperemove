@@ -15,6 +15,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <limits.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -26,6 +27,7 @@
 #include <string.h>
 #include <linux/limits.h>
 #include <ctype.h>
+#include <getopt.h>
 
 #include "rbtree.h"
 #include "list.h"
@@ -385,19 +387,19 @@ static void usage(const char *prog)
 {
 	printf("duperemove %s\n", VERSTRING);
 	printf("Find duplicate extents and print them to stdout\n\n");
-	printf("Usage: %s [-r] [-D] [-A] [-b blocksize] [-v] [-d]"
+	printf("Usage: %s [-r] [-d] [-A] [-b blocksize] [-v] [--debug]"
 	       " OBJECTS\n", prog);
 	printf("Where \"OBJECTS\" is a list of files (or directories) which\n");
 	printf("we want to find duplicate extents in. If a directory is \n");
 	printf("specified, all regular files inside of it will be scanned.\n");
 	printf("\n\t<switches>\n");
 	printf("\t-r\t\tEnable recursive dir traversal.\n");
-	printf("\t-D\t\tDe-dupe the results - only works on btrfs.\n");
+	printf("\t-d\t\tDe-dupe the results - only works on btrfs.\n");
 	printf("\t-A\t\tOpens files readonly when deduping. Primarily for use by privileged users on readonly snapshots\n");
 	printf("\t-b bsize\tUse bsize blocks. Default is %dk.\n",
 	       DEFAULT_BLOCKSIZE / 1024);
 	printf("\t-v\t\tBe verbose.\n");
-	printf("\t-d\t\tPrint debug messages, forces -v if selected.\n");
+	printf("\t--debug\t\tPrint debug messages, forces -v if selected.\n");
 	printf("\t-h\t\tPrints this help text.\n");
 }
 
@@ -547,17 +549,26 @@ uint64_t parse_size(char *s)
 	return strtoull(s, NULL, 10) * mult;
 }
 
+enum {
+	DEBUG_OPTION = CHAR_MAX + 1,
+};
+
 /*
  * Ok this is doing more than just parsing options.
  */
 static int parse_options(int argc, char **argv)
 {
 	int i, c, numfiles;
+	static struct option long_ops[] = {
+		{ "debug", 0, 0, DEBUG_OPTION },
+		{ 0, 0, 0, 0}
+	};
 
 	if (argc < 2)
 		return 1;
 
-	while ((c = getopt(argc, argv, "Ab:vdDrh?")) != -1) {
+	while ((c = getopt_long(argc, argv, "Ab:vdDrh?", long_ops, NULL))
+	       != -1) {
 		switch (c) {
 		case 'A':
 			target_rw = 0;
@@ -568,13 +579,14 @@ static int parse_options(int argc, char **argv)
 			    blocksize > MAX_BLOCKSIZE)
 				return EINVAL;
 			break;
+		case 'd':
 		case 'D':
 			run_dedupe = 1;
 			break;
 		case 'r':
 			recurse_dirs = 1;
 			break;
-		case 'd':
+		case DEBUG_OPTION:
 			debug = 1;
 			/* Fall through */
 		case 'v':

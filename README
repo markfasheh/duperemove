@@ -4,7 +4,7 @@ Duperemove is a simple tool for finding duplicated extents and
 submitting them for deduplication. When given a list of files it will
 hash their contents on a block by block basis and compare those hashes
 to each other, finding and categorizing extents that match each
-other. When given the -D option, duperemove will submit those
+other. When given the -d option, duperemove will submit those
 extents for deduplication using the btrfs-extent-same ioctl.
 
 Duperemove has two major modes of operation one of which is a subset
@@ -13,10 +13,10 @@ of the other.
 
 Readonly / Non-deduplicating Mode
 
-When run without -D (the default) duperemove will print out one or
+When run without -d (the default) duperemove will print out one or
 more tables of matching extents it has determined would be ideal
 candidates for deduplication. As a result, readonly mode is useful for
-seeing what duperemove might do when run with '-D'. The output could
+seeing what duperemove might do when run with '-d'. The output could
 also be used by some other software to submit the extents for
 deduplication at a later time.
 
