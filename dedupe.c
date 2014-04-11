@@ -245,17 +245,6 @@ int dedupe_extents(struct dedupe_ctxt *ctxt)
 	return ret;
 }
 
-void get_dedupe_result(struct dedupe_ctxt *ctxt, int idx, int *status,
-		       uint64_t *off, uint64_t *bytes_deduped,
-		       struct filerec **file)
-{
-	struct btrfs_ioctl_same_extent_info *info = &ctxt->same->info[idx];
-
-	*status = info->status;
-	*off = info->logical_offset;
-	*bytes_deduped = info->bytes_deduped;
-}
-
 /*
  * Returns 1 when we have no more items.
  */

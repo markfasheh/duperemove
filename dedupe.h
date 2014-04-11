@@ -41,10 +41,6 @@ void free_dedupe_ctxt(struct dedupe_ctxt *ctxt);
 void add_extent_to_dedupe(struct dedupe_ctxt *ctxt, uint64_t loff, uint64_t len,
 			  struct filerec *file);
 int dedupe_extents(struct dedupe_ctxt *ctxt);
-void get_dedupe_result(struct dedupe_ctxt *ctxt, int idx, int *status,
-		       uint64_t *off, uint64_t *bytes_deduped,
-		       struct filerec **file);
-
 int pop_one_dedupe_result(struct dedupe_ctxt *ctxt, int *status,
 			  uint64_t *off, uint64_t *bytes_deduped,
 			  struct filerec **file);
