@@ -5,13 +5,53 @@ duperemove \- Find duplicate extents and print them to stdout
 \fBduperemove\fR \fI[options]\fR \fIfiles...\fI
 .SH "DESCRIPTION"
 .PP
-\fBduperemove\fR scans a file or set of files and looks for duplicated
-extents. If those are found, they are printed out. \fBduperemove\fR
-can also remove duplicates if the underlying file system supports
-it. \fIfiles\fR can refer to a list of regular files. If a directory
-is specified, all regular files within it will be also scanned.
+\fBduperemove\fR is a simple tool for finding duplicated extents and
+submitting them for deduplication. When given a list of files it will
+hash their contents on a block by block basis and compare those hashes
+to each other, finding and categorizing extents that match each
+other. When given the \fB-d\fR option, \fBduperemove\fR will submit those
+extents for deduplication using the btrfs-extent-same ioctl.
+
+.SH "GENERAL"
+Duperemove has two major modes of operation one of which is a subset
+of the other.
+
+.SS "Readonly / Non-deduplicating Mode"
+
+When run without \fB-d\fR (the default) duperemove will print out one or
+more tables of matching extents it has determined would be ideal
+candidates for deduplication. As a result, readonly mode is useful for
+seeing what duperemove might do when run with \fB-d\fR. The output could
+also be used by some other software to submit the extents for
+deduplication at a later time.
+
+It is important to note that this mode will not print out \fBall\fR
+instances of matching extents, just those it would consider for
+deduplication.
+
+Another important note is that duperemove does not concern itself with
+the underlying representation of the extents. Some of them could be
+compressed, undergoing I/O, or even have already been deduplicated. In
+dedupe mode, the kernel handles those details and therefore we try not
+to replicate that work. Think of duperemove as trying for 'bulk'
+deduplication.
+
+.SS "Deduping Mode"
+
+This functions similarly to readonly mode with the exception that the
+duplicated extents found in our "read, hash, and compare" step will
+actually be submitted for deduplication. At the end, a total count of
+bytes that were processed by the kernel will be printed.
+
+Keep in mind, that the bytecount we report here (received from the
+kernel) is \fBnot\fR the total amount deduplicated but rather a count of the
+amount of data it also found to be identical.
 
 .SH "OPTIONS"
+\fIfiles\fR can refer to a list of regular files and directories. If a
+directory is specified, all regular files within it will be also
+scanned.
+
 .TP
 \fB\-r\fR
 Enable recursive dir traversal.
@@ -26,9 +66,8 @@ Opens files readonly when deduping. Primarily for us by privileged
 users on readonly snapshots.
 
 .TP
-\fB\-b size-in-kilobytes\fR
-Use the specified block size. Specified in Kilobytes - the default is
-\fB128\fR.
+\fB\-b size\fR
+Use the specified block size. The default is \fB128K\fR.
 
 .TP
 \fB\-v\fR
@@ -37,6 +76,30 @@ Be verbose.
 .TP
 \fB\-h\fR
 Prints help text.
+
+.SH "FAQ"
+
+.B "Is there an upper limit to the amount of data duperemove can process?"
+
+Right now duperemove has been tested on small numbers of VMS or iso
+files (5-10). I don't believe there should be a major problem scaling
+that up to 50 or so.
+
+.B "Why does it not print out all duplicate extents?"
+
+Internally duperemove is classifying extents based on various criteria
+like length, number of identical extents, etc. The printout we give is
+based on the results of that classification.
+
+.B "How can I find out my space savings after a dedupe?"
+
+The easiest way to do this would be a df before the dedupe operation,
+then a df about 60 seconds after the operation. It is common for btrfs
+space reporting to be 'behind' while delayed updates get processed, so
+an immediate df after deduping might not show any savings.
+
+.SH "NOTES"
+Deduplication is currently only supported by the \fIbtrfs\fR filesystem.
 
 .SH "SEE ALSO"
 .BR filesystems(5)

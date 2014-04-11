@@ -35,7 +35,7 @@ deduplication.
 Deduping Mode
 
 This functions similarly to readonly mode with the exception that the
-duplicated extents found in our "read hash and compare" step will
+duplicated extents found in our "read, hash, and compare" step will
 actually be submitted for deduplication. At the end, a total count of
 bytes that were processed by the kernel will be printed.
 
