@@ -227,7 +227,7 @@ completed:
 
 int dedupe_extents(struct dedupe_ctxt *ctxt)
 {
-	int ret;
+	int ret = 0;
 
 	while (!list_empty(&ctxt->queued)) {
 		/* Convert the queued list into an actual request */
