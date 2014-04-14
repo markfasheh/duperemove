@@ -179,6 +179,7 @@ static void print_dedupe_results(struct dedupe_ctxt *ctxt,
 static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
 {
 	int ret = 0;
+	unsigned int processed = 0;
 	struct extent *extent;
 	struct dedupe_ctxt *ctxt = NULL;
 	uint64_t len = dext->de_len;
@@ -190,6 +191,7 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
 			extent->e_file->filename,
 			(unsigned long long)extent->e_loff / blocksize,
 			(unsigned long long)extent->e_loff);
+		processed++;
 
 		if (ctxt == NULL) {
 			ctxt = new_dedupe_ctxt(dext->de_num_dupes,
@@ -201,6 +203,13 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
 				ret = ENOMEM;
 				goto out;
 			}
+
+			/*
+			 * We added our file already here during
+			 * allocation so go to the next loop
+			 * iteration.
+			 */
+			continue;
 		}
 
 		file = extent->e_file;
@@ -208,14 +217,27 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
 		if (ret) {
 			fprintf(stderr, "%s: Skipping dedupe.\n",
 				extent->e_file->filename);
+			/*
+			 * If this was our last duplicate extent in
+			 * the list, and we added dupes from a
+			 * previous iteration of the loop we need to
+			 * run dedupe before exiting.
+			 */
+			if (processed == dext->de_num_dupes)
+				goto run_dedupe;
 			continue;
 		}
 
 		list_add(&file->tmp_list, &open_files);
 
-		if (add_extent_to_dedupe(ctxt, extent->e_loff, file))
+		if (add_extent_to_dedupe(ctxt, extent->e_loff, file)) {
+			/* Don't continue if we reached the end of our list */
+			if (processed == dext->de_num_dupes)
+				goto run_dedupe;
 			continue;
+		}
 
+run_dedupe:
 		vprintf("Ask for dedupe from: \"%s\"\toffset: %llu\tlen: %llu\n",
 			ctxt->ioctl_file->filename,
 			(unsigned long long)ctxt->orig_file_off,
