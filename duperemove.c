@@ -208,14 +208,82 @@ cleanup:
 	return ret;
 }
 
+static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
+{
+	int ret = 0;
+	int dupes_added = 0;
+	struct extent *extent;
+	struct dedupe_ctxt *ctxt = NULL;
+	uint64_t len = dext->de_len;
+
+	list_for_each_entry(extent, &dext->de_extents, e_list) {
+		vprintf("%s\tstart block: %llu (%llu)\n",
+			extent->e_file->filename,
+			(unsigned long long)extent->e_loff / blocksize,
+			(unsigned long long)extent->e_loff);
+
+		ret = filerec_open(extent->e_file, target_rw);
+		if (ret) {
+			fprintf(stderr, "%s: Skipping dedupe.\n",
+				extent->e_file->filename);
+			continue;
+		}
+
+		if (ctxt == NULL) {
+			ctxt = new_dedupe_ctxt(dext->de_num_dupes,
+					       extent->e_loff, len,
+					       extent->e_file);
+			if (ctxt == NULL) {
+				fprintf(stderr, "Out of memory while "
+					"allocating dedupe context.\n");
+				ret = ENOMEM;
+				goto out;
+			}
+		} else {
+			add_extent_to_dedupe(ctxt, extent->e_loff, len,
+					     extent->e_file);
+			dupes_added++;
+		}
+
+		if (dupes_added > MAX_DEDUPES_PER_IOCTL) {
+			ret = run_dedupe_and_close_files(&ctxt, actual_bytes);
+			if (ret) {
+				fprintf(stderr,
+					"FAILURE: Dedupe ioctl returns %d: %s\n",
+					ret, strerror(ret));
+			}
+
+			dupes_added = 0;
+		}
+	}
+
+	if (dupes_added) {
+		ret = run_dedupe_and_close_files(&ctxt, actual_bytes);
+		if (ret)
+			fprintf(stderr,
+				"FAILURE: Dedupe ioctl returns %d: %s\n",
+				ret, strerror(ret));
+	}
+
+	/* The only error we want to bubble up is ENOMEM */
+	ret = 0;
+out:
+	/*
+	 * We might have allocated a context above but not
+	 * filled it with any extents, make sure to free it
+	 * here.
+	 */
+	free_dedupe_ctxt(ctxt);
+
+	return ret;
+}
+
 static void dedupe_results(struct results_tree *res)
 {
-	int ret, dupes_added;
+	int ret;
 	struct rb_root *root = &res->root;
 	struct rb_node *node = rb_first(root);
 	struct dupe_extents *dext;
-	struct extent *extent;
-	struct dedupe_ctxt *ctxt = NULL;
 	uint64_t actual_bytes = 0;
 
 	print_dupes_table(res);
@@ -235,7 +303,6 @@ static void dedupe_results(struct results_tree *res)
 
 		len = dext->de_len;
 		len_blocks = len / blocksize;
-		dupes_added = 0;
 
 		vprintf("%u extents had length %llu (%llu) for a score of %llu.\n",
 			dext->de_num_dupes, (unsigned long long)len_blocks,
@@ -246,63 +313,10 @@ static void dedupe_results(struct results_tree *res)
 			debug_print_digest(stdout, dext->de_hash);
 			printf("\n");
 		}
-		list_for_each_entry(extent, &dext->de_extents, e_list) {
-			vprintf("%s\tstart block: %llu (%llu)\n",
-				extent->e_file->filename,
-				(unsigned long long)extent->e_loff / blocksize,
-				(unsigned long long)extent->e_loff);
 
-			ret = filerec_open(extent->e_file, target_rw);
-			if (ret) {
-				fprintf(stderr, "%s: Skipping dedupe.\n",
-					extent->e_file->filename);
-				continue;
-			}
-
-			if (ctxt == NULL) {
-				ctxt = new_dedupe_ctxt(dext->de_num_dupes,
-						       extent->e_loff, len,
-						       extent->e_file);
-				if (ctxt == NULL) {
-					fprintf(stderr, "Out of memory while "
-						"allocating dedupe context.\n");
-					return;
-				}
-			} else {
-				add_extent_to_dedupe(ctxt, extent->e_loff, len,
-						     extent->e_file);
-				dupes_added++;
-			}
-
-			if (dupes_added > MAX_DEDUPES_PER_IOCTL) {
-				ret = run_dedupe_and_close_files(&ctxt,
-								 &actual_bytes);
-				if (ret) {
-					fprintf(stderr,
-						"FAILURE: Dedupe ioctl returns %d: %s\n",
-						ret, strerror(ret));
-				}
-
-				dupes_added = 0;
-			}
-		}
-
-		if (dupes_added) {
-			ret = run_dedupe_and_close_files(&ctxt, &actual_bytes);
-			if (ret) {
-				fprintf(stderr,
-					"FAILURE: Dedupe ioctl returns %d: %s\n",
-					ret, strerror(ret));
-			}
-		}
-
-		/*
-		 * We might have allocated a context above but not
-		 * filled it with any extents, make sure to free it
-		 * here.
-		 */
-		free_dedupe_ctxt(ctxt);
-		ctxt = NULL;
+		ret = dedupe_extent_list(dext, &actual_bytes);
+		if (ret)
+			break;
 
 		node = rb_next(node);
 	}
