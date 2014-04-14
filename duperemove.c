@@ -65,7 +65,7 @@ static int run_dedupe = 0;
 static int recurse_dirs = 0;
 static int target_rw = 1;
 
-#define MAX_DEDUPES_PER_IOCTL	128
+#define MAX_DEDUPES_PER_IOCTL	120
 
 static void debug_print_block(struct file_block *e)
 {
