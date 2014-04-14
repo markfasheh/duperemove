@@ -65,8 +65,6 @@ static int run_dedupe = 0;
 static int recurse_dirs = 0;
 static int target_rw = 1;
 
-#define MAX_DEDUPES_PER_IOCTL	120
-
 static void debug_print_block(struct file_block *e)
 {
 	struct filerec *f = e->b_file;
@@ -158,8 +156,7 @@ static void print_dupes_table(struct results_tree *res)
 	}
 }
 
-static int run_dedupe_and_close_files(struct dedupe_ctxt **ret_ctxt,
-				      uint64_t *bytes_deduped)
+static int run_dedupe_and_print(struct dedupe_ctxt **ret_ctxt, uint64_t *bytes_deduped)
 {
 	int ret, done = 0;
 	struct dedupe_ctxt *ctxt = *ret_ctxt;
@@ -179,7 +176,7 @@ static int run_dedupe_and_close_files(struct dedupe_ctxt **ret_ctxt,
 		fprintf(stderr,
 			"FAILURE: Dedupe ioctl returns %d: %s\n",
 			ret, strerror(ret));
-		goto cleanup;
+		return ret;
 	}
 
 	get_target_dedupe_info(ctxt, &orig_file_off, &orig_len, &ioctl_file);
@@ -197,13 +194,8 @@ static int run_dedupe_and_close_files(struct dedupe_ctxt **ret_ctxt,
 			(unsigned long long)target_loff,
 			(unsigned long long)target_bytes, target_status);
 
-		filerec_close(f);
 		*bytes_deduped += target_bytes;
 	}
-
-cleanup:
-	free_dedupe_ctxt(ctxt);
-	*ret_ctxt = NULL;
 
 	return ret;
 }
@@ -211,23 +203,17 @@ cleanup:
 static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
 {
 	int ret = 0;
-	int dupes_added = 0;
 	struct extent *extent;
 	struct dedupe_ctxt *ctxt = NULL;
 	uint64_t len = dext->de_len;
+	LIST_HEAD(open_files);
+	struct filerec *file, *tmp;
 
 	list_for_each_entry(extent, &dext->de_extents, e_list) {
 		vprintf("%s\tstart block: %llu (%llu)\n",
 			extent->e_file->filename,
 			(unsigned long long)extent->e_loff / blocksize,
 			(unsigned long long)extent->e_loff);
-
-		ret = filerec_open(extent->e_file, target_rw);
-		if (ret) {
-			fprintf(stderr, "%s: Skipping dedupe.\n",
-				extent->e_file->filename);
-			continue;
-		}
 
 		if (ctxt == NULL) {
 			ctxt = new_dedupe_ctxt(dext->de_num_dupes,
@@ -239,31 +225,36 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
 				ret = ENOMEM;
 				goto out;
 			}
-		} else {
-			add_extent_to_dedupe(ctxt, extent->e_loff, len,
-					     extent->e_file);
-			dupes_added++;
 		}
 
-		if (dupes_added > MAX_DEDUPES_PER_IOCTL) {
-			ret = run_dedupe_and_close_files(&ctxt, actual_bytes);
-			if (ret) {
-				fprintf(stderr,
-					"FAILURE: Dedupe ioctl returns %d: %s\n",
-					ret, strerror(ret));
-			}
+		file = extent->e_file;
+		ret = filerec_open(file, target_rw);
+		if (ret) {
+			fprintf(stderr, "%s: Skipping dedupe.\n",
+				extent->e_file->filename);
+			continue;
 
-			dupes_added = 0;
 		}
-	}
 
-	if (dupes_added) {
-		ret = run_dedupe_and_close_files(&ctxt, actual_bytes);
-		if (ret)
+		list_add(&file->tmp_list, &open_files);
+
+		if (add_extent_to_dedupe(ctxt, extent->e_loff, file))
+			continue;
+
+		ret = run_dedupe_and_print(&ctxt, actual_bytes);
+		if (ret) {
 			fprintf(stderr,
 				"FAILURE: Dedupe ioctl returns %d: %s\n",
 				ret, strerror(ret));
-	}
+		}
+
+		list_for_each_entry_safe(file, tmp, &open_files, tmp_list) {
+			list_del_init(&file->tmp_list);
+			filerec_close(file);
+		}
+		free_dedupe_ctxt(ctxt);
+		ctxt = NULL;
+ 	}
 
 	/* The only error we want to bubble up is ENOMEM */
 	ret = 0;

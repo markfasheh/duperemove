@@ -28,6 +28,7 @@ struct filerec *filerec_new(const char *filename)
 		INIT_LIST_HEAD(&file->block_list);
 		INIT_LIST_HEAD(&file->extent_list);
 		INIT_LIST_HEAD(&file->dedupe_list);
+		INIT_LIST_HEAD(&file->tmp_list);
 
 		list_add_tail(&file->rec_list, &filerec_list);
 	}
@@ -45,6 +46,7 @@ void filerec_free(struct filerec *file)
 		list_del(&file->extent_list);
 		list_del(&file->rec_list);
 		list_del(&file->dedupe_list);
+		list_del(&file->tmp_list);
 
 		free(file);
 	}

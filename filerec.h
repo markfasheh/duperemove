@@ -25,6 +25,8 @@ struct filerec {
 	int			dedupe_status;
 	int			dedupe_idx;
 	struct list_head	dedupe_list;	/* see comment in dededupe.h */
+
+	struct list_head	tmp_list;
 };
 
 static inline void init_filerec(void)

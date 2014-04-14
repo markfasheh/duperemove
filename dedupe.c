@@ -25,6 +25,8 @@
 #include "filerec.h"
 #include "dedupe.h"
 
+#define MAX_DEDUPES_PER_IOCTL	120
+
 #ifdef DEBUG_DEDUPE
 static struct filerec *
 same_idx_to_filerec(struct dedupe_ctxt *ctxt, int idx)
@@ -115,6 +117,9 @@ struct dedupe_ctxt *new_dedupe_ctxt(unsigned int max_extents, uint64_t loff,
 	if (ctxt == NULL)
 		return NULL;
 
+	if (max_extents > MAX_DEDUPES_PER_IOCTL)
+		max_extents = MAX_DEDUPES_PER_IOCTL;
+
 	same_size = sizeof(*same) +
 		max_dest_files * sizeof(struct btrfs_ioctl_same_extent_info);
 	same = calloc(1, same_size);
@@ -138,15 +143,19 @@ struct dedupe_ctxt *new_dedupe_ctxt(unsigned int max_extents, uint64_t loff,
 	return ctxt;
 }
 
-void add_extent_to_dedupe(struct dedupe_ctxt *ctxt, uint64_t loff, uint64_t len,
-			  struct filerec *file)
+int add_extent_to_dedupe(struct dedupe_ctxt *ctxt, uint64_t loff,
+			 struct filerec *file)
 {
+	if (ctxt->num_queued >= ctxt->max_queable)
+		abort();
+
 	clear_file_dedupe_info(file);
 	file->dedupe_loff = loff;
 	list_add_tail(&file->dedupe_list, &ctxt->queued);
 
-	if (++ctxt->num_queued > ctxt->max_queable)
-		abort();
+	ctxt->num_queued++;
+
+	return ctxt->max_queable - ctxt->num_queued;
 }
 
 static int add_dedupe_request(struct dedupe_ctxt *ctxt,
