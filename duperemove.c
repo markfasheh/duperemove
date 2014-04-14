@@ -176,6 +176,16 @@ static void print_dedupe_results(struct dedupe_ctxt *ctxt,
 	}
 }
 
+static void close_open_files_list(struct list_head *open_files)
+{
+	struct filerec *file, *tmp;
+
+	list_for_each_entry_safe(file, tmp, open_files, tmp_list) {
+		list_del_init(&file->tmp_list);
+		filerec_close(file);
+	}
+}
+
 static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
 {
 	int ret = 0;
@@ -184,7 +194,7 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
 	struct dedupe_ctxt *ctxt = NULL;
 	uint64_t len = dext->de_len;
 	LIST_HEAD(open_files);
-	struct filerec *file, *tmp;
+	struct filerec *file;
 
 	list_for_each_entry(extent, &dext->de_extents, e_list) {
 		vprintf("%s\tstart block: %llu (%llu)\n",
@@ -192,6 +202,23 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
 			(unsigned long long)extent->e_loff / blocksize,
 			(unsigned long long)extent->e_loff);
 		processed++;
+
+		file = extent->e_file;
+		ret = filerec_open(file, target_rw);
+		if (ret) {
+			fprintf(stderr, "%s: Skipping dedupe.\n",
+				extent->e_file->filename);
+			/*
+			 * If this was our last duplicate extent in
+			 * the list, and we added dupes from a
+			 * previous iteration of the loop we need to
+			 * run dedupe before exiting.
+			 */
+			if (ctxt && processed == dext->de_num_dupes)
+				goto run_dedupe;
+			continue;
+		}
+		list_add(&file->tmp_list, &open_files);
 
 		if (ctxt == NULL) {
 			ctxt = new_dedupe_ctxt(dext->de_num_dupes,
@@ -211,24 +238,6 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
 			 */
 			continue;
 		}
-
-		file = extent->e_file;
-		ret = filerec_open(file, target_rw);
-		if (ret) {
-			fprintf(stderr, "%s: Skipping dedupe.\n",
-				extent->e_file->filename);
-			/*
-			 * If this was our last duplicate extent in
-			 * the list, and we added dupes from a
-			 * previous iteration of the loop we need to
-			 * run dedupe before exiting.
-			 */
-			if (processed == dext->de_num_dupes)
-				goto run_dedupe;
-			continue;
-		}
-
-		list_add(&file->tmp_list, &open_files);
 
 		if (add_extent_to_dedupe(ctxt, extent->e_loff, file)) {
 			/* Don't continue if we reached the end of our list */
@@ -255,10 +264,7 @@ run_dedupe:
 
 		print_dedupe_results(ctxt, actual_bytes);
 
-		list_for_each_entry_safe(file, tmp, &open_files, tmp_list) {
-			list_del_init(&file->tmp_list);
-			filerec_close(file);
-		}
+		close_open_files_list(&open_files);
 		free_dedupe_ctxt(ctxt);
 		ctxt = NULL;
 	}
@@ -266,6 +272,11 @@ run_dedupe:
 	/* The only error we want to bubble up is ENOMEM */
 	ret = 0;
 out:
+	/*
+	 * ENOMEM error during context allocation may have caused open
+	 * files to stay in our list.
+	 */
+	close_open_files_list(&open_files);
 	/*
 	 * We might have allocated a context above but not
 	 * filled it with any extents, make sure to free it
