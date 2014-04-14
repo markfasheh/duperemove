@@ -209,7 +209,6 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
 			fprintf(stderr, "%s: Skipping dedupe.\n",
 				extent->e_file->filename);
 			continue;
-
 		}
 
 		list_add(&file->tmp_list, &open_files);
@@ -240,7 +239,7 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
 		}
 		free_dedupe_ctxt(ctxt);
 		ctxt = NULL;
- 	}
+	}
 
 	/* The only error we want to bubble up is ENOMEM */
 	ret = 0;
