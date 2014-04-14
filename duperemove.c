@@ -291,11 +291,8 @@ static void dedupe_results(struct results_tree *res)
 		return;
 	}
 
-	while (1) {
+	while (node) {
 		uint64_t len, len_blocks;
-
-		if (node == NULL)
-			break;
 
 		dext = rb_entry(node, struct dupe_extents, de_node);
 
