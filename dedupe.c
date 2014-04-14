@@ -279,12 +279,3 @@ int pop_one_dedupe_result(struct dedupe_ctxt *ctxt, int *status,
 out:
 	return !!list_empty(&ctxt->completed);
 }
-
-void get_target_dedupe_info(struct dedupe_ctxt *ctxt, uint64_t *orig_loff,
-			    uint64_t *orig_len,
-			    struct filerec **file)
-{
-	*orig_loff = ctxt->orig_file_off;
-	*orig_len = ctxt->orig_len;
-	*file = ctxt->ioctl_file;
-}

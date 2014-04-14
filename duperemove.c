@@ -156,35 +156,13 @@ static void print_dupes_table(struct results_tree *res)
 	}
 }
 
-static int run_dedupe_and_print(struct dedupe_ctxt **ret_ctxt, uint64_t *bytes_deduped)
+static void print_dedupe_results(struct dedupe_ctxt *ctxt,
+				 uint64_t *bytes_deduped)
 {
-	int ret, done = 0;
-	struct dedupe_ctxt *ctxt = *ret_ctxt;
-	struct filerec *ioctl_file;
-	uint64_t orig_file_off, orig_len;
-
-	/* For our target status loop */
+	int done = 0;
 	int target_status;
 	uint64_t target_loff, target_bytes;
 	struct filerec *f;
-
-	printf("Requesting dedupe pass from kernel.\n");
-
-	ret = dedupe_extents(ctxt);
-	if (ret) {
-		ret = errno;
-		fprintf(stderr,
-			"FAILURE: Dedupe ioctl returns %d: %s\n",
-			ret, strerror(ret));
-		return ret;
-	}
-
-	get_target_dedupe_info(ctxt, &orig_file_off, &orig_len, &ioctl_file);
-
-	vprintf("Ask for dedupe from: \"%s\"\toffset: %llu\tlen: %llu\n",
-		ioctl_file->filename,
-		(unsigned long long)orig_file_off,
-		(unsigned long long)orig_len);
 
 	while (!done) {
 		done = pop_one_dedupe_result(ctxt, &target_status, &target_loff,
@@ -196,8 +174,6 @@ static int run_dedupe_and_print(struct dedupe_ctxt **ret_ctxt, uint64_t *bytes_d
 
 		*bytes_deduped += target_bytes;
 	}
-
-	return ret;
 }
 
 static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
@@ -241,12 +217,22 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
 		if (add_extent_to_dedupe(ctxt, extent->e_loff, file))
 			continue;
 
-		ret = run_dedupe_and_print(&ctxt, actual_bytes);
+		vprintf("Ask for dedupe from: \"%s\"\toffset: %llu\tlen: %llu\n",
+			ctxt->ioctl_file->filename,
+			(unsigned long long)ctxt->orig_file_off,
+			(unsigned long long)ctxt->orig_len);
+
+		printf("Requesting dedupe pass from kernel.\n");
+
+		ret = dedupe_extents(ctxt);
 		if (ret) {
+			ret = errno;
 			fprintf(stderr,
 				"FAILURE: Dedupe ioctl returns %d: %s\n",
 				ret, strerror(ret));
 		}
+
+		print_dedupe_results(ctxt, actual_bytes);
 
 		list_for_each_entry_safe(file, tmp, &open_files, tmp_list) {
 			list_del_init(&file->tmp_list);

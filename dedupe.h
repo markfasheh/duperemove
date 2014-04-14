@@ -44,7 +44,5 @@ int dedupe_extents(struct dedupe_ctxt *ctxt);
 int pop_one_dedupe_result(struct dedupe_ctxt *ctxt, int *status,
 			  uint64_t *off, uint64_t *bytes_deduped,
 			  struct filerec **file);
-void get_target_dedupe_info(struct dedupe_ctxt *ctxt, uint64_t *orig_loff,
-			    uint64_t *orig_len, struct filerec **file);
 
 #endif	/* __BTRFS_IOCTL_H__ */
