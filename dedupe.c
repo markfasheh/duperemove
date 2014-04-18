@@ -24,10 +24,10 @@
 #include "list.h"
 #include "filerec.h"
 #include "dedupe.h"
+#include "debug.h"
 
 #define MAX_DEDUPES_PER_IOCTL	120
 
-#ifdef DEBUG_DEDUPE
 static struct filerec *
 same_idx_to_filerec(struct dedupe_ctxt *ctxt, int idx)
 {
@@ -55,23 +55,22 @@ static void print_btrfs_same_info(struct dedupe_ctxt *ctxt)
 	struct btrfs_ioctl_same_args *same = ctxt->same;
 	struct btrfs_ioctl_same_extent_info *info;
 
-	printf(_PRE"btrfs same info: ioctl_file: \"%s\"\n",
-	       file ? file->filename : "(null)");
-	printf(_PRE"logical_offset: %llu, length: %llu, dest_count: %u\n",
-	       (unsigned long long)same->logical_offset,
-	       (unsigned long long)same->length, same->dest_count);
+	dprintf(_PRE"btrfs same info: ioctl_file: \"%s\"\n",
+		file ? file->filename : "(null)");
+	dprintf(_PRE"logical_offset: %llu, length: %llu, dest_count: %u\n",
+		(unsigned long long)same->logical_offset,
+		(unsigned long long)same->length, same->dest_count);
 
 	for (i = 0; i < same->dest_count; i++) {
 		info = &same->info[i];
 		file = same_idx_to_filerec(ctxt, i);
-		printf(_PRE"info[%d]: name: \"%s\", fd: %llu, logical_offset: "
-		       "%llu, bytes_deduped: %llu, status: %d\n",
-		       i, file ? file->filename : "(null)", (long long)info->fd,
-		       (unsigned long long)info->logical_offset,
-		       (unsigned long long)info->bytes_deduped, info->status);
+		dprintf(_PRE"info[%d]: name: \"%s\", fd: %llu, logical_offset: "
+			"%llu, bytes_deduped: %llu, status: %d\n",
+			i, file ? file->filename : "(null)", (long long)info->fd,
+			(unsigned long long)info->logical_offset,
+			(unsigned long long)info->bytes_deduped, info->status);
 	}
 }
-#endif
 
 static void clear_file_dedupe_info(struct filerec *file)
 {
@@ -174,10 +173,9 @@ static int add_dedupe_request(struct dedupe_ctxt *ctxt,
 	info->bytes_deduped = 0;
 	same->dest_count++;
 
-#ifdef DEBUG_DEDUPE
-	printf("add request %s, off: %llu, dest: %d\n", file->filename,
+	dprintf("add request %s, off: %llu, dest: %d\n", file->filename,
 	       (unsigned long long)file->dedupe_loff, same->dest_count);
-#endif
+
 	return same_idx;
 }
 
@@ -246,9 +244,8 @@ int dedupe_extents(struct dedupe_ctxt *ctxt)
 		if (ret)
 			break;
 
-#ifdef DEBUG_DEDUPE
-		print_btrfs_same_info(ctxt);
-#endif
+		if (debug)
+			print_btrfs_same_info(ctxt);
 
 		process_dedupes(ctxt, ctxt->same);
 	}
