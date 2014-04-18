@@ -173,8 +173,8 @@ static int add_dedupe_request(struct dedupe_ctxt *ctxt,
 	info->bytes_deduped = 0;
 	same->dest_count++;
 
-	dprintf("add request %s, off: %llu, dest: %d\n", file->filename,
-	       (unsigned long long)file->dedupe_loff, same->dest_count);
+	dprintf("add ioctl request %s, off: %llu, dest: %d\n", file->filename,
+		(unsigned long long)file->dedupe_loff, same->dest_count);
 
 	return same_idx;
 }

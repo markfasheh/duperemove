@@ -127,7 +127,7 @@ static void print_dupes_table(struct results_tree *res)
 		len_blocks = len / blocksize;
 		calc_bytes += dext->de_score;
 
-		vprintf("%u extents had a length %llu Blocks (%llu) for a"
+		vprintf("%u extents had length %llu Blocks (%llu) for a"
 			" score of %llu.\n", dext->de_num_dupes,
 			(unsigned long long)len_blocks,
 			(unsigned long long)len,
@@ -161,7 +161,7 @@ static void print_dedupe_results(struct dedupe_ctxt *ctxt,
 	while (!done) {
 		done = pop_one_dedupe_result(ctxt, &target_status, &target_loff,
 					     &target_bytes, &f);
-		vprintf("\"%s\":\toffset: %llu\tmaybe deduped bytes: %llu"
+		dprintf("\"%s\":\toffset: %llu\tmaybe deduped bytes: %llu"
 			"\tstatus: %d\n", f->filename,
 			(unsigned long long)target_loff,
 			(unsigned long long)target_bytes, target_status);
@@ -241,7 +241,7 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
 		}
 
 run_dedupe:
-		vprintf("Ask for dedupe from: \"%s\"\toffset: %llu\tlen: %llu\n",
+		vprintf("Target dedupe: \"%s\"\toffset: %llu\tlen: %llu\n",
 			ctxt->ioctl_file->filename,
 			(unsigned long long)ctxt->orig_file_off,
 			(unsigned long long)ctxt->orig_len);
@@ -297,22 +297,7 @@ static void dedupe_results(struct results_tree *res)
 	}
 
 	while (node) {
-		uint64_t len, len_blocks;
-
 		dext = rb_entry(node, struct dupe_extents, de_node);
-
-		len = dext->de_len;
-		len_blocks = len / blocksize;
-
-		vprintf("%u extents had length %llu (%llu) for a score of %llu.\n",
-			dext->de_num_dupes, (unsigned long long)len_blocks,
-			(unsigned long long)len,
-			(unsigned long long)dext->de_score);
-		if (debug) {
-			printf("Hash is: ");
-			debug_print_digest(stdout, dext->de_hash);
-			printf("\n");
-		}
 
 		ret = dedupe_extent_list(dext, &actual_bytes);
 		if (ret)
