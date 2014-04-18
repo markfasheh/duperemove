@@ -38,16 +38,10 @@
 #include "hash-tree.h"
 #include "results-tree.h"
 #include "dedupe.h"
+#include "debug.h"
 
-static int verbose = 0, debug = 0;
-#define dprintf(args...)	if (debug) printf(args)
-#define vprintf(args...)	if (verbose) printf(args)
-#define abort_on(condition) do {					\
-		if (condition) {					\
-			printf("ERROR: %s:%d\n", __FILE__, __LINE__);\
-			abort();					\
-		}							\
-	} while(0)
+/* exported via debug.h */
+int verbose = 0, debug = 0;
 
 #define MIN_BLOCKSIZE	(4*1024)
 /* max blocksize is somewhat arbitrary. */
