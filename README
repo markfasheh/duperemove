@@ -24,24 +24,22 @@ It is important to note that this mode will not print out *all*
 instances of matching extents, just those it would consider for
 deduplication.
 
-Another important note is that duperemove does not concern itself with
-the underlying representation of the extents. Some of them could be
+Generally, duperemove does not concern itself with the underlying
+representation of the extents it processes. Some of them could be
 compressed, undergoing I/O, or even have already been deduplicated. In
 dedupe mode, the kernel handles those details and therefore we try not
-to replicate that work. Think of duperemove as trying for 'bulk'
-deduplication.
+to replicate that work.
 
 
 Deduping Mode
 
 This functions similarly to readonly mode with the exception that the
 duplicated extents found in our "read, hash, and compare" step will
-actually be submitted for deduplication. At the end, a total count of
-bytes that were processed by the kernel will be printed.
+actually be submitted for deduplication. An estimate of the total data
+deduplicated will be printed after the operation is complete. This
+estimate is calculated by comparing the total amount of shared bytes
+in each file before and after the dedupe.
 
-Keep in mind, that the bytecount we report here (received from the
-kernel) is NOT the total amount deduplicated but rather a count of the
-amount of data it also found to be identical.
 
 See the duperemove man page for further details about running duperemove.
 
@@ -64,10 +62,25 @@ based on the results of that classification.
 
 * How can I find out my space savings after a dedupe?
 
-The easiest way to do this would be a df before the dedupe operation,
-then a df about 60 seconds after the operation. It is common for btrfs
-space reporting to be 'behind' while delayed updates get processed, so
-an immediate df after deduping might not show any savings.
+Duperemove will print out an estimate of the saved space after a
+dedupe operation for you. You can also do a df before the dedupe
+operation, then a df about 60 seconds after the operation. It is
+common for btrfs space reporting to be 'behind' while delayed updates
+get processed, so an immediate df after deduping might not show any
+savings.
+
+
+* Why is the total deduped data report an estimate?
+
+At the moment duperemove can detect that some underlying extents are
+shared with other files, but it can not resolve which files those
+extents are shared with.
+
+Imagine duperemove is examing a series of files and it notes a shared
+data region in one of them. That data could be shared with a file
+outside of the series. Since duperemove can't resolve that information
+it will account the shared data against our dedupe operation while in
+reality, the kernel might deduplicate it further for us.
 
 
 USAGE EXAMPLES

@@ -29,4 +29,9 @@ void filerec_free(struct filerec *file);
 int filerec_open(struct filerec *file, int write);
 void filerec_close(struct filerec *file);
 
+void filerec_close_files_list(struct list_head *open_files);
+
+int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
+			 uint64_t *shared_bytes);
+
 #endif /* __FILEREC__ */

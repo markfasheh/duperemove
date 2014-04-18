@@ -41,5 +41,8 @@ btrfs-extent-same: btrfs-extent-same.c
 csum-test: $(hash_obj) csum-test.c
 	$(CC) -Wall $(hash_obj) $(CFLAGS) $(LIBRARY_FLAGS) -o csum-test csum-test.c
 
+filerec-test: filerec.c filerec.h
+	$(CC) -Wall $(CFLAGS) $(LIBRARY_FLAGS) -DFILEREC_TEST filerec.c -o filerec-test
+
 clean:
-	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same csum-*.o *~
+	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same filerec-test csum-*.o *~

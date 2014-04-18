@@ -30,6 +30,7 @@
 #include <linux/limits.h>
 #include <ctype.h>
 #include <getopt.h>
+#include <inttypes.h>
 
 #include "rbtree.h"
 #include "list.h"
@@ -150,8 +151,8 @@ static void print_dupes_table(struct results_tree *res)
 	}
 }
 
-static void print_dedupe_results(struct dedupe_ctxt *ctxt,
-				 uint64_t *bytes_deduped)
+static void process_dedupe_results(struct dedupe_ctxt *ctxt,
+				   uint64_t *kern_bytes)
 {
 	int done = 0;
 	int target_status;
@@ -161,35 +162,52 @@ static void print_dedupe_results(struct dedupe_ctxt *ctxt,
 	while (!done) {
 		done = pop_one_dedupe_result(ctxt, &target_status, &target_loff,
 					     &target_bytes, &f);
-		dprintf("\"%s\":\toffset: %llu\tmaybe deduped bytes: %llu"
+		*kern_bytes += target_bytes;
+
+		dprintf("\"%s\":\toffset: %llu\tprocessed bytes: %llu"
 			"\tstatus: %d\n", f->filename,
 			(unsigned long long)target_loff,
 			(unsigned long long)target_bytes, target_status);
-
-		*bytes_deduped += target_bytes;
 	}
 }
 
-static void close_open_files_list(struct list_head *open_files)
+static void add_shared_extents(struct dupe_extents *dext, uint64_t *shared)
 {
-	struct filerec *file, *tmp;
+	int ret = 0;
+	struct extent *extent;
+	struct filerec *file;
 
-	list_for_each_entry_safe(file, tmp, open_files, tmp_list) {
-		list_del_init(&file->tmp_list);
+	list_for_each_entry(extent, &dext->de_extents, e_list) {
+		file = extent->e_file;
+
+		if (filerec_open(file, 0))
+			continue;
+
+		ret = filerec_count_shared(file, extent->e_loff, dext->de_len,
+					   shared);
+		if (ret) {
+			fprintf(stderr, "%s: fiemap error %d: %s\n",
+				extent->e_file->filename, ret, strerror(ret));
+		}
 		filerec_close(file);
 	}
 }
 
-static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
+static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
+			      uint64_t *kern_bytes)
 {
 	int ret = 0;
 	int rc;
+	uint64_t shared_prev, shared_post;
 	unsigned int processed = 0;
 	struct extent *extent;
 	struct dedupe_ctxt *ctxt = NULL;
 	uint64_t len = dext->de_len;
 	LIST_HEAD(open_files);
 	struct filerec *file;
+
+	shared_prev = shared_post = 0ULL;
+	add_shared_extents(dext, &shared_prev);
 
 	list_for_each_entry(extent, &dext->de_extents, e_list) {
 		vprintf("%s\tstart block: %llu (%llu)\n",
@@ -250,12 +268,9 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
 		}
 
 run_dedupe:
-		vprintf("Target dedupe: \"%s\"\toffset: %llu\tlen: %llu\n",
-			ctxt->ioctl_file->filename,
-			(unsigned long long)ctxt->orig_file_off,
-			(unsigned long long)ctxt->orig_len);
-
-		printf("Requesting dedupe pass from kernel.\n");
+		printf("Dedupe %d extents with target: (%"PRIu64", %"PRIu64"), %s\n",
+		       ctxt->num_queued, ctxt->orig_file_off, ctxt->orig_len,
+		       ctxt->ioctl_file->filename);
 
 		ret = dedupe_extents(ctxt);
 		if (ret) {
@@ -265,12 +280,21 @@ run_dedupe:
 				ret, strerror(ret));
 		}
 
-		print_dedupe_results(ctxt, actual_bytes);
+		process_dedupe_results(ctxt, kern_bytes);
 
-		close_open_files_list(&open_files);
+		filerec_close_files_list(&open_files);
 		free_dedupe_ctxt(ctxt);
 		ctxt = NULL;
 	}
+
+	add_shared_extents(dext, &shared_post);
+	/*
+	 * It's entirely possible that some other process is
+	 * manipulating files underneath us. Take care not to
+	 * report some randomly enormous 64 bit value.
+	 */
+	if (shared_prev  < shared_post)
+		*fiemap_bytes += shared_post - shared_prev;
 
 	/* The only error we want to bubble up is ENOMEM */
 	ret = 0;
@@ -279,7 +303,7 @@ out:
 	 * ENOMEM error during context allocation may have caused open
 	 * files to stay in our list.
 	 */
-	close_open_files_list(&open_files);
+	filerec_close_files_list(&open_files);
 	/*
 	 * We might have allocated a context above but not
 	 * filled it with any extents, make sure to free it
@@ -296,7 +320,8 @@ static void dedupe_results(struct results_tree *res)
 	struct rb_root *root = &res->root;
 	struct rb_node *node = rb_first(root);
 	struct dupe_extents *dext;
-	uint64_t actual_bytes = 0;
+	uint64_t fiemap_bytes = 0;
+	uint64_t kern_bytes = 0;
 
 	print_dupes_table(res);
 
@@ -308,16 +333,16 @@ static void dedupe_results(struct results_tree *res)
 	while (node) {
 		dext = rb_entry(node, struct dupe_extents, de_node);
 
-		ret = dedupe_extent_list(dext, &actual_bytes);
+		ret = dedupe_extent_list(dext, &fiemap_bytes, &kern_bytes);
 		if (ret)
 			break;
 
 		node = rb_next(node);
 	}
 
-	printf("Kernel reports %llu bytes of data processed. Actual disk "
-	       "savings will differ depending on how much of the data was "
-	       "previously deduplicated.\n", (unsigned long long)actual_bytes);
+	printf("Kernel processed %"PRIu64" bytes.\n"
+	       "Comparison of extent info shows a net change of %"PRIu64
+	       " shared bytes.\n", kern_bytes, fiemap_bytes);
 }
 
 static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
