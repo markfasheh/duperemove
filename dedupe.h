@@ -45,4 +45,4 @@ int pop_one_dedupe_result(struct dedupe_ctxt *ctxt, int *status,
 			  uint64_t *off, uint64_t *bytes_deduped,
 			  struct filerec **file);
 
-#endif	/* __BTRFS_IOCTL_H__ */
+#endif	/* __DEDUPE_H__ */
