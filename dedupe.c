@@ -193,6 +193,7 @@ static void populate_dedupe_request(struct dedupe_ctxt *ctxt,
 		file->dedupe_idx = add_dedupe_request(ctxt, same, file);
 
 		list_move_tail(&file->dedupe_list, &ctxt->in_progress);
+		ctxt->num_queued--;
 	}
 }
 
@@ -220,6 +221,7 @@ static void process_dedupes(struct dedupe_ctxt *ctxt,
 
 		/* put us back on the queued list for another go around */
 		list_move_tail(&file->dedupe_list, &ctxt->queued);
+		ctxt->num_queued++;
 		continue;
 completed:
 		/* Only bother taking the final status (the rest will be 0) */
