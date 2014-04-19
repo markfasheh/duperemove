@@ -16,14 +16,63 @@
 #include <linux/fiemap.h>
 
 #include "kernel.h"
+#include "rbtree.h"
 #include "list.h"
 #include "debug.h"
 
 #include "filerec.h"
 
 struct list_head filerec_list;
+struct rb_root filerec_by_inum = RB_ROOT;
 
-struct filerec *filerec_new(const char *filename)
+void init_filerec(void)
+{
+	INIT_LIST_HEAD(&filerec_list);
+}
+
+static void insert_filerec(struct filerec *file)
+{
+	struct rb_node **p = &filerec_by_inum.rb_node;
+	struct rb_node *parent = NULL;
+	struct filerec *tmp;
+
+	while (*p) {
+		parent = *p;
+
+		tmp = rb_entry(parent, struct filerec, inum_node);
+
+		if (file->inum < tmp->inum)
+			p = &(*p)->rb_left;
+		else if (file->inum > tmp->inum)
+			p = &(*p)->rb_right;
+		else
+			abort(); /* We should never find a duplicate */
+	}
+
+	rb_link_node(&file->inum_node, parent, p);
+	rb_insert_color(&file->inum_node, &filerec_by_inum);
+	return;
+}
+
+static struct filerec *find_filerec(uint64_t inum)
+{
+	struct rb_node *n = filerec_by_inum.rb_node;
+	struct filerec *file;
+
+	while (n) {
+		file = rb_entry(n, struct filerec, inum_node);
+
+		if (inum < file->inum)
+			n = n->rb_left;
+		else if (inum > file->inum)
+			n = n->rb_right;
+		else
+			return file;
+	}
+	return NULL;
+}
+
+static struct filerec *filerec_alloc_insert(const char *filename, uint64_t inum)
 {
 	struct filerec *file = calloc(1, sizeof(*file));
 
@@ -38,9 +87,20 @@ struct filerec *filerec_new(const char *filename)
 		INIT_LIST_HEAD(&file->block_list);
 		INIT_LIST_HEAD(&file->extent_list);
 		INIT_LIST_HEAD(&file->tmp_list);
+		rb_init_node(&file->inum_node);
+		file->inum = inum;
 
+		insert_filerec(file);
 		list_add_tail(&file->rec_list, &filerec_list);
 	}
+	return file;
+}
+
+struct filerec *filerec_new(const char *filename, uint64_t inum)
+{
+	struct filerec *file = find_filerec(inum);
+	if (!file)
+		file = filerec_alloc_insert(filename, inum);
 	return file;
 }
 
@@ -56,6 +116,8 @@ void filerec_free(struct filerec *file)
 		list_del(&file->rec_list);
 		list_del(&file->tmp_list);
 
+		if (!RB_EMPTY_NODE(&file->inum_node))
+			rb_erase(&file->inum_node, &filerec_by_inum);
 		free(file);
 	}
 }

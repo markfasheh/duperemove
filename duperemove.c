@@ -522,7 +522,7 @@ static void add_file(const char *name, int dirfd)
 		goto out;
 	}
 
-	if (filerec_new(path) == NULL) {
+	if (filerec_new(path, st.st_ino) == NULL) {
 		fprintf(stderr, "Out of memory while allocating file record "
 			"for: %s\n", path);
 		exit(ENOMEM);
