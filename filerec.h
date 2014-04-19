@@ -16,16 +16,6 @@ struct filerec {
 
 	struct list_head	rec_list;	/* all filerecs */
 
-	/*
-	 * Used by dedupe code to track state of this file during a
-	 * dedupe request.
-	 */
-	uint64_t		dedupe_loff;
-	uint64_t		dedupe_total;
-	int			dedupe_status;
-	int			dedupe_idx;
-	struct list_head	dedupe_list;	/* see comment in dededupe.h */
-
 	struct list_head	tmp_list;
 };
 

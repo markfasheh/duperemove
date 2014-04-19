@@ -183,6 +183,7 @@ static void close_open_files_list(struct list_head *open_files)
 static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
 {
 	int ret = 0;
+	int rc;
 	unsigned int processed = 0;
 	struct extent *extent;
 	struct dedupe_ctxt *ctxt = NULL;
@@ -236,7 +237,12 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
 			continue;
 		}
 
-		if (add_extent_to_dedupe(ctxt, extent->e_loff, file)) {
+		rc = add_extent_to_dedupe(ctxt, extent->e_loff, file);
+		if (rc) {
+			if (rc < 0)
+				fprintf(stderr, "%s: Request not queued.\n",
+					extent->e_file->filename);
+
 			/* Don't continue if we reached the end of our list */
 			if (processed == dext->de_num_dupes)
 				goto run_dedupe;

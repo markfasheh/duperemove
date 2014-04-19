@@ -23,10 +23,10 @@ struct dedupe_ctxt {
 
 	unsigned int		same_size;
 	/*
-	 * filerecs that are being used to dedupe against the ioctl file.
-	 *	queued: filerec is awaiting dedupe
+	 * request tracking.
+	 *	queued: request is awaiting dedupe
 	 *	in_progress: currently undergoing dedupe operations
-	 *	completed: results of dedupe for this file are available
+	 *	completed: results of dedupe for this request are available
 	 */
 	struct list_head	queued;
 	struct list_head	in_progress;
@@ -38,6 +38,13 @@ struct dedupe_ctxt {
 struct dedupe_ctxt *new_dedupe_ctxt(unsigned int max_extents, uint64_t loff,
 				    uint64_t elen, struct filerec *ioctl_file);
 void free_dedupe_ctxt(struct dedupe_ctxt *ctxt);
+
+/*
+ * add_extent_to_dedupe returns:
+ *  < 0: error
+ * == 0: no more extents after this one
+ *  > 0: ok, can accept more extents
+ */
 int add_extent_to_dedupe(struct dedupe_ctxt *ctxt, uint64_t loff,
 			 struct filerec *file);
 int dedupe_extents(struct dedupe_ctxt *ctxt);

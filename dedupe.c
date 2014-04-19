@@ -28,19 +28,55 @@
 
 #define MAX_DEDUPES_PER_IOCTL	120
 
-static struct filerec *
-same_idx_to_filerec(struct dedupe_ctxt *ctxt, int idx)
+struct dedupe_req {
+	struct filerec		*req_file;
+	struct list_head	req_list; /* see comment in dedupe.h */
+
+	uint64_t		req_loff;
+	uint64_t		req_total; /* total bytes processed by kernel */
+	int			req_status;
+	int			req_idx; /* index into same->info */
+};
+
+static struct dedupe_req *new_dedupe_req(struct filerec *file, uint64_t loff)
+{
+	struct dedupe_req *req = calloc(1, sizeof(*req));
+
+	if (req) {
+		INIT_LIST_HEAD(&req->req_list);
+		req->req_file = file;
+		req->req_loff = loff;
+	}
+	return req;
+}
+
+static void free_dedupe_req(struct dedupe_req *req)
+{
+	if (req) {
+		if (!list_empty(&req->req_list)) {
+			struct filerec *file = req->req_file;
+
+			fprintf(stderr,
+				"%s: freeing request with nonempty list\n",
+				file ? file->filename : "(null)");
+			list_del(&req->req_list);
+		}
+		free(req);
+	}
+}
+
+static struct dedupe_req *same_idx_to_request(struct dedupe_ctxt *ctxt, int idx)
 {
 	int i;
-	struct filerec *file;
+	struct dedupe_req *req;
 	struct list_head *lists[3] = { &ctxt->queued,
 				      &ctxt->in_progress,
 				      &ctxt->completed, };
 
 	for (i = 0; i < 3; i++) {
-		list_for_each_entry(file, lists[i], dedupe_list) {
-			if (file->dedupe_idx == idx)
-				return file;
+		list_for_each_entry(req, lists[i], req_list) {
+			if (req->req_idx == idx)
+				return req;
 		}
 	}
 
@@ -54,6 +90,7 @@ static void print_btrfs_same_info(struct dedupe_ctxt *ctxt)
 	struct filerec *file = ctxt->ioctl_file;
 	struct btrfs_ioctl_same_args *same = ctxt->same;
 	struct btrfs_ioctl_same_extent_info *info;
+	struct dedupe_req *req;
 
 	dprintf(_PRE"btrfs same info: ioctl_file: \"%s\"\n",
 		file ? file->filename : "(null)");
@@ -63,7 +100,8 @@ static void print_btrfs_same_info(struct dedupe_ctxt *ctxt)
 
 	for (i = 0; i < same->dest_count; i++) {
 		info = &same->info[i];
-		file = same_idx_to_filerec(ctxt, i);
+		req = same_idx_to_request(ctxt, i);
+		file = req->req_file;
 		dprintf(_PRE"info[%d]: name: \"%s\", fd: %llu, logical_offset: "
 			"%llu, bytes_deduped: %llu, status: %d\n",
 			i, file ? file->filename : "(null)", (long long)info->fd,
@@ -72,25 +110,18 @@ static void print_btrfs_same_info(struct dedupe_ctxt *ctxt)
 	}
 }
 
-static void clear_file_dedupe_info(struct filerec *file)
-{
-	file->dedupe_total = 0;
-	file->dedupe_status = 0;
-	file->dedupe_loff = 0;
-}
-
 static void clear_lists(struct dedupe_ctxt *ctxt)
 {
 	int i;
 	struct list_head *lists[3] = { &ctxt->queued,
 				      &ctxt->in_progress,
 				      &ctxt->completed, };
-	struct filerec *file, *tmp;
+	struct dedupe_req *req, *tmp;
 
 	for (i = 0; i < 3; i++) {
-		list_for_each_entry_safe(file, tmp, lists[i], dedupe_list) {
-			clear_file_dedupe_info(file);
-			list_del_init(&file->dedupe_list);
+		list_for_each_entry_safe(req, tmp, lists[i], req_list) {
+			list_del_init(&req->req_list);
+			free_dedupe_req(req);
 		}
 	}
 }
@@ -145,54 +176,56 @@ struct dedupe_ctxt *new_dedupe_ctxt(unsigned int max_extents, uint64_t loff,
 int add_extent_to_dedupe(struct dedupe_ctxt *ctxt, uint64_t loff,
 			 struct filerec *file)
 {
+	struct dedupe_req *req = new_dedupe_req(file, loff);
+
 	if (ctxt->num_queued >= ctxt->max_queable)
 		abort();
 
-	clear_file_dedupe_info(file);
-	file->dedupe_loff = loff;
-	list_add_tail(&file->dedupe_list, &ctxt->queued);
+	if (req == NULL)
+		return -1;
 
+	list_add_tail(&req->req_list, &ctxt->queued);
 	ctxt->num_queued++;
 
 	return ctxt->max_queable - ctxt->num_queued;
 }
 
-static int add_dedupe_request(struct dedupe_ctxt *ctxt,
+static void add_dedupe_request(struct dedupe_ctxt *ctxt,
 			       struct btrfs_ioctl_same_args *same,
-			       struct filerec *file)
+			       struct dedupe_req *req)
 {
 	int same_idx = same->dest_count;
 	struct btrfs_ioctl_same_extent_info *info;
+	struct filerec *file = req->req_file;
 
 	if (same->dest_count >= ctxt->max_queable)
 		abort();
 
+	req->req_idx = same_idx;
 	info = &same->info[same_idx];
 	info->fd = file->fd;
-	info->logical_offset = file->dedupe_loff;
+	info->logical_offset = req->req_loff;
 	info->bytes_deduped = 0;
 	same->dest_count++;
 
 	dprintf("add ioctl request %s, off: %llu, dest: %d\n", file->filename,
-		(unsigned long long)file->dedupe_loff, same->dest_count);
-
-	return same_idx;
+		(unsigned long long)req->req_loff, same->dest_count);
 }
 
 static void populate_dedupe_request(struct dedupe_ctxt *ctxt,
 				    struct btrfs_ioctl_same_args *same)
 {
-	struct filerec *file, *tmp;
+	struct dedupe_req *req, *tmp;
 
 	memset(same, 0, ctxt->same_size);
 
 	same->length = ctxt->len;
 	same->logical_offset = ctxt->ioctl_file_off;
 
-	list_for_each_entry_safe(file, tmp, &ctxt->queued, dedupe_list) {
-		file->dedupe_idx = add_dedupe_request(ctxt, same, file);
+	list_for_each_entry_safe(req, tmp, &ctxt->queued, req_list) {
+		add_dedupe_request(ctxt, same, req);
 
-		list_move_tail(&file->dedupe_list, &ctxt->in_progress);
+		list_move_tail(&req->req_list, &ctxt->in_progress);
 		ctxt->num_queued--;
 	}
 }
@@ -204,29 +237,33 @@ static void process_dedupes(struct dedupe_ctxt *ctxt,
 	int same_idx;
 	uint64_t max_deduped = 0;
 	struct btrfs_ioctl_same_extent_info *info;
-	struct filerec *file, *tmp;
+	struct dedupe_req *req, *tmp;
 
-	list_for_each_entry_safe(file, tmp, &ctxt->in_progress, dedupe_list) {
-		same_idx = file->dedupe_idx;
+	list_for_each_entry_safe(req, tmp, &ctxt->in_progress, req_list) {
+		same_idx = req->req_idx;
 		info = &same->info[same_idx];
 
 		if (info->bytes_deduped > max_deduped)
 			max_deduped = info->bytes_deduped;
 
-		file->dedupe_loff += info->bytes_deduped;
-		file->dedupe_total += info->bytes_deduped;
+		req->req_loff += info->bytes_deduped;
+		req->req_total += info->bytes_deduped;
 
-		if (info->status || file->dedupe_total >= ctxt->orig_len)
-			goto completed;
-
-		/* put us back on the queued list for another go around */
-		list_move_tail(&file->dedupe_list, &ctxt->queued);
-		ctxt->num_queued++;
-		continue;
-completed:
-		/* Only bother taking the final status (the rest will be 0) */
-		file->dedupe_status = info->status;
-		list_move_tail(&file->dedupe_list, &ctxt->completed);
+		if (info->status || req->req_total >= ctxt->orig_len) {
+			/*
+			 * Only bother taking the final status (the
+			 * rest will be 0)
+			 */
+			req->req_status = info->status;
+			list_move_tail(&req->req_list, &ctxt->completed);
+		} else {
+			/*
+			 * put us back on the queued list for another
+			 * go around
+			 */
+			list_move_tail(&req->req_list, &ctxt->queued);
+			ctxt->num_queued++;
+		}
 	}
 
 	/* Increment our ioctl file pointers */
@@ -262,19 +299,20 @@ int pop_one_dedupe_result(struct dedupe_ctxt *ctxt, int *status,
 			  uint64_t *off, uint64_t *bytes_deduped,
 			  struct filerec **file)
 {
-	struct filerec *f;
+	struct dedupe_req *req;
 
 	if (list_empty(&ctxt->completed))
 		goto out;
 
-	f = list_entry(ctxt->completed.next, struct filerec, dedupe_list);
-	list_del_init(&f->dedupe_list);
+	req = list_entry(ctxt->completed.next, struct dedupe_req, req_list);
+	list_del_init(&req->req_list);
 
-	*status = f->dedupe_status;
-	*off = f->dedupe_loff - f->dedupe_total;
-	*bytes_deduped = f->dedupe_total;
-	*file = f;
+	*status = req->req_status;
+	*off = req->req_loff - req->req_total;
+	*bytes_deduped = req->req_total;
+	*file = req->req_file;
 
+	free_dedupe_req(req);
 out:
 	return !!list_empty(&ctxt->completed);
 }
