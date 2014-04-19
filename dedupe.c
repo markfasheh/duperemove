@@ -164,7 +164,7 @@ static int add_dedupe_request(struct dedupe_ctxt *ctxt,
 	int same_idx = same->dest_count;
 	struct btrfs_ioctl_same_extent_info *info;
 
-	if (same->dest_count > ctxt->max_queable)
+	if (same->dest_count >= ctxt->max_queable)
 		abort();
 
 	info = &same->info[same_idx];
