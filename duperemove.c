@@ -198,21 +198,24 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *actual_bytes)
 		processed++;
 
 		file = extent->e_file;
-		ret = filerec_open(file, target_rw);
-		if (ret) {
-			fprintf(stderr, "%s: Skipping dedupe.\n",
-				extent->e_file->filename);
-			/*
-			 * If this was our last duplicate extent in
-			 * the list, and we added dupes from a
-			 * previous iteration of the loop we need to
-			 * run dedupe before exiting.
-			 */
-			if (ctxt && processed == dext->de_num_dupes)
-				goto run_dedupe;
-			continue;
+		if (list_empty(&file->tmp_list)) {
+			/* only open the file once per dedupe pass */
+			ret = filerec_open(file, target_rw);
+			if (ret) {
+				fprintf(stderr, "%s: Skipping dedupe.\n",
+					extent->e_file->filename);
+				/*
+				 * If this was our last duplicate extent in
+				 * the list, and we added dupes from a
+				 * previous iteration of the loop we need to
+				 * run dedupe before exiting.
+				 */
+				if (ctxt && processed == dext->de_num_dupes)
+					goto run_dedupe;
+				continue;
+			}
+			list_add(&file->tmp_list, &open_files);
 		}
-		list_add(&file->tmp_list, &open_files);
 
 		if (ctxt == NULL) {
 			ctxt = new_dedupe_ctxt(dext->de_num_dupes,
