@@ -268,7 +268,8 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 		}
 
 run_dedupe:
-		printf("Dedupe %d extents with target: (%"PRIu64", %"PRIu64"), %s\n",
+		printf("Dedupe %d extents with target: (%"PRIu64", %"PRIu64"), "
+		       "\"%s\"\n",
 		       ctxt->num_queued, ctxt->orig_file_off, ctxt->orig_len,
 		       ctxt->ioctl_file->filename);
 
