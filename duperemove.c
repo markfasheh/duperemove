@@ -17,6 +17,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/statfs.h>
 #include <limits.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -31,6 +32,7 @@
 #include <ctype.h>
 #include <getopt.h>
 #include <inttypes.h>
+#include <linux/magic.h>
 
 #include "rbtree.h"
 #include "list.h"
@@ -439,21 +441,21 @@ static void usage(const char *prog)
 	printf("\t-h\t\tPrints this help text.\n");
 }
 
-static void add_file(const char *name, int dirfd);
+static int add_file(const char *name, int dirfd);
 
-static void walk_dir(const char *name)
+static int walk_dir(const char *name)
 {
 	struct dirent *entry;
 	DIR *dirp;
 
 	if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
-		return;
+		return 0;
 
 	dirp = opendir(path);
 	if (dirp == NULL) {
 		fprintf(stderr, "Error %d: %s while opening directory %s\n",
 			errno, strerror(errno), name);
-		return;
+		return 0;
 	}
 
 	do {
@@ -462,7 +464,8 @@ static void walk_dir(const char *name)
 		if (entry) {
 			if (entry->d_type == DT_REG ||
 			    (recurse_dirs && entry->d_type == DT_DIR))
-				add_file(entry->d_name, dirfd(dirp));
+				if (add_file(entry->d_name, dirfd(dirp)))
+					return 1;
 		}
 	} while (entry != NULL);
 
@@ -472,21 +475,55 @@ static void walk_dir(const char *name)
 	}
 
 	closedir(dirp);
+	return 0;
 }
 
-static void add_file(const char *name, int dirfd)
+static int check_file_fs(struct filerec *file, int *bad_fs)
+{
+	int ret;
+	struct statfs fs;
+
+	*bad_fs = 0;
+
+	if (!run_dedupe)
+		return 0;
+
+	ret = filerec_open(file, 0);
+	if (ret)
+		return ret;
+
+	ret = fstatfs(file->fd, &fs);
+	if (ret) {
+		ret = -errno;
+		goto out;
+	}
+
+	if (fs.f_type != BTRFS_SUPER_MAGIC)
+		*bad_fs = 1;
+
+out:
+	filerec_close(file);
+	return ret;
+}
+
+/*
+ * Returns nonzero on fatal errors only
+ */
+static int add_file(const char *name, int dirfd)
 {
 	int ret, len = strlen(name);
+	int bad_fs;
 	struct stat st;
 	char *pathtmp;
+	struct filerec *file;
 
 	/* We can get this from walk_dir */
 	if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
-		return;
+		return 0;
 
 	if (len > (path_max - pathp)) {
 		fprintf(stderr, "Path max exceeded: %s %s\n", path, name);
-		return;
+		return 0;
 	}
 
 	pathtmp = pathp;
@@ -505,7 +542,8 @@ static void add_file(const char *name, int dirfd)
 	}
 
 	if (S_ISDIR(st.st_mode)) {
-		walk_dir(name);
+		if (walk_dir(name))
+			return 1;
 		goto out;
 	}
 
@@ -522,14 +560,29 @@ static void add_file(const char *name, int dirfd)
 		goto out;
 	}
 
-	if (filerec_new(path, st.st_ino) == NULL) {
+	file = filerec_new(path, st.st_ino);
+	if (file == NULL) {
 		fprintf(stderr, "Out of memory while allocating file record "
 			"for: %s\n", path);
-		exit(ENOMEM);
+		return ENOMEM;
+	}
+
+	ret = check_file_fs(file, &bad_fs);
+	if (ret) {
+		fprintf(stderr, "Skip file \"%s\" due to errors\n",
+			file->filename);
+		filerec_free(file);
+		return ENOMEM;
+	}
+	if (bad_fs) {
+		fprintf(stderr, "Can only dedupe files on btrfs\n");
+		filerec_free(file);
+		return ENOSYS;
 	}
 
 out:
 	pathp = pathtmp;
+	return 0;
 }
 
 /*
@@ -640,7 +693,8 @@ static int parse_options(int argc, char **argv)
 	for (i = 0; i < numfiles; i++) {
 		const char *name = argv[i + optind];
 
-		add_file(name, AT_FDCWD);
+		if (add_file(name, AT_FDCWD))
+			return 1;
 	}
 
 	/* This can happen if for example, all files passed in on
