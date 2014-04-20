@@ -344,8 +344,8 @@ static void dedupe_results(struct results_tree *res)
 		node = rb_next(node);
 	}
 
-	printf("Kernel processed data: %s\nComparison of extent info "
-	       "shows a net change in shared data of: %s\n",
+	printf("Kernel processed data (excludes target files): %s\nComparison "
+	       "of extent info shows a net change in shared extents of: %s\n",
 	       pretty_size(kern_bytes), pretty_size(fiemap_bytes));
 }
 
