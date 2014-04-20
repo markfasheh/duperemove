@@ -54,12 +54,15 @@ uint64_t parse_size(char *s)
 			mult *= 1024;
 			/* fallthrough */
 		case 'g':
+		case 'G':
 			mult *= 1024;
 			/* fallthrough */
 		case 'm':
+		case 'M':
 			mult *= 1024;
 			/* fallthrough */
 		case 'k':
+		case 'K':
 			mult *= 1024;
 			/* fallthrough */
 		case 'b':
