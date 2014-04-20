@@ -21,7 +21,4 @@
   could run in readonly mode, record dupes and then pass them later to
   duperemove for potential deduplication.
 
-- initialization cleanups/fixes
-  - add an option to pretty-print bytes as blocks, K, M, G, etc.
-
 - Allow for flexible selection of dedupe target

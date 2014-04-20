@@ -41,6 +41,7 @@
 #include "hash-tree.h"
 #include "results-tree.h"
 #include "dedupe.h"
+#include "util.h"
 #include "debug.h"
 
 /* exported via debug.h */
@@ -143,9 +144,9 @@ static void print_dupes_table(struct results_tree *res)
 
 		printf("Start\t\tLength\t\tFilename\n");
 		list_for_each_entry(extent, &dext->de_extents, e_list) {
-			printf("%llu\t%llu\t\"%s\"\n",
-			       (unsigned long long)extent->e_loff,
-			       (unsigned long long)len,
+			printf("%s\t%s\t\"%s\"\n",
+			       pretty_size(extent->e_loff),
+			       pretty_size(len),
 			       extent->e_file->filename);
 		}
 
@@ -270,10 +271,10 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 		}
 
 run_dedupe:
-		printf("Dedupe %d extents with target: (%"PRIu64", %"PRIu64"), "
-		       "\"%s\"\n",
-		       ctxt->num_queued, ctxt->orig_file_off, ctxt->orig_len,
-		       ctxt->ioctl_file->filename);
+
+		printf("Dedupe %d extents with target: (%s, %s), \"%s\"\n",
+		       ctxt->num_queued, pretty_size(ctxt->orig_file_off),
+		       pretty_size(ctxt->orig_len), ctxt->ioctl_file->filename);
 
 		ret = dedupe_extents(ctxt);
 		if (ret) {
@@ -343,9 +344,9 @@ static void dedupe_results(struct results_tree *res)
 		node = rb_next(node);
 	}
 
-	printf("Kernel processed %"PRIu64" bytes.\n"
-	       "Comparison of extent info shows a net change of %"PRIu64
-	       " shared bytes.\n", kern_bytes, fiemap_bytes);
+	printf("Kernel processed data: %s\nComparison of extent info "
+	       "shows a net change in shared data of: %s\n",
+	       pretty_size(kern_bytes), pretty_size(fiemap_bytes));
 }
 
 static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
@@ -436,9 +437,10 @@ static void usage(const char *prog)
 	printf("\t-A\t\tOpens files readonly when deduping. Primarily for use by privileged users on readonly snapshots\n");
 	printf("\t-b bsize\tUse bsize blocks. Default is %dk.\n",
 	       DEFAULT_BLOCKSIZE / 1024);
+	printf("\t-h\t\tPrint numbers in human-readble format.\n");
 	printf("\t-v\t\tBe verbose.\n");
 	printf("\t--debug\t\tPrint debug messages, forces -v if selected.\n");
-	printf("\t-h\t\tPrints this help text.\n");
+	printf("\t--help\t\tPrints this help text.\n");
 }
 
 static int add_file(const char *name, int dirfd);
@@ -585,61 +587,9 @@ out:
 	return 0;
 }
 
-/*
- * parse_size() taken from btrfs-progs/util.c
- */
-uint64_t parse_size(char *s)
-{
-	int i;
-	char c;
-	uint64_t mult = 1;
-
-	for (i = 0; s && s[i] && isdigit(s[i]); i++) ;
-	if (!i) {
-		fprintf(stderr, "ERROR: size value is empty\n");
-		exit(50);
-	}
-
-	if (s[i]) {
-		c = tolower(s[i]);
-		switch (c) {
-		case 'e':
-			mult *= 1024;
-			/* fallthrough */
-		case 'p':
-			mult *= 1024;
-			/* fallthrough */
-		case 't':
-			mult *= 1024;
-			/* fallthrough */
-		case 'g':
-			mult *= 1024;
-			/* fallthrough */
-		case 'm':
-			mult *= 1024;
-			/* fallthrough */
-		case 'k':
-			mult *= 1024;
-			/* fallthrough */
-		case 'b':
-			break;
-		default:
-			fprintf(stderr, "ERROR: Unknown size descriptor "
-				"'%c'\n", c);
-			exit(1);
-		}
-	}
-	if (s[i] && s[i+1]) {
-		fprintf(stderr, "ERROR: Illegal suffix contains "
-			"character '%c' in wrong position\n",
-			s[i+1]);
-		exit(51);
-	}
-	return strtoull(s, NULL, 10) * mult;
-}
-
 enum {
 	DEBUG_OPTION = CHAR_MAX + 1,
+	HELP_OPTION,
 };
 
 /*
@@ -650,6 +600,7 @@ static int parse_options(int argc, char **argv)
 	int i, c, numfiles;
 	static struct option long_ops[] = {
 		{ "debug", 0, 0, DEBUG_OPTION },
+		{ "help", 0, 0, HELP_OPTION },
 		{ 0, 0, 0, 0}
 	};
 
@@ -682,6 +633,9 @@ static int parse_options(int argc, char **argv)
 			verbose = 1;
 			break;
 		case 'h':
+			human_readable = 1;
+			break;
+		case HELP_OPTION:
 		case '?':
 		default:
 			return 1;
