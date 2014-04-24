@@ -46,7 +46,7 @@ static void insert_filerec(struct filerec *file)
 		else if (file->inum > tmp->inum)
 			p = &(*p)->rb_right;
 		else
-			abort(); /* We should never find a duplicate */
+			abort_lineno(); /* We should never find a duplicate */
 	}
 
 	rb_link_node(&file->inum_node, parent, p);

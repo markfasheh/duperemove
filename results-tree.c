@@ -29,6 +29,7 @@
 
 #include "filerec.h"
 #include "results-tree.h"
+#include "debug.h"
 
 static struct extent *_alloc_extent(void)
 {
@@ -92,7 +93,7 @@ static void insert_dupe_extents(struct results_tree *res,
 			else if (cmp > 0)
 				p = &(*p)->rb_right;
 			else
-				abort(); /* We should never find a duplicate */
+				abort_lineno(); /* We should never find a duplicate */
 		}
 	}
 
@@ -169,8 +170,7 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 		add_score = 0;
 	}
 
-	if (dext->de_len != len)
-		abort();
+	abort_on(dext->de_len != len);
 
 	insert_extent_list_free(dext, &e0);
 	insert_extent_list_free(dext, &e1);
@@ -209,8 +209,8 @@ again:
 	if (p->de_num_dupes == 1) {
 		/* It doesn't make sense to have one extent in a dup
 		 * list. */
-		if (list_empty(&p->de_extents))
-			abort(); /* Another potential logic error */
+		abort_on(list_empty(&p->de_extents));/* logic error */
+
 		extent = list_entry(p->de_extents.next, struct extent, e_list);
 		goto again;
 	}
@@ -233,8 +233,8 @@ static int compare_extent(struct results_tree *res,
 	list_for_each_entry_continue(pos, head, e_file_extents) {
 		/* This is a logic error - we shouldn't loop back on
 		 * ourselves. */
-		if (pos == extent)
-			abort();
+		abort_on(pos == extent);
+
 //		if (pos->e_loff == extent->e_loff
 //		    && extent_len(pos) == extent_len(extent))
 //			continue; /* Same extent? Skip. */

@@ -29,6 +29,7 @@
 #include "filerec.h"
 
 #include "hash-tree.h"
+#include "debug.h"
 
 static void insert_block_list(struct hash_tree *tree,
 			      struct dupe_blocks_list *list)
@@ -48,7 +49,7 @@ static void insert_block_list(struct hash_tree *tree,
 			p = &(*p)->rb_left;
 		else if (cmp > 0)
 			p = &(*p)->rb_right;
-		else abort(); /* We should never find a duplicate */
+		else abort_lineno(); /* We should never find a duplicate */
 	}
 
 	rb_link_node(&list->dl_node, parent, p);
@@ -119,8 +120,7 @@ static void remove_hashed_block(struct hash_tree *tree,
 {
 	struct dupe_blocks_list *blocklist = block->b_parent;
 
-	if (blocklist->dl_num_elem == 0)
-		abort();
+	abort_on(blocklist->dl_num_elem == 0);
 
 	list_del(&block->b_file_next);
 	list_del(&block->b_list);
