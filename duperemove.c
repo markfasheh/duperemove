@@ -412,15 +412,14 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 		else
 			bytes = blocksize;
 
-		/* stay on the safe side */
-		if (0 == bytes)
-			continue;
+		/* no bytes, no dedupe */
+		if (bytes > 0) {
+			checksum_block(buf, bytes, digest);
 
-		checksum_block(buf, bytes, digest);
-
-		ret = insert_hashed_block(tree, digest, file, off);
-		if (ret)
-			break;
+			ret = insert_hashed_block(tree, digest, file, off);
+			if (ret)
+				break;
+		}
 
 		off += blocksize;
 	}
