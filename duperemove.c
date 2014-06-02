@@ -390,6 +390,7 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 	/* hint the vfs we only read in sequential order */
 	ret = posix_madvise(mapped, sb.st_size, POSIX_MADV_SEQUENTIAL);
 	if (ret) {
+		munmap(mapped, sb.st_size);
 		filerec_close(file);
 		return ret;
 	}
