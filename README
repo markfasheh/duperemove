@@ -44,6 +44,13 @@ in each file before and after the dedupe.
 See the duperemove man page for further details about running duperemove.
 
 
+REQUIREMENTS
+
+Kernel: Duperemove needs a kernel version equal to or greater than 2.6.33.
+
+Libraries: Duperemove uses libgcrypt for hashing.
+
+
 FAQ
 
 * Is there an upper limit to the amount of data duperemove can process?
