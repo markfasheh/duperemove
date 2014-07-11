@@ -714,7 +714,7 @@ static int walk_dupe_block(struct file_block *block, void *priv)
 	struct running_checksum *csum;
 	unsigned char match_id[DIGEST_LEN_MAX] = {0, };
 
-	if (block_seen(block))
+	if (block_seen(block) || block_seen(orig))
 		goto out;
 
 	csum = start_running_checksum();
@@ -783,7 +783,6 @@ static void find_all_dups(struct hash_tree *tree, struct results_tree *res)
 	struct rb_node *node = rb_first(root);
 	struct dupe_blocks_list *dups;
 	struct file_block *block1, *block2;
-	struct list_head *p, *q;
 	struct filerec *file1, *file2;
 	
 	while (1) {
@@ -793,13 +792,12 @@ static void find_all_dups(struct hash_tree *tree, struct results_tree *res)
 		dups = rb_entry(node, struct dupe_blocks_list, dl_node);
 		
 		if (dups->dl_num_elem > 1) {
-			list_for_each(p, &dups->dl_list) {
-				block1 = list_entry(p, struct file_block, b_list);
+			list_for_each_entry(block1, &dups->dl_list, b_list) {
 				file1 = block1->b_file;
-				list_for_each(q, &dups->dl_list) {
-					block2 = list_entry(q, struct file_block, b_list);
+				block2 = block1;
+				list_for_each_entry_from(block2, &dups->dl_list, b_list) {
 					file2 = block2->b_file;
-					if (file1 < file2) {
+					if (file1 != file2) {
 						dprintf("comparing %s and %s\n", file1->filename, file2->filename);
 						find_file_dupes(file1, file2, res);
 					}
@@ -816,7 +814,7 @@ int main(int argc, char **argv)
 	int ret;
 	struct hash_tree tree;
 	struct results_tree res;
-	struct filerec *file, *file1, *file2;
+	struct filerec *file;
 
 	if (init_hash())
 		return ENOMEM;
