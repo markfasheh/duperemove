@@ -13,6 +13,7 @@
  * General Public License for more details.
  *
  * Authors: Mark Fasheh <mfasheh@suse.de>
+ *          Joshua Charles Campbell <wz@wza.us>
  */
 
 #include <stdlib.h>
