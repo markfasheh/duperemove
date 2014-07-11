@@ -103,6 +103,7 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 	}
 
 	e->b_file = file;
+	e->b_seen = 0;
 	e->b_loff = loff;
 	list_add_tail(&e->b_file_next, &file->block_list);
 	e->b_parent = d;
@@ -169,6 +170,11 @@ static unsigned int seen_counter = 1;
 int block_seen(struct file_block *block)
 {
 	return !!(block->b_seen == seen_counter);
+}
+
+int block_ever_seen(struct file_block *block)
+{
+	return !(block->b_seen == 0);
 }
 
 void mark_block_seen(struct file_block *block)
