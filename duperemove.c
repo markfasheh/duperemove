@@ -497,7 +497,8 @@ static int csum_whole_file(struct hash_tree *tree, struct hash_tree *extents, st
 			for (i = 0; i < fiemap->fm_mapped_extents; i++) {
 				if (fiemap->fm_extents[i].fe_flags & (
 					FIEMAP_EXTENT_UNKNOWN |
-					FIEMAP_EXTENT_DELALLOC 
+					FIEMAP_EXTENT_DELALLOC |
+					FIEMAP_EXTENT_DATA_INLINE
 				)) {
 					nodigest = 1;
 					break;
@@ -731,7 +732,7 @@ static int parse_options(int argc, char **argv)
 
 	if (argc < 2)
 		return 1;
-// 
+
 	while ((c = getopt_long(argc, argv, "Ab:vdDrh?", long_ops, NULL))
 	       != -1) {
 		switch (c) {
@@ -981,13 +982,6 @@ int main(int argc, char **argv)
 	debug_print_tree(&tree);
 	debug_print_exts(&extents);
 
-// 	list_for_each_entry(file1, &filerec_list, rec_list) {
-// 		file2 = file1;
-// 		list_for_each_entry_from(file2, &filerec_list, rec_list) {
-// 			find_file_dupes(file1, file2, &res);
-// 		}
-// 	}
-	
 	find_all_dups(&tree, &res);
 
 	if (debug) {
