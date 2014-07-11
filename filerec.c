@@ -45,8 +45,13 @@ static void insert_filerec(struct filerec *file)
 			p = &(*p)->rb_left;
 		else if (file->inum > tmp->inum)
 			p = &(*p)->rb_right;
-		else
+		else {
+#ifdef SKIP_INODE_CHECK
+			break;
+#else /* SKIP_INODE_CHECK */
 			abort(); /* We should never find a duplicate */
+#endif /* SKIP_INODE_CHECK */
+		}
 	}
 
 	rb_link_node(&file->inum_node, parent, p);
@@ -99,7 +104,9 @@ static struct filerec *filerec_alloc_insert(const char *filename, uint64_t inum)
 struct filerec *filerec_new(const char *filename, uint64_t inum)
 {
 	struct filerec *file = find_filerec(inum);
+#ifndef SKIP_INODE_CHECK
 	if (!file)
+#endif /* SKIP_INODE_CHECK */
 		file = filerec_alloc_insert(filename, inum);
 	return file;
 }

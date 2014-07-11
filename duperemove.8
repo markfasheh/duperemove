@@ -31,9 +31,8 @@ deduplication.
 
 Generally, duperemove does not concern itself with the underlying
 representation of the extents it processes. Some of them could be
-compressed, undergoing I/O, or even have already been deduplicated. In
-dedupe mode, the kernel handles those details and therefore we try not
-to replicate that work.
+compressed or undergoing I/O. In dedupe mode, the kernel handles
+those details and therefore we try not to replicate that work.
 
 .SS "Deduping Mode"
 
@@ -103,16 +102,7 @@ show any savings.
 
 .B "Why is the total deduped data report an estimate?"
 
-At the moment \fBduperemove\fR can detect that some underlying extents are
-shared with other files, but it can not resolve which files those
-extents are shared with.
-
-Imagine \fBduperemove\fR is examing a series of files and it notes a
-shared data region in one of them. That data could be shared with a
-file outside of the series. Since \fBduperemove\fR can't resolve that
-information it will account the shared data against our dedupe
-operation while in reality, the kernel might deduplicate it further
-for us.
+The kernel may not be able to deduplicate data for some reason.
 
 .SH "NOTES"
 Deduplication is currently only supported by the \fIbtrfs\fR filesystem.

@@ -13,6 +13,7 @@
  * General Public License for more details.
  *
  * Authors: Mark Fasheh <mfasheh@suse.de>
+ *          Joshua Charles Campbell <wz@wza.us>
  */
 
 #include <sys/types.h>
@@ -43,6 +44,7 @@
 #include "dedupe.h"
 #include "util.h"
 #include "debug.h"
+#include "fiemap.h"
 
 /* exported via debug.h */
 int verbose = 0, debug = 0;
@@ -67,9 +69,11 @@ static void debug_print_block(struct file_block *e)
 {
 	struct filerec *f = e->b_file;
 
-	printf("%s\tloff: %llu lblock: %llu\n", f->filename,
+	printf("%s\tloff: %llu lblock: %llu %u\n", f->filename,
 	       (unsigned long long)e->b_loff,
-	       (unsigned long long)e->b_loff / blocksize);
+	       (unsigned long long)e->b_loff / blocksize,
+		e->b_seen
+	);
 }
 
 static void debug_print_tree(struct hash_tree *tree)
@@ -98,6 +102,38 @@ static void debug_print_tree(struct hash_tree *tree)
 
 		list_for_each(p, &dups->dl_list) {
 			block = list_entry(p, struct file_block, b_list);
+			debug_print_block(block);
+		}
+		node = rb_next(node);
+	}
+}
+
+static void debug_print_exts(struct hash_tree *tree)
+{
+	struct rb_root *root = &tree->root;
+	struct rb_node *node = rb_first(root);
+	struct dupe_blocks_list *dups;
+	struct file_block *block;
+	struct list_head *p;
+	
+	if (!debug)
+		return;
+	
+	dprintf("Block extent tree has %u hash nodes and %u block items\n",
+		tree->num_hashes, tree->num_blocks);
+	
+	while (1) {
+		if (node == NULL)
+			break;
+		
+		dups = rb_entry(node, struct dupe_blocks_list, dl_node);
+		
+		dprintf("All blocks with extents: ");
+		debug_print_digest(stdout, dups->dl_hash);
+		dprintf("\n");
+		
+		list_for_each(p, &dups->dl_list) {
+			block = list_entry(p, struct file_block, b_extents);
 			debug_print_block(block);
 		}
 		node = rb_next(node);
@@ -349,11 +385,33 @@ static void dedupe_results(struct results_tree *res)
 	       pretty_size(kern_bytes), pretty_size(fiemap_bytes));
 }
 
-static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
+
+/* This is just for debugging, do not use in code that needs
+ * a hash function with cryptographic properties :O */
+static void maybe_checksum_block(char *buf, int len, unsigned char *digest) {
+	if (len <=DIGEST_LEN_MAX) {
+		memcpy(digest, buf, len);
+	} else {
+		checksum_block(buf, len, digest);
+	}
+}
+
+static int csum_whole_file(struct hash_tree *tree, struct hash_tree *extents, struct filerec *file)
 {
-	int ret, expecting_eof = 0;
-	ssize_t bytes;
+	int ret;
+	ssize_t bytes, bytes_read;
 	uint64_t off;
+	
+	char * fiebuf = NULL;
+	struct fiemap * fiemap;
+	unsigned int i;
+	int nodigest;
+	size_t fiebuf_len = 0;
+	size_t extent_locations_len = 0;
+	unsigned char * edigest;
+	unsigned char edigest_buf[DIGEST_LEN_MAX];
+	uint64_t * extent_locations = NULL;
+	
 
 	printf("csum: %s\n", file->filename);
 
@@ -361,29 +419,23 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 	if (ret)
 		return ret;
 
-	ret = off = 0;
+	ret = off = bytes = 0;
 
 	while (1) {
-		bytes = read(file->fd, buf, blocksize);
-		if (bytes < 0) {
+		bytes_read = read(file->fd, buf+bytes, blocksize-bytes);
+		if (bytes_read < 0) {
 			ret = errno;
 			fprintf(stderr, "Unable to read file %s: %s\n",
 				file->filename, strerror(ret));
 			break;
 		}
-
-		if (bytes == 0)
+		
+		if (bytes_read == 0 && bytes == 0)
 			break;
+		
+		bytes += bytes_read;
 
-		/*
-		 * TODO: This should be a graceful exit or we replace
-		 * the read call above with a wrapper which retries
-		 * until an eof.
-		 */
-		abort_on(expecting_eof);
-
-		if (bytes < blocksize) {
-			expecting_eof = 1;
+		if (bytes_read > 0 && bytes < blocksize) {
 			continue;
 		}
 
@@ -391,26 +443,102 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 		memset(digest, 0, DIGEST_LEN_MAX);
 
 		checksum_block(buf, bytes, digest);
-
-		ret = insert_hashed_block(tree, digest, file, off);
+		
+		fiebuf = (char *) malloc(sizeof(struct fiemap) + sizeof(struct fiemap_extent));
+		if (!fiebuf) {
+			ret = ENOMEM;
+			break;
+		}
+		memset(fiebuf, 0, sizeof(struct fiemap));
+		
+		fiemap = (struct fiemap *) fiebuf;
+		fiemap->fm_start = off;
+		fiemap->fm_length = blocksize;
+		fiemap->fm_extent_count = 0;
+		
+		ret = ioctl(file->fd, FS_IOC_FIEMAP, (unsigned long) fiemap);
+		if (ret < 0) {
+			ret = errno;
+			break;
+		}
+		
+		if (fiemap->fm_mapped_extents == 0) {
+			edigest = NULL;
+		} else {
+			fiebuf_len = sizeof(struct fiemap) + sizeof(struct fiemap_extent) * fiemap->fm_mapped_extents;
+			fiebuf = (char *) realloc(fiebuf, fiebuf_len);
+			if (!fiebuf) {
+				ret = ENOMEM;
+				break;
+			}
+			
+			extent_locations_len = sizeof(*extent_locations) * (fiemap->fm_mapped_extents * 2 + 1);
+			extent_locations = (uint64_t *) realloc(extent_locations, extent_locations_len);
+			if (!extent_locations) {
+				ret = ENOMEM;
+				break;
+			}
+			
+			fiemap = (struct fiemap *) fiebuf;
+			fiemap->fm_extent_count = fiemap->fm_mapped_extents;
+			
+			ret = ioctl(file->fd, FS_IOC_FIEMAP, (unsigned long) fiemap);
+			if (ret < 0) {
+				ret = errno;
+				break;
+			}
+			
+			abort_on(fiemap->fm_mapped_extents != fiemap->fm_extent_count);
+			
+			nodigest = 0;
+			
+			extent_locations[0] = off - fiemap->fm_extents[0].fe_logical;
+			
+			for (i = 0; i < fiemap->fm_mapped_extents; i++) {
+				if (fiemap->fm_extents[i].fe_flags & (
+					FIEMAP_EXTENT_UNKNOWN |
+					FIEMAP_EXTENT_DELALLOC |
+					FIEMAP_EXTENT_DATA_INLINE
+				)) {
+					nodigest = 1;
+					break;
+				}
+				extent_locations[i*2+1] = fiemap->fm_extents[0].fe_physical;
+				extent_locations[i*2+2] = fiemap->fm_extents[0].fe_length;
+			}
+			
+			if (nodigest) {
+				edigest = NULL;
+			} else {
+				edigest = edigest_buf;
+				memset(edigest, 0, DIGEST_LEN_MAX);
+				maybe_checksum_block((char *) extent_locations, extent_locations_len, edigest);
+			}
+		}
+			
+		ret = insert_hashed_block(tree, extents, digest, edigest, file, off);
 		if (ret)
 			break;
 
 		off += bytes;
+		
+		bytes = 0;
 	}
 
 	filerec_close(file);
+	free(fiebuf);
+	free(extent_locations);
 
 	return ret;
 }
 
-static int populate_hash_tree(struct hash_tree *tree)
+static int populate_hash_tree(struct hash_tree *tree, struct hash_tree *extents)
 {
 	int ret = -1;
 	struct filerec *file, *tmp;
 
 	list_for_each_entry_safe(file, tmp, &filerec_list, rec_list) {
-		ret = csum_whole_file(tree, file);
+		ret = csum_whole_file(tree, extents, file);
 		if (ret) {
 			fprintf(stderr, "Skipping file due to error %d (%s), "
 				"%s\n", ret, strerror(ret), file->filename);
@@ -718,7 +846,7 @@ static int walk_dupe_block(struct file_block *block, void *priv)
 	struct running_checksum *csum;
 	unsigned char match_id[DIGEST_LEN_MAX] = {0, };
 
-	if (block_seen(block))
+	if (block_seen(block) || block_seen(orig))
 		goto out;
 
 	csum = start_running_checksum();
@@ -781,18 +909,59 @@ static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
 	clear_all_seen_blocks();
 }
 
+/* The following doesn't actually find all dupes. In the case of a n-way dupe
+ * when n > 2 it only finds n dupes. But this shouldn't be a problem because
+ * if it missed a "better pair" then it will find it later anyway.
+ */
+
+static void find_all_dups(struct hash_tree *tree, struct results_tree *res)
+{
+	struct rb_root *root = &tree->root;
+	struct rb_node *node = rb_first(root);
+	struct dupe_blocks_list *dups;
+	struct file_block *block1, *block2;
+	struct filerec *file1, *file2;
+	
+	while (1) {
+		if (node == NULL)
+			break;
+		
+		dups = rb_entry(node, struct dupe_blocks_list, dl_node);
+		
+		if (dups->dl_num_elem > 1) {
+			list_for_each_entry(block1, &dups->dl_list, b_list) {
+				file1 = block1->b_file;
+				block2 = block1;
+				list_for_each_entry_from(block2, &dups->dl_list, b_list) {
+					if (block_ever_seen(block2)) continue;
+					file2 = block2->b_file;
+					if (file1 != file2) {
+						dprintf("comparing %s and %s\n", file1->filename, file2->filename);
+						find_file_dupes(file1, file2, res);
+						break;
+					}
+				}
+			}
+		}
+		
+		node = rb_next(node);
+	}
+}
+
 int main(int argc, char **argv)
 {
 	int ret;
 	struct hash_tree tree;
+	struct hash_tree extents;
 	struct results_tree res;
-	struct filerec *file, *file1, *file2;
+	struct filerec *file;
 
 	if (init_hash())
 		return ENOMEM;
 
 	init_filerec();
 	init_hash_tree(&tree);
+	init_hash_tree(&extents);
 	init_results_tree(&res);
 
 	if (parse_options(argc, argv)) {
@@ -806,20 +975,16 @@ int main(int argc, char **argv)
 	if (!buf)
 		return ENOMEM;
 
-	ret = populate_hash_tree(&tree);
+	ret = populate_hash_tree(&tree, &extents);
 	if (ret) {
 		fprintf(stderr, "Error while populating extent tree!\n");
 		goto out;
 	}
 
 	debug_print_tree(&tree);
+	debug_print_exts(&extents);
 
-	list_for_each_entry(file1, &filerec_list, rec_list) {
-		file2 = file1;
-		list_for_each_entry_from(file2, &filerec_list, rec_list) {
-			find_file_dupes(file1, file2, &res);
-		}
-	}
+	find_all_dups(&tree, &res);
 
 	if (debug) {
 		print_dupes_table(&res);
