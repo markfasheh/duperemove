@@ -526,6 +526,8 @@ static int csum_whole_file(struct hash_tree *tree, struct hash_tree *extents, st
 	}
 
 	filerec_close(file);
+	free(fiebuf);
+	free(extent_locations);
 
 	return ret;
 }
