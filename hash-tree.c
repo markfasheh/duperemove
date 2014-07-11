@@ -134,17 +134,22 @@ int insert_hashed_block(struct hash_tree *tree,	struct hash_tree *extents,
 	e->b_loff = loff;
 	list_add_tail(&e->b_file_next, &file->block_list);
 	e->b_parent = d;
-	e->b_sharing = c;
 	
+	if (edigest != NULL) {
+		e->b_sharing = c;
+		c->dl_num_elem++;
+		list_add_tail(&e->b_extents, &c->dl_list);
+		extents->num_blocks++;
+	} else {
+		e->b_sharing = NULL;
+	}
+
 	if (!already_deduped) {
 		d->dl_num_elem++;
 		list_add_tail(&e->b_list, &d->dl_list);
 		tree->num_blocks++;
 	}
 	
-	c->dl_num_elem++;
-	list_add_tail(&e->b_extents, &c->dl_list);
-	extents->num_blocks++;
 	
 	return 0;
 }
