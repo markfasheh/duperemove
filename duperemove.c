@@ -798,10 +798,11 @@ static void find_all_dups(struct hash_tree *tree, struct results_tree *res)
 				list_for_each_entry_from(block2, &dups->dl_list, b_list) {
 					file2 = block2->b_file;
 					if (file1 != file2) {
-						dprintf("comparing %s and %s\n", file1->filename, file2->filename);
-						find_file_dupes(file1, file2, res);
+						break;
 					}
 				}
+				dprintf("comparing %s and %s\n", file1->filename, file2->filename);
+				find_file_dupes(file1, file2, res);
 			}
 		}
 		
