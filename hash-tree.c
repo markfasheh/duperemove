@@ -27,6 +27,7 @@
 
 #include "csum.h"	/* for digest_len variable and DIGEST_LEN_MAX */
 #include "filerec.h"
+#include "debug.h"
 
 #include "hash-tree.h"
 
@@ -78,17 +79,42 @@ static struct dupe_blocks_list *find_block_list(struct hash_tree *tree,
 	return NULL;
 }
 
-int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
+int insert_hashed_block(struct hash_tree *tree,	struct hash_tree *extents, 
+			unsigned char *digest, unsigned char *edigest,
 			struct filerec *file, uint64_t loff)
 {
 	struct file_block *e = malloc(sizeof(*e));
 	struct dupe_blocks_list *d;
+	struct dupe_blocks_list *c;
+	int already_deduped = 0;
 
 	if (!e)
 		return ENOMEM;
+	
+	if (edigest != NULL) {
+		c = find_block_list(extents, edigest);
+		if (c == NULL) {
+			c = calloc(1, sizeof(*d));
+			if (!c) {
+				free(e);
+				return ENOMEM;
+			}
+			
+			memcpy(c->dl_hash, edigest, digest_len);
+			rb_init_node(&c->dl_node);
+			INIT_LIST_HEAD(&c->dl_list);
+			
+			insert_block_list(extents, c);
+		} else {
+			already_deduped = 1;
+		}
+	}
 
 	d = find_block_list(tree, digest);
 	if (d == NULL) {
+		abort_on(already_deduped); /* can't be already deduped if
+					    * we never saw it before */
+		
 		d = calloc(1, sizeof(*d));
 		if (!d) {
 			free(e);
@@ -107,11 +133,18 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 	e->b_loff = loff;
 	list_add_tail(&e->b_file_next, &file->block_list);
 	e->b_parent = d;
-
-	d->dl_num_elem++;
-	list_add_tail(&e->b_list, &d->dl_list);
-
-	tree->num_blocks++;
+	e->b_sharing = c;
+	
+	if (!already_deduped) {
+		d->dl_num_elem++;
+		list_add_tail(&e->b_list, &d->dl_list);
+		tree->num_blocks++;
+	}
+	
+	c->dl_num_elem++;
+	list_add_tail(&e->b_extents, &c->dl_list);
+	extents->num_blocks++;
+	
 	return 0;
 }
 

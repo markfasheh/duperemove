@@ -17,6 +17,7 @@ struct dupe_blocks_list {
 
 struct file_block {
 	struct dupe_blocks_list	*b_parent;
+	struct dupe_blocks_list	*b_sharing;
 	struct filerec	*b_file;
 	unsigned int	b_seen;
 	uint64_t	b_loff;
@@ -24,10 +25,14 @@ struct file_block {
 	struct list_head	b_list;  /* For dl_list, all blocks
 					  * with this md5. */
 
+	struct list_head	b_extents;  /* For dl_list, all blocks
+					     * sharing extents. */
+					  
 	struct list_head	b_file_next; /* filerec->block_list */
 };
 
-int insert_hashed_block(struct hash_tree *tree, unsigned char *digest,
+int insert_hashed_block(struct hash_tree *tree, struct hash_tree *extents,
+			unsigned char *digest, unsigned char *edigest,
 			struct filerec *file, uint64_t loff);
 void remove_hashed_blocks(struct hash_tree *tree, struct filerec *file);
 

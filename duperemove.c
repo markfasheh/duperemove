@@ -43,6 +43,7 @@
 #include "dedupe.h"
 #include "util.h"
 #include "debug.h"
+#include "fiemap.h"
 
 /* exported via debug.h */
 int verbose = 0, debug = 0;
@@ -100,6 +101,38 @@ static void debug_print_tree(struct hash_tree *tree)
 
 		list_for_each(p, &dups->dl_list) {
 			block = list_entry(p, struct file_block, b_list);
+			debug_print_block(block);
+		}
+		node = rb_next(node);
+	}
+}
+
+static void debug_print_exts(struct hash_tree *tree)
+{
+	struct rb_root *root = &tree->root;
+	struct rb_node *node = rb_first(root);
+	struct dupe_blocks_list *dups;
+	struct file_block *block;
+	struct list_head *p;
+	
+	if (!debug)
+		return;
+	
+	dprintf("Block extent tree has %u hash nodes and %u block items\n",
+		tree->num_hashes, tree->num_blocks);
+	
+	while (1) {
+		if (node == NULL)
+			break;
+		
+		dups = rb_entry(node, struct dupe_blocks_list, dl_node);
+		
+		dprintf("All blocks with extents: ");
+		debug_print_digest(stdout, dups->dl_hash);
+		dprintf("\n");
+		
+		list_for_each(p, &dups->dl_list) {
+			block = list_entry(p, struct file_block, b_extents);
 			debug_print_block(block);
 		}
 		node = rb_next(node);
@@ -351,11 +384,33 @@ static void dedupe_results(struct results_tree *res)
 	       pretty_size(kern_bytes), pretty_size(fiemap_bytes));
 }
 
-static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
+
+/* This is just for debugging, do not use in code that needs
+ * a hash function with cryptographic properties :O */
+static void maybe_checksum_block(char *buf, int len, unsigned char *digest) {
+	if (len <=DIGEST_LEN_MAX) {
+		memcpy(digest, buf, len);
+	} else {
+		checksum_block(buf, len, digest);
+	}
+}
+
+static int csum_whole_file(struct hash_tree *tree, struct hash_tree *extents, struct filerec *file)
 {
 	int ret;
 	ssize_t bytes, bytes_read;
 	uint64_t off;
+	
+	char * fiebuf = NULL;
+	struct fiemap * fiemap;
+	unsigned int i;
+	int nodigest;
+	size_t fiebuf_len = 0;
+	size_t extent_locations_len = 0;
+	unsigned char * edigest;
+	unsigned char edigest_buf[DIGEST_LEN_MAX];
+	uint64_t * extent_locations = NULL;
+	
 
 	printf("csum: %s\n", file->filename);
 
@@ -387,8 +442,79 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 		memset(digest, 0, DIGEST_LEN_MAX);
 
 		checksum_block(buf, bytes, digest);
-
-		ret = insert_hashed_block(tree, digest, file, off);
+		
+		fiebuf = (char *) malloc(sizeof(struct fiemap) + sizeof(struct fiemap_extent));
+		if (!fiebuf) {
+			ret = ENOMEM;
+			break;
+		}
+		memset(fiebuf, 0, sizeof(struct fiemap));
+		
+		fiemap = (struct fiemap *) fiebuf;
+		fiemap->fm_start = off;
+		fiemap->fm_length = blocksize;
+		fiemap->fm_extent_count = 0;
+		
+		ret = ioctl(file->fd, FS_IOC_FIEMAP, (unsigned long) fiemap);
+		if (ret < 0) {
+			ret = errno;
+			break;
+		}
+		
+		if (fiemap->fm_mapped_extents == 0) {
+			edigest = NULL;
+		} else {
+			fiebuf_len = sizeof(struct fiemap) + sizeof(struct fiemap_extent) * fiemap->fm_mapped_extents;
+			fiebuf = (char *) realloc(fiebuf, fiebuf_len);
+			if (!fiebuf) {
+				ret = ENOMEM;
+				break;
+			}
+			
+			extent_locations_len = sizeof(*extent_locations) * (fiemap->fm_mapped_extents * 2 + 1);
+			extent_locations = (uint64_t *) realloc(extent_locations, extent_locations_len);
+			if (!extent_locations) {
+				ret = ENOMEM;
+				break;
+			}
+			
+			fiemap = (struct fiemap *) fiebuf;
+			fiemap->fm_extent_count = fiemap->fm_mapped_extents;
+			
+			ret = ioctl(file->fd, FS_IOC_FIEMAP, (unsigned long) fiemap);
+			if (ret < 0) {
+				ret = errno;
+				break;
+			}
+			
+			abort_on(fiemap->fm_mapped_extents != fiemap->fm_extent_count);
+			
+			nodigest = 0;
+			
+			extent_locations[0] = off - fiemap->fm_extents[0].fe_logical;
+			
+			for (i = 0; i < fiemap->fm_mapped_extents; i++) {
+				if (fiemap->fm_extents[i].fe_flags & (
+					FIEMAP_EXTENT_UNKNOWN |
+					FIEMAP_EXTENT_DELALLOC 
+				)) {
+					nodigest = 1;
+					break;
+				}
+				extent_locations[i*2+1] = fiemap->fm_extents[0].fe_physical;
+				extent_locations[i*2+2] = fiemap->fm_extents[0].fe_length;
+			}
+			
+			if (nodigest) {
+				edigest = NULL;
+			} else {
+				edigest = edigest_buf;
+				memset(edigest, 0, DIGEST_LEN_MAX);
+				maybe_checksum_block((char *) extent_locations, extent_locations_len, edigest);
+			}
+		}
+			
+		ret = insert_hashed_block(tree, extents, digest, edigest, file, off);
 		if (ret)
 			break;
 
@@ -402,13 +528,13 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 	return ret;
 }
 
-static int populate_hash_tree(struct hash_tree *tree)
+static int populate_hash_tree(struct hash_tree *tree, struct hash_tree *extents)
 {
 	int ret = -1;
 	struct filerec *file, *tmp;
 
 	list_for_each_entry_safe(file, tmp, &filerec_list, rec_list) {
-		ret = csum_whole_file(tree, file);
+		ret = csum_whole_file(tree, extents, file);
 		if (ret) {
 			fprintf(stderr, "Skipping file due to error %d (%s), "
 				"%s\n", ret, strerror(ret), file->filename);
@@ -822,6 +948,7 @@ int main(int argc, char **argv)
 {
 	int ret;
 	struct hash_tree tree;
+	struct hash_tree extents;
 	struct results_tree res;
 	struct filerec *file;
 
@@ -830,6 +957,7 @@ int main(int argc, char **argv)
 
 	init_filerec();
 	init_hash_tree(&tree);
+	init_hash_tree(&extents);
 	init_results_tree(&res);
 
 	if (parse_options(argc, argv)) {
@@ -843,13 +971,14 @@ int main(int argc, char **argv)
 	if (!buf)
 		return ENOMEM;
 
-	ret = populate_hash_tree(&tree);
+	ret = populate_hash_tree(&tree, &extents);
 	if (ret) {
 		fprintf(stderr, "Error while populating extent tree!\n");
 		goto out;
 	}
 
 	debug_print_tree(&tree);
+	debug_print_exts(&extents);
 
 // 	list_for_each_entry(file1, &filerec_list, rec_list) {
 // 		file2 = file1;
