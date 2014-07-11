@@ -351,8 +351,8 @@ static void dedupe_results(struct results_tree *res)
 
 static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 {
-	int ret, expecting_eof = 0;
-	ssize_t bytes;
+	int ret;
+	ssize_t bytes, bytes_read;
 	uint64_t off;
 
 	printf("csum: %s\n", file->filename);
@@ -361,29 +361,23 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 	if (ret)
 		return ret;
 
-	ret = off = 0;
+	ret = off = bytes = 0;
 
 	while (1) {
-		bytes = read(file->fd, buf, blocksize);
-		if (bytes < 0) {
+		bytes_read = read(file->fd, buf+bytes, blocksize-bytes);
+		if (bytes_read < 0) {
 			ret = errno;
 			fprintf(stderr, "Unable to read file %s: %s\n",
 				file->filename, strerror(ret));
 			break;
 		}
-
-		if (bytes == 0)
+		
+		if (bytes_read == 0 && bytes == 0)
 			break;
+		
+		bytes += bytes_read;
 
-		/*
-		 * TODO: This should be a graceful exit or we replace
-		 * the read call above with a wrapper which retries
-		 * until an eof.
-		 */
-		abort_on(expecting_eof);
-
-		if (bytes < blocksize) {
-			expecting_eof = 1;
+		if (bytes_read > 0 && bytes < blocksize) {
 			continue;
 		}
 
@@ -397,6 +391,8 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 			break;
 
 		off += bytes;
+		
+		bytes = 0;
 	}
 
 	filerec_close(file);
@@ -606,7 +602,7 @@ static int parse_options(int argc, char **argv)
 
 	if (argc < 2)
 		return 1;
-
+// 
 	while ((c = getopt_long(argc, argv, "Ab:vdDrh?", long_ops, NULL))
 	       != -1) {
 		switch (c) {
@@ -781,6 +777,40 @@ static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
 	clear_all_seen_blocks();
 }
 
+static void find_all_dups(struct hash_tree *tree, struct results_tree *res)
+{
+	struct rb_root *root = &tree->root;
+	struct rb_node *node = rb_first(root);
+	struct dupe_blocks_list *dups;
+	struct file_block *block1, *block2;
+	struct list_head *p, *q;
+	struct filerec *file1, *file2;
+	
+	while (1) {
+		if (node == NULL)
+			break;
+		
+		dups = rb_entry(node, struct dupe_blocks_list, dl_node);
+		
+		if (dups->dl_num_elem > 1) {
+			list_for_each(p, &dups->dl_list) {
+				block1 = list_entry(p, struct file_block, b_list);
+				file1 = block1->b_file;
+				list_for_each(q, &dups->dl_list) {
+					block2 = list_entry(q, struct file_block, b_list);
+					file2 = block2->b_file;
+					if (file1 < file2) {
+						dprintf("comparing %s and %s\n", file1->filename, file2->filename);
+						find_file_dupes(file1, file2, res);
+					}
+				}
+			}
+		}
+		
+		node = rb_next(node);
+	}
+}
+
 int main(int argc, char **argv)
 {
 	int ret;
@@ -814,12 +844,14 @@ int main(int argc, char **argv)
 
 	debug_print_tree(&tree);
 
-	list_for_each_entry(file1, &filerec_list, rec_list) {
-		file2 = file1;
-		list_for_each_entry_from(file2, &filerec_list, rec_list) {
-			find_file_dupes(file1, file2, &res);
-		}
-	}
+// 	list_for_each_entry(file1, &filerec_list, rec_list) {
+// 		file2 = file1;
+// 		list_for_each_entry_from(file2, &filerec_list, rec_list) {
+// 			find_file_dupes(file1, file2, &res);
+// 		}
+// 	}
+	
+	find_all_dups(&tree, &res);
 
 	if (debug) {
 		print_dupes_table(&res);
