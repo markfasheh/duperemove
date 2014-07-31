@@ -20,6 +20,7 @@
 #include <gcrypt.h>
 
 #include "csum.h"
+#include "debug.h"
 
 #define	HASH_FUNC	GCRY_MD_SHA256
 
@@ -52,8 +53,7 @@ int init_hash(void)
 	if (!digest_len)
 		return 1;
 
-	if (digest_len == 0 || digest_len > DIGEST_LEN_MAX)
-		abort();
+	abort_on(digest_len == 0 || digest_len > DIGEST_LEN_MAX);
 
 	return 0;
 }

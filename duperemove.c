@@ -62,6 +62,7 @@ char *path_max = &path[PATH_MAX - 1];
 static int run_dedupe = 0;
 static int recurse_dirs = 0;
 static int target_rw = 1;
+static int version_only = 0;
 
 static void debug_print_block(struct file_block *e)
 {
@@ -425,6 +426,9 @@ static int populate_hash_tree(struct hash_tree *tree)
 static void usage(const char *prog)
 {
 	printf("duperemove %s\n", VERSTRING);
+	if (version_only)
+		return;
+
 	printf("Find duplicate extents and print them to stdout\n\n");
 	printf("Usage: %s [-r] [-d] [-A] [-b blocksize] [-v] [--debug]"
 	       " OBJECTS\n", prog);
@@ -450,9 +454,6 @@ static int walk_dir(const char *name)
 	struct dirent *entry;
 	DIR *dirp;
 
-	if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
-		return 0;
-
 	dirp = opendir(path);
 	if (dirp == NULL) {
 		fprintf(stderr, "Error %d: %s while opening directory %s\n",
@@ -464,6 +465,10 @@ static int walk_dir(const char *name)
 		errno = 0;
 		entry = readdir(dirp);
 		if (entry) {
+			if (strcmp(entry->d_name, ".") == 0
+			    || strcmp(entry->d_name, "..") == 0)
+				continue;
+
 			if (entry->d_type == DT_REG ||
 			    (recurse_dirs && entry->d_type == DT_DIR))
 				if (add_file(entry->d_name, dirfd(dirp)))
@@ -518,10 +523,6 @@ static int add_file(const char *name, int dirfd)
 	struct stat st;
 	char *pathtmp;
 	struct filerec *file;
-
-	/* We can get this from walk_dir */
-	if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
-		return 0;
 
 	if (len > (path_max - pathp)) {
 		fprintf(stderr, "Path max exceeded: %s %s\n", path, name);
@@ -590,6 +591,7 @@ out:
 enum {
 	DEBUG_OPTION = CHAR_MAX + 1,
 	HELP_OPTION,
+	VERSION_OPTION,
 };
 
 /*
@@ -601,6 +603,7 @@ static int parse_options(int argc, char **argv)
 	static struct option long_ops[] = {
 		{ "debug", 0, 0, DEBUG_OPTION },
 		{ "help", 0, 0, HELP_OPTION },
+		{ "version", 0, 0, VERSION_OPTION },
 		{ 0, 0, 0, 0}
 	};
 
@@ -626,6 +629,9 @@ static int parse_options(int argc, char **argv)
 		case 'r':
 			recurse_dirs = 1;
 			break;
+		case VERSION_OPTION:
+			version_only = 1;
+			break;
 		case DEBUG_OPTION:
 			debug = 1;
 			/* Fall through */
@@ -638,6 +644,7 @@ static int parse_options(int argc, char **argv)
 		case HELP_OPTION:
 		case '?':
 		default:
+			version_only = 0;
 			return 1;
 		}
 	}

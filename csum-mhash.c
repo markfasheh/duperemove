@@ -20,6 +20,7 @@
 #include <mhash.h>
 
 #include "csum.h"
+#include "debug.h"
 
 static MHASH td;
 
@@ -30,8 +31,7 @@ unsigned int digest_len = 0;
 void checksum_block(char *buf, int len, unsigned char *digest)
 {
 	td = mhash_init(HASH_FUNC);
-	if (td == MHASH_FAILED)
-		abort();
+	abort_on(td == MHASH_FAILED);
 
 	mhash(td, buf, len);
 	mhash_deinit(td, digest);
@@ -43,8 +43,7 @@ int init_hash(void)
 	if (!digest_len)
 		return 1;
 
-	if (digest_len == 0 || digest_len > DIGEST_LEN_MAX)
-		abort();
+	abort_on(digest_len == 0 || digest_len > DIGEST_LEN_MAX);
 
 	return 0;
 }

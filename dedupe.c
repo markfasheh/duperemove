@@ -178,8 +178,7 @@ int add_extent_to_dedupe(struct dedupe_ctxt *ctxt, uint64_t loff,
 {
 	struct dedupe_req *req = new_dedupe_req(file, loff);
 
-	if (ctxt->num_queued >= ctxt->max_queable)
-		abort();
+	abort_on(ctxt->num_queued >= ctxt->max_queable);
 
 	if (req == NULL)
 		return -1;
@@ -198,8 +197,7 @@ static void add_dedupe_request(struct dedupe_ctxt *ctxt,
 	struct btrfs_ioctl_same_extent_info *info;
 	struct filerec *file = req->req_file;
 
-	if (same->dest_count >= ctxt->max_queable)
-		abort();
+	abort_on(same->dest_count >= ctxt->max_queable);
 
 	req->req_idx = same_idx;
 	info = &same->info[same_idx];
