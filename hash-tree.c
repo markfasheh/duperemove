@@ -171,6 +171,11 @@ int block_seen(struct file_block *block)
 	return !!(block->b_seen == seen_counter);
 }
 
+int block_ever_seen(struct file_block *block)
+{
+	return !(block->b_seen == 0);
+}
+
 void mark_block_seen(struct file_block *block)
 {
 	block->b_seen = seen_counter;

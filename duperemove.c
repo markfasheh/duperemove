@@ -68,9 +68,9 @@ static void debug_print_block(struct file_block *e)
 {
 	struct filerec *f = e->b_file;
 
-	printf("%s\tloff: %llu lblock: %llu\n", f->filename,
+	printf("%s\tloff: %llu lblock: %llu seen: %u\n", f->filename,
 	       (unsigned long long)e->b_loff,
-	       (unsigned long long)e->b_loff / blocksize);
+	       (unsigned long long)e->b_loff / blocksize, e->b_seen);
 }
 
 static void debug_print_tree(struct hash_tree *tree)
@@ -788,6 +788,12 @@ static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
 	clear_all_seen_blocks();
 }
 
+/*
+ * The following doesn't actually find all dupes. In the case of a
+ * n-way dupe when n > 2 it only finds n dupes. But this shouldn't be
+ * a problem because if it missed a "better pair" then it will find it
+ * later anyway.
+ */
 static void find_all_dups(struct hash_tree *tree, struct results_tree *res)
 {
 	struct rb_root *root = &tree->root;
@@ -810,12 +816,18 @@ static void find_all_dups(struct hash_tree *tree, struct results_tree *res)
 							     &dups->dl_list,
 							     b_list) {
 					file2 = block2->b_file;
-					if (file1 != file2)
+
+					if (block_ever_seen(block2))
+						continue;
+
+					if (file1 != file2) {
+						dprintf("comparing %s and %s\n",
+							file1->filename,
+							file2->filename);
+						find_file_dupes(file1, file2, res);
 						break;
+					}
 				}
-				dprintf("comparing %s and %s\n",
-					file1->filename, file2->filename);
-				find_file_dupes(file1, file2, res);
 			}
 		}
 

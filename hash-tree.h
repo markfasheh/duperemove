@@ -36,6 +36,7 @@ void for_each_dupe(struct file_block *block, struct filerec *file,
 		   for_each_dupe_t func, void *priv);
 
 int block_seen(struct file_block *block);
+int block_ever_seen(struct file_block *block);
 void mark_block_seen(struct file_block *block);
 void clear_all_seen_blocks(void);
 
