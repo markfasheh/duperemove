@@ -352,8 +352,8 @@ static void dedupe_results(struct results_tree *res)
 
 static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 {
-	int ret, expecting_eof = 0;
-	ssize_t bytes;
+	int ret;
+	ssize_t bytes, bytes_read;
 	uint64_t off;
 
 	printf("csum: %s\n", file->filename);
@@ -362,31 +362,26 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 	if (ret)
 		return ret;
 
-	ret = off = 0;
+	ret = off = bytes = 0;
 
 	while (1) {
-		bytes = read(file->fd, buf, blocksize);
-		if (bytes < 0) {
+		bytes_read = read(file->fd, buf+bytes, blocksize-bytes);
+		if (bytes_read < 0) {
 			ret = errno;
 			fprintf(stderr, "Unable to read file %s: %s\n",
 				file->filename, strerror(ret));
 			break;
 		}
 
-		if (bytes == 0)
+		/* Handle EOF */
+		if (bytes_read == 0)
 			break;
 
-		/*
-		 * TODO: This should be a graceful exit or we replace
-		 * the read call above with a wrapper which retries
-		 * until an eof.
-		 */
-		abort_on(expecting_eof);
+		bytes += bytes_read;
 
-		if (bytes < blocksize) {
-			expecting_eof = 1;
+		/* Handle partial read */
+		if (bytes_read > 0 && bytes < blocksize)
 			continue;
-		}
 
 		/* Is this necessary? */
 		memset(digest, 0, DIGEST_LEN_MAX);
@@ -398,6 +393,7 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 			break;
 
 		off += bytes;
+		bytes = 0;
 	}
 
 	filerec_close(file);
