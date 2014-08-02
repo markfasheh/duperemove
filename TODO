@@ -10,8 +10,6 @@
 
 - Wrap bytes <-> blocks conversions
 
-- Possibly use mmap (with madvise) for the checksumming phase
-
 - Do checksumming in seperate threads
 
 - Add an optional mode to do duplicate checking with resolution of extent

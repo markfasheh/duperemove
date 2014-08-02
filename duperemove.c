@@ -18,6 +18,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/statfs.h>
+#include <sys/mman.h>
 #include <limits.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -352,7 +353,9 @@ static void dedupe_results(struct results_tree *res)
 
 static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 {
-	int ret, expecting_eof = 0;
+	int ret = 0;
+	void *mapped = 0;
+	struct stat sb;
 	ssize_t bytes;
 	uint64_t off;
 
@@ -362,45 +365,68 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 	if (ret)
 		return ret;
 
-	ret = off = 0;
-
-	while (1) {
-		bytes = read(file->fd, buf, blocksize);
-		if (bytes < 0) {
-			ret = errno;
-			fprintf(stderr, "Unable to read file %s: %s\n",
-				file->filename, strerror(ret));
-			break;
-		}
-
-		if (bytes == 0)
-			break;
-
-		/*
-		 * TODO: This should be a graceful exit or we replace
-		 * the read call above with a wrapper which retries
-		 * until an eof.
-		 */
-		abort_on(expecting_eof);
-
-		if (bytes < blocksize) {
-			expecting_eof = 1;
-			continue;
-		}
-
-		/* Is this necessary? */
-		memset(digest, 0, DIGEST_LEN_MAX);
-
-		checksum_block(buf, bytes, digest);
-
-		ret = insert_hashed_block(tree, digest, file, off);
-		if (ret)
-			break;
-
-		off += bytes;
+	ret = fstat(file->fd, &sb);
+	if (ret) {
+		filerec_close(file);
+		return ret;
 	}
 
+	/* hint the vfs we only read once
+	 * TODO maybe move to filerec.c
+	 */
+	ret = posix_fadvise(file->fd, 0, sb.st_size, POSIX_FADV_NOREUSE);
+	if (ret) {
+		filerec_close(file);
+		return ret;
+	}
+
+	/* map the file into memory */
+	/* FIXME we should skip empty and/or small files, empty files generate EINVAL here */
+	mapped = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE|MAP_NORESERVE, file->fd, 0);
+	if (MAP_FAILED == mapped) {
+		filerec_close(file);
+		return errno;
+	}
+
+	/* hint the vfs we only read in sequential order */
+	ret = posix_madvise(mapped, sb.st_size, POSIX_MADV_SEQUENTIAL);
+	if (ret) {
+		munmap(mapped, sb.st_size);
+		filerec_close(file);
+		return ret;
+	}
+
+	/* file no longer needs to be open for mmap */
 	filerec_close(file);
+
+	ret = off = 0;
+
+	/* Is this necessary? */
+	memset(digest, 0, DIGEST_LEN_MAX);
+
+	while (off < sb.st_size) {
+		buf = mapped + off;
+
+		/* calculate the remaining block size */
+		if (off + blocksize > sb.st_size)
+			bytes = sb.st_size - off;
+		else
+			bytes = blocksize;
+
+		/* no bytes, no dedupe */
+		if (bytes > 0) {
+			checksum_block(buf, bytes, digest);
+
+			ret = insert_hashed_block(tree, digest, file, off);
+			if (ret)
+				break;
+		}
+
+		off += blocksize;
+	}
+
+	/* unmap the file from memory */
+	munmap(mapped, sb.st_size);
 
 	return ret;
 }
