@@ -864,6 +864,9 @@ int main(int argc, char **argv)
 
 	debug_print_tree(&tree);
 
+	printf("Hashed %"PRIu64" blocks. Calculating duplicate extents - "
+	       "this may take some time.\n", tree.num_blocks);
+
 	find_all_dups(&tree, &res);
 
 	if (debug) {
