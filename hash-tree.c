@@ -104,6 +104,7 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 	}
 
 	e->b_file = file;
+	e->b_seen = 0;
 	e->b_loff = loff;
 	list_add_tail(&e->b_file_next, &file->block_list);
 	e->b_parent = d;
