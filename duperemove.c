@@ -42,6 +42,7 @@
 #include "results-tree.h"
 #include "dedupe.h"
 #include "util.h"
+#include "serialize.h"
 #include "debug.h"
 
 /* exported via debug.h */
@@ -63,6 +64,11 @@ static int run_dedupe = 0;
 static int recurse_dirs = 0;
 static int target_rw = 1;
 static int version_only = 0;
+
+static int write_hashes = 0;
+static int scramble_filenames = 0;
+static int read_hashes = 0;
+static char *serialize_fname = NULL;
 
 static void debug_print_block(struct file_block *e)
 {
@@ -588,6 +594,9 @@ enum {
 	DEBUG_OPTION = CHAR_MAX + 1,
 	HELP_OPTION,
 	VERSION_OPTION,
+	WRITE_HASHES_OPTION,
+	WRITE_HASHES_SCRAMBLE_OPTION,
+	READ_HASHES_OPTION,
 };
 
 /*
@@ -600,6 +609,9 @@ static int parse_options(int argc, char **argv)
 		{ "debug", 0, 0, DEBUG_OPTION },
 		{ "help", 0, 0, HELP_OPTION },
 		{ "version", 0, 0, VERSION_OPTION },
+		{ "write-hashes", 1, 0, WRITE_HASHES_OPTION },
+		{ "write-hashes-scramble", 1, 0, WRITE_HASHES_SCRAMBLE_OPTION },
+		{ "read-hashes", 1, 0, READ_HASHES_OPTION },
 		{ 0, 0, 0, 0}
 	};
 
@@ -637,6 +649,16 @@ static int parse_options(int argc, char **argv)
 		case 'h':
 			human_readable = 1;
 			break;
+		case WRITE_HASHES_SCRAMBLE_OPTION:
+			scramble_filenames = 1;
+		case WRITE_HASHES_OPTION:
+			write_hashes = 1;
+			serialize_fname = strdup(optarg);
+			break;
+		case READ_HASHES_OPTION:
+			read_hashes = 1;
+			serialize_fname = strdup(optarg);
+			break;
 		case HELP_OPTION:
 		case '?':
 		default:
@@ -646,6 +668,17 @@ static int parse_options(int argc, char **argv)
 	}
 
 	numfiles = argc - optind;
+
+	/* Filter out option combinations that don't make sense. */
+	if (write_hashes &&
+	    (read_hashes || run_dedupe))
+		return 1;
+
+	if (read_hashes) {
+		if (write_hashes || run_dedupe || numfiles)
+			return 1;
+		goto out_nofiles;
+	}
 
 	for (i = 0; i < numfiles; i++) {
 		const char *name = argv[i + optind];
@@ -658,6 +691,8 @@ static int parse_options(int argc, char **argv)
 	 * command line are bad. */
 	if (list_empty(&filerec_list))
 		return EINVAL;
+
+out_nofiles:
 
 	return 0;
 }
@@ -850,22 +885,55 @@ int main(int argc, char **argv)
 		return EINVAL;
 	}
 
+	if (read_hashes) {
+		ret = read_hash_tree(serialize_fname, &tree, &blocksize);
+		if (ret == FILE_VERSION_ERROR) {
+			fprintf(stderr,
+				"Hash file \"%s\": "
+				"Version mismatch (mine: %d.%d).\n",
+				serialize_fname, HASH_FILE_MAJOR,
+				HASH_FILE_MINOR);
+			goto out;
+		} else if (ret == FILE_MAGIC_ERROR) {
+			fprintf(stderr,
+				"Hash file \"%s\": "
+				"Bad magic.\n",
+				serialize_fname);
+			goto out;
+		} else if (ret) {
+			fprintf(stderr, "Hash file \"%s\": "
+				"Error %d while reading: %s.\n",
+				serialize_fname, ret, strerror(ret));
+			goto out;
+		}
+	}
+
 	printf("Using %uK blocks\n", blocksize/1024);
 
 	buf = malloc(blocksize);
 	if (!buf)
 		return ENOMEM;
 
-	ret = populate_hash_tree(&tree);
-	if (ret) {
-		fprintf(stderr, "Error while populating extent tree!\n");
-		goto out;
+	if (!read_hashes) {
+		ret = populate_hash_tree(&tree);
+		if (ret) {
+			fprintf(stderr, "Error while populating extent tree!\n");
+			goto out;
+		}
 	}
 
 	debug_print_tree(&tree);
 
-	printf("Hashed %"PRIu64" blocks. Calculating duplicate extents - "
-	       "this may take some time.\n", tree.num_blocks);
+	if (write_hashes) {
+		ret = serialize_hash_tree(serialize_fname, &tree, blocksize,
+					  scramble_filenames);
+		if (ret)
+			fprintf(stderr, "Error %d while writing to hash file\n", ret);
+		goto out;
+	} else {
+		printf("Hashed %"PRIu64" blocks. Calculating duplicate "
+		       "extents - this may take some time.\n", tree.num_blocks);
+	}
 
 	find_all_dups(&tree, &res);
 
