@@ -84,7 +84,7 @@ static void debug_print_tree(struct hash_tree *tree)
 	if (!debug)
 		return;
 
-	dprintf("Block hash tree has %u hash nodes and %u block items\n",
+	dprintf("Block hash tree has %"PRIu64" hash nodes and %"PRIu64" block items\n",
 		tree->num_hashes, tree->num_blocks);
 
 	while (1) {

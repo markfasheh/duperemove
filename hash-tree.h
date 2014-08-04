@@ -3,8 +3,8 @@
 
 struct hash_tree {
 	struct rb_root	root;
-	unsigned int	num_blocks;
-	unsigned int	num_hashes;
+	uint64_t	num_blocks;
+	uint64_t	num_hashes;
 };
 
 struct dupe_blocks_list {
