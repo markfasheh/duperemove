@@ -68,9 +68,9 @@ static void debug_print_block(struct file_block *e)
 {
 	struct filerec *f = e->b_file;
 
-	printf("%s\tloff: %llu lblock: %llu\n", f->filename,
+	printf("%s\tloff: %llu lblock: %llu seen: %u\n", f->filename,
 	       (unsigned long long)e->b_loff,
-	       (unsigned long long)e->b_loff / blocksize);
+	       (unsigned long long)e->b_loff / blocksize, e->b_seen);
 }
 
 static void debug_print_tree(struct hash_tree *tree)
@@ -352,8 +352,8 @@ static void dedupe_results(struct results_tree *res)
 
 static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 {
-	int ret, expecting_eof = 0;
-	ssize_t bytes;
+	int ret;
+	ssize_t bytes, bytes_read;
 	uint64_t off;
 
 	printf("csum: %s\n", file->filename);
@@ -362,31 +362,26 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 	if (ret)
 		return ret;
 
-	ret = off = 0;
+	ret = off = bytes = 0;
 
 	while (1) {
-		bytes = read(file->fd, buf, blocksize);
-		if (bytes < 0) {
+		bytes_read = read(file->fd, buf+bytes, blocksize-bytes);
+		if (bytes_read < 0) {
 			ret = errno;
 			fprintf(stderr, "Unable to read file %s: %s\n",
 				file->filename, strerror(ret));
 			break;
 		}
 
-		if (bytes == 0)
+		/* Handle EOF */
+		if (bytes_read == 0)
 			break;
 
-		/*
-		 * TODO: This should be a graceful exit or we replace
-		 * the read call above with a wrapper which retries
-		 * until an eof.
-		 */
-		abort_on(expecting_eof);
+		bytes += bytes_read;
 
-		if (bytes < blocksize) {
-			expecting_eof = 1;
+		/* Handle partial read */
+		if (bytes_read > 0 && bytes < blocksize)
 			continue;
-		}
 
 		/* Is this necessary? */
 		memset(digest, 0, DIGEST_LEN_MAX);
@@ -398,6 +393,7 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 			break;
 
 		off += bytes;
+		bytes = 0;
 	}
 
 	filerec_close(file);
@@ -725,7 +721,7 @@ static int walk_dupe_block(struct file_block *block, void *priv)
 	struct running_checksum *csum;
 	unsigned char match_id[DIGEST_LEN_MAX] = {0, };
 
-	if (block_seen(block))
+	if (block_seen(block) || block_seen(orig))
 		goto out;
 
 	csum = start_running_checksum();
@@ -788,12 +784,59 @@ static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
 	clear_all_seen_blocks();
 }
 
+/*
+ * The following doesn't actually find all dupes. In the case of a
+ * n-way dupe when n > 2 it only finds n dupes. But this shouldn't be
+ * a problem because if it missed a "better pair" then it will find it
+ * later anyway.
+ */
+static void find_all_dups(struct hash_tree *tree, struct results_tree *res)
+{
+	struct rb_root *root = &tree->root;
+	struct rb_node *node = rb_first(root);
+	struct dupe_blocks_list *dups;
+	struct file_block *block1, *block2;
+	struct filerec *file1, *file2;
+
+	while (1) {
+		if (node == NULL)
+			break;
+
+		dups = rb_entry(node, struct dupe_blocks_list, dl_node);
+
+		if (dups->dl_num_elem > 1) {
+			list_for_each_entry(block1, &dups->dl_list, b_list) {
+				file1 = block1->b_file;
+				block2 = block1;
+				list_for_each_entry_continue(block2,
+							     &dups->dl_list,
+							     b_list) {
+					file2 = block2->b_file;
+
+					if (block_ever_seen(block2))
+						continue;
+
+					if (file1 != file2) {
+						dprintf("comparing %s and %s\n",
+							file1->filename,
+							file2->filename);
+						find_file_dupes(file1, file2, res);
+						break;
+					}
+				}
+			}
+		}
+
+		node = rb_next(node);
+	}
+}
+
 int main(int argc, char **argv)
 {
 	int ret;
 	struct hash_tree tree;
 	struct results_tree res;
-	struct filerec *file, *file1, *file2;
+	struct filerec *file;
 
 	if (init_hash())
 		return ENOMEM;
@@ -821,12 +864,7 @@ int main(int argc, char **argv)
 
 	debug_print_tree(&tree);
 
-	list_for_each_entry(file1, &filerec_list, rec_list) {
-		file2 = file1;
-		list_for_each_entry_from(file2, &filerec_list, rec_list) {
-			find_file_dupes(file1, file2, &res);
-		}
-	}
+	find_all_dups(&tree, &res);
 
 	if (debug) {
 		print_dupes_table(&res);
