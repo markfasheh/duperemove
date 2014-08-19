@@ -85,7 +85,7 @@ uint64_t parse_size(char *s)
 static char *size_strs[] = { "", "K", "M", "G", "T", "P", "E"};
 int pretty_size_snprintf(uint64_t size, char *str, size_t str_bytes)
 {
-	int num_divs = 0;
+	uint32_t num_divs = 0;
 	float fraction;
 
 	if (str_bytes == 0)

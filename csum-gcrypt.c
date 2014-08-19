@@ -60,7 +60,7 @@ int init_hash(void)
 
 void debug_print_digest(FILE *stream, unsigned char *digest)
 {
-	int i;
+	uint32_t i;
 
 	for (i = 0; i < digest_len; i++)
 		fprintf(stream, "%.2x", digest[i]);
@@ -75,7 +75,7 @@ struct running_checksum *start_running_checksum(void)
 {
 	struct running_checksum *c = calloc(1, sizeof(struct running_checksum));
 
-	if (c) {	
+	if (c) {
 		if (gcry_md_open(&c->hd, HASH_FUNC, 0) != GPG_ERR_NO_ERROR) {
 			free(c);
 			c = NULL;
