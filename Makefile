@@ -4,7 +4,7 @@ CFLAGS=-Wall -ggdb -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\"
 
 MANPAGES=duperemove.8 btrfs-extent-same.8
 
-DIST_SOURCES=csum-gcrypt.c csum-mhash.c csum.h duperemove.c hash-tree.c hash-tree.h results-tree.c results-tree.h kernel.h LICENSE list.h Makefile rbtree.c rbtree.h rbtree.txt README TODO dedupe.c dedupe.h btrfs-ioctl.h filerec.c filerec.h $(MANPAGES) btrfs-extent-same.c debug.h util.c util.h
+DIST_SOURCES=csum-gcrypt.c csum-mhash.c csum.h duperemove.c hash-tree.c hash-tree.h results-tree.c results-tree.h kernel.h LICENSE list.h Makefile rbtree.c rbtree.h rbtree.txt README TODO dedupe.c dedupe.h btrfs-ioctl.h filerec.c filerec.h $(MANPAGES) btrfs-extent-same.c debug.h util.c util.h serialize.c serialize.h
 DIST=duperemove-$(RELEASE)
 DIST_TARBALL=$(DIST).tar.gz
 TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
@@ -21,7 +21,7 @@ endif
 CFLAGS += $(crypt_CFLAGS)
 LIBRARY_FLAGS += $(crypt_LIBS)
 
-objects = duperemove.o rbtree.o hash-tree.o results-tree.o dedupe.o filerec.o util.o $(hash_obj)
+objects = duperemove.o rbtree.o hash-tree.o results-tree.o dedupe.o filerec.o util.o serialize.o $(hash_obj)
 progs = duperemove
 
 all: $(progs) kernel.h list.h btrfs-ioctl.h debug.h
