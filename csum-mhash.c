@@ -26,7 +26,7 @@ static MHASH td;
 
 #define	HASH_FUNC	MHASH_SHA256
 
-unsigned int digest_len = 0;
+uint32_t digest_len = 0;
 
 void checksum_block(char *buf, int len, unsigned char *digest)
 {
@@ -50,7 +50,7 @@ int init_hash(void)
 
 void debug_print_digest(FILE *stream, unsigned char *digest)
 {
-	int i;
+	uint32_t i;
 
 	for (i = 0; i < digest_len; i++)
 		fprintf(stream, "%.2x", digest[i]);

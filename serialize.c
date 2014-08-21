@@ -279,7 +279,8 @@ static int read_hash(int fd, struct block_hash *b)
 
 static int read_one_file(int fd, struct hash_tree *tree)
 {
-	int ret, i;
+	int ret;
+	uint32_t i;
 	struct file_info finfo;
 	struct block_hash bhash;
 	struct filerec *file;
@@ -334,7 +335,8 @@ static int read_header(int fd, struct hash_file_header *h)
 int read_hash_tree(char *filename, struct hash_tree *tree,
 		   unsigned int *block_size)
 {
-	int ret, fd, i;
+	int ret, fd;
+	uint32_t i;
 	struct hash_file_header h;
 
 	fd = open(filename, O_RDONLY);
