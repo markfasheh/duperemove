@@ -1,24 +1,23 @@
-- Allow checking for similar files by some criteria (approximate size,
-  file magic type, file extension, etc)
-
-- Limit the window for duplicate extent calculation to limit overall time
-  spent looking for duplicates
+- Allow for dedupe when reading from hash files (this shouldn't be very hard)
 
 - Store results of our search to speed up subsequent runs.
-  - In particular, store file system transaction ids so we can use the
-    equivalent of btrfs's find-new
-
-- Wrap bytes <-> blocks conversions
-
-- Possibly use mmap (with madvise) for the checksumming phase
+  - When writing hashes, store latest btrfs transaction id in the hash file (import find-new from btrfsprogs for this)
+  - When reading hashes and we have a transaction id, do a scan of btrfs objects to see which inodes have changed.
+    - Changed inodes get re-checksummed
+    - Deleted inodes get their hashes removed
+    - New inodes get checksummed
+  - To tie this all together, we need to add an option (maybe simply called --hash-file?) which acts as a create-or-update
+    mode for hash file usage. Now the user can run duperemove, with one command, on a regular basis and we'll automatically
+    keep the hash database updated.
 
 - Do checksumming in seperate threads
 
 - Add an optional mode to do duplicate checking with resolution of extent
-  owners (expensive).
+  owners.
 
-- Allow duperemove to take as input it's previous output so a user
-  could run in readonly mode, record dupes and then pass them later to
-  duperemove for potential deduplication.
+- Allow checking for similar files by some criteria (approximate size,
+  file magic type, file extension, etc)
 
-- Allow for flexible selection of dedupe target
+- Wrap bytes <-> blocks conversions
+
+- Possibly use mmap (with madvise) for the checksumming phase
