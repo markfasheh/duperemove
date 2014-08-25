@@ -675,7 +675,7 @@ static int parse_options(int argc, char **argv)
 		return 1;
 
 	if (read_hashes) {
-		if (write_hashes || run_dedupe || numfiles)
+		if (numfiles)
 			return 1;
 		goto out_nofiles;
 	}
