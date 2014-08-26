@@ -886,7 +886,7 @@ int main(int argc, char **argv)
 	}
 
 	if (read_hashes) {
-		ret = read_hash_tree(serialize_fname, &tree, &blocksize);
+		ret = read_hash_tree(serialize_fname, &tree, &blocksize, NULL);
 		if (ret == FILE_VERSION_ERROR) {
 			fprintf(stderr,
 				"Hash file \"%s\": "

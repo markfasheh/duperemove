@@ -333,7 +333,7 @@ static int read_header(int fd, struct hash_file_header *h)
 }
 
 int read_hash_tree(char *filename, struct hash_tree *tree,
-		   unsigned int *block_size)
+		   unsigned int *block_size, struct hash_file_header *ret_hdr)
 {
 	int ret, fd;
 	uint32_t i;
@@ -368,5 +368,7 @@ int read_hash_tree(char *filename, struct hash_tree *tree,
 			break;
 	}
 out:
+	if (ret == 0 && ret_hdr)
+		memcpy(ret_hdr, &h, sizeof(struct hash_file_header));
 	return ret;
 }

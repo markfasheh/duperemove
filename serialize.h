@@ -56,6 +56,6 @@ int serialize_hash_tree(char *filename, struct hash_tree *tree,
 #define	FILE_VERSION_ERROR	1001
 #define	FILE_MAGIC_ERROR	1002
 int read_hash_tree(char *filename, struct hash_tree *tree,
-		   unsigned int *block_size);
+		   unsigned int *block_size, struct hash_file_header *ret_hdr);
 
 #endif /* __SERIALIZE__ */

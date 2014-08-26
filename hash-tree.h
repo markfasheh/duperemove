@@ -8,7 +8,9 @@ struct hash_tree {
 };
 
 struct dupe_blocks_list {
-	struct rb_node	dl_node;
+	struct rb_node	dl_node; /* sorted by hash */
+	struct rb_node	dl_by_size; /* hashstats re-sorts by dl_num_elem */
+
 	unsigned int	dl_num_elem;
 	struct list_head	dl_list;
 

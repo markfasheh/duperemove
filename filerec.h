@@ -6,6 +6,7 @@
 #include "list.h"
 
 extern struct list_head filerec_list;
+extern unsigned long long num_filerecs;
 
 struct filerec {
 	int		fd;			/* file descriptor */

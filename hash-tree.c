@@ -98,6 +98,7 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 
 		memcpy(d->dl_hash, digest, digest_len);
 		rb_init_node(&d->dl_node);
+		rb_init_node(&d->dl_by_size);
 		INIT_LIST_HEAD(&d->dl_list);
 
 		insert_block_list(tree, d);
