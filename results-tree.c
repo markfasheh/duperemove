@@ -29,23 +29,19 @@
 
 #include "filerec.h"
 #include "results-tree.h"
+
 #include "debug.h"
 
-static struct extent *_alloc_extent(void)
-{
-	struct extent *e = calloc(1, sizeof(*e));
-
-	INIT_LIST_HEAD(&e->e_list);
-	INIT_LIST_HEAD(&e->e_file_extents);
-
-	return e;
-}
+declare_alloc_tracking(dupe_extents);
+declare_alloc_tracking(extent);
 
 static struct extent *alloc_extent(struct filerec *file, uint64_t loff)
 {
-	struct extent *e = _alloc_extent();
+	struct extent *e = calloc_extent(1);
 
 	if (e) {
+		INIT_LIST_HEAD(&e->e_list);
+		INIT_LIST_HEAD(&e->e_file_extents);
 		e->e_file = file;
 		e->e_loff = loff;
 	}
@@ -136,7 +132,7 @@ static void insert_extent_list_free(struct dupe_extents *dext,
 				    struct extent **e)
 {
 	if (insert_extent_list(dext, *e)) {
-		free(*e);
+		free_extent(*e);
 		*e = NULL;
 	}
 }
@@ -156,7 +152,7 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 
 	dext = find_dupe_extents(res, digest, len);
 	if (!dext) {
-		dext = calloc(1, sizeof(*dext));
+		dext = calloc_dupe_extents(1);
 		if (!dext)
 			return ENOMEM;
 
@@ -204,7 +200,7 @@ again:
 
 	list_del_init(&extent->e_list);
 	list_del_init(&extent->e_file_extents);
-	free(extent);
+	free_extent(extent);
 
 	if (p->de_num_dupes == 1) {
 		/* It doesn't make sense to have one extent in a dup
@@ -217,7 +213,7 @@ again:
 
 	if (p->de_num_dupes == 0) {
 		rb_erase(&p->de_node, &res->root);
-		free(p);
+		free_dupe_extents(p);
 		res->num_dupes--;
 	}
 }

@@ -25,6 +25,7 @@
 #include <ctype.h>
 #include <inttypes.h>
 
+#include "debug.h"
 #include "util.h"
 
 int human_readable = 0;
@@ -114,4 +115,14 @@ int pretty_size_snprintf(uint64_t size, char *str, size_t str_bytes)
 	}
 	return snprintf(str, str_bytes, "%.1f%s", fraction,
 			size_strs[num_divs]);
+}
+
+void print_mem_stats(void)
+{
+	printf("Duperemove memory usage statistics:\n");
+	show_allocs_file_block();
+	show_allocs_dupe_blocks_list();
+	show_allocs_dupe_extents();
+	show_allocs_extent();
+	show_allocs_filerec();
 }

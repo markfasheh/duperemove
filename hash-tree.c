@@ -31,6 +31,9 @@
 #include "hash-tree.h"
 #include "debug.h"
 
+declare_alloc_tracking(file_block);
+declare_alloc_tracking(dupe_blocks_list);
+
 static void insert_block_list(struct hash_tree *tree,
 			      struct dupe_blocks_list *list)
 {
@@ -82,7 +85,7 @@ static struct dupe_blocks_list *find_block_list(struct hash_tree *tree,
 int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 			struct filerec *file, uint64_t loff)
 {
-	struct file_block *e = malloc(sizeof(*e));
+	struct file_block *e = malloc_file_block();
 	struct dupe_blocks_list *d;
 
 	if (!e)
@@ -90,9 +93,9 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 
 	d = find_block_list(tree, digest);
 	if (d == NULL) {
-		d = calloc(1, sizeof(*d));
+		d = calloc_dupe_blocks_list(1);
 		if (!d) {
-			free(e);
+			free_file_block(e);
 			return ENOMEM;
 		}
 
@@ -138,10 +141,10 @@ static void remove_hashed_block(struct hash_tree *tree,
 		rb_erase(&blocklist->dl_node, &tree->root);
 		tree->num_hashes--;
 
-		free(blocklist);
+		free_dupe_blocks_list(blocklist);
 	}
 
-	free(block);
+	free_file_block(block);
 	tree->num_blocks--;
 }
 

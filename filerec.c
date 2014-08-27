@@ -26,6 +26,8 @@ struct list_head filerec_list;
 struct rb_root filerec_by_inum = RB_ROOT;
 unsigned long long num_filerecs = 0ULL;
 
+declare_alloc_tracking(filerec);
+
 void init_filerec(void)
 {
 	INIT_LIST_HEAD(&filerec_list);
@@ -75,12 +77,12 @@ static struct filerec *find_filerec(uint64_t inum)
 
 static struct filerec *filerec_alloc_insert(const char *filename, uint64_t inum)
 {
-	struct filerec *file = calloc(1, sizeof(*file));
+	struct filerec *file = calloc_filerec(1);
 
 	if (file) {
 		file->filename = strdup(filename);
 		if (!file->filename) {
-			free(file);
+			free_filerec(file);
 			return NULL;
 		}
 
@@ -120,7 +122,7 @@ void filerec_free(struct filerec *file)
 
 		if (!RB_EMPTY_NODE(&file->inum_node))
 			rb_erase(&file->inum_node, &filerec_by_inum);
-		free(file);
+		free_filerec(file);
 		num_filerecs--;
 	}
 }

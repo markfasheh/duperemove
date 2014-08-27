@@ -724,6 +724,7 @@ static void record_match(struct results_tree *res, unsigned char *digest,
 	if (ret) {
 		abort_on(ret != ENOMEM); /* Only error possible here. */
 		fprintf(stderr, "Out of memory while processing results\n");
+		print_mem_stats();
 		exit(ENOMEM);
 	}
 
@@ -952,5 +953,8 @@ int main(int argc, char **argv)
 		print_dupes_table(&res);
 
 out:
+	if (ret == ENOMEM || debug)
+		print_mem_stats();
+
 	return ret;
 }
