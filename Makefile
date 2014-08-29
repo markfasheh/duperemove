@@ -27,6 +27,12 @@ LIBRARY_FLAGS += $(crypt_LIBS)
 objects = duperemove.o rbtree.o hash-tree.o results-tree.o dedupe.o filerec.o util.o serialize.o $(hash_obj)
 progs = duperemove
 
+DESTDIR = /
+PREFIX = /usr/local
+SHAREDIR = $(PREFIX)/share
+SBINDIR = $(PREFIX)/sbin
+MANDIR = $(SHAREDIR)/man
+
 all: $(progs) kernel.h list.h btrfs-ioctl.h debug.h
 
 duperemove: $(objects) kernel.h duperemove.c
@@ -40,6 +46,16 @@ tarball: clean
 
 btrfs-extent-same: btrfs-extent-same.c
 	$(CC) $(CFLAGS) -o btrfs-extent-same btrfs-extent-same.c
+
+install: $(progs) $(MANPAGES)
+	mkdir -p -m 0755 $(DESTDIR)$(SBINDIR)
+	for prog in $(progs); do \
+		install -m 0755 $$prog $(DESTDIR)$(SBINDIR); \
+	done
+	mkdir -p -m 0755 $(DESTDIR)$(MANDIR)/man8
+	for man in $(MANPAGES); do \
+		install -m 0644 $$man $(DESTDIR)$(MANDIR)/man8; \
+	done
 
 csum-test: $(hash_obj) csum-test.c
 	$(CC) $(LIBRARY_FLAGS) $(CFLAGS) $(hash_obj) -o csum-test csum-test.c
