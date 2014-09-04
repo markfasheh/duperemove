@@ -44,7 +44,7 @@ csum-test: $(hash_obj) csum-test.c
 filerec-test: filerec.c filerec.h
 	$(CC) -Wall $(CFLAGS) $(LIBRARY_FLAGS) -DFILEREC_TEST filerec.c -o filerec-test
 
-hashstats_obj = $(hash_obj) rbtree.o hash-tree.o filerec.o util.o serialize.o
+hashstats_obj = $(hash_obj) rbtree.o hash-tree.o filerec.o util.o serialize.o results-tree.o
 hashstats: $(hashstats_obj) hashstats.c
 	$(CC) -Wall $(CFLAGS) $(LIBRARY_FLAGS) $(hashstats_obj) hashstats.c -o hashstats
 
