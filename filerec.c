@@ -138,6 +138,7 @@ static void free_compared_tree(struct filerec *file)
 	while (n) {
 		c = rb_entry(n, struct files_compared, node);
 		n = rb_next(n);
+		rb_erase(&c->node, &file->comparisons);
 		free_files_compared(c);
 	}
 }
