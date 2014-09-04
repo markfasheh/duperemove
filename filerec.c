@@ -33,6 +33,115 @@ void init_filerec(void)
 	INIT_LIST_HEAD(&filerec_list);
 }
 
+struct files_compared {
+	struct filerec	*file;
+	struct rb_node	node;
+};
+
+declare_alloc_tracking(files_compared);
+
+struct files_compared *files_compared_search(struct filerec *file,
+					     struct filerec *val)
+{
+	struct rb_node *n = file->comparisons.rb_node;
+	struct files_compared *c;
+
+	while (n) {
+		c = rb_entry(n, struct files_compared, node);
+
+		if (c->file > val)
+			n = n->rb_left;
+		else if (c->file < val)
+			n = n->rb_right;
+		else
+			return c;
+	}
+	return NULL;
+}
+
+int filerecs_compared(struct filerec *file1, struct filerec *file2)
+{
+	struct filerec *file = file1;
+	struct filerec *test = file2;
+
+	/*
+	 * We can store only one pointer if we make a rule that we
+	 * always search the filerec with the lower pointer value for
+	 * the one with the higher pointer value.
+	 */
+	if (file1 > file2) {
+		file = file2;
+		test = file1;
+	}
+
+	if (files_compared_search(file, test))
+		return 1;
+
+	return 0;
+}
+
+static void files_compared_insert(struct filerec *file,
+				  struct files_compared *c)
+{
+	struct rb_node **p = &file->comparisons.rb_node;
+	struct rb_node *parent = NULL;
+	struct files_compared *tmp;
+
+	while (*p) {
+		parent = *p;
+
+		tmp = rb_entry(parent, struct files_compared, node);
+
+		if (tmp->file > c->file)
+			p = &(*p)->rb_left;
+		else if (tmp->file < c->file)
+			p = &(*p)->rb_right;
+		else
+			abort_lineno(); /* We should never find a duplicate */
+	}
+
+	rb_link_node(&c->node, parent, p);
+	rb_insert_color(&c->node, &file->comparisons);
+}
+
+int mark_filerecs_compared(struct filerec *file1, struct filerec *file2)
+{
+	struct files_compared *c;
+	struct filerec *file = file1;
+	struct filerec *test = file2;
+
+	if (file1 > file2) {
+		file = file2;
+		test = file1;
+	}
+
+	if (files_compared_search(file, test))
+		return 0;
+
+	c = calloc_files_compared(1);
+	if (!c)
+		return ENOMEM;
+
+	c->file = test;
+	rb_init_node(&c->node);
+
+	files_compared_insert(file, c);
+
+	return 0;
+}
+
+static void free_compared_tree(struct filerec *file)
+{
+	struct rb_node *n = file->comparisons.rb_node;
+	struct files_compared *c;
+
+	while (n) {
+		c = rb_entry(n, struct files_compared, node);
+		n = rb_next(n);
+		free_files_compared(c);
+	}
+}
+
 static void insert_filerec(struct filerec *file)
 {
 	struct rb_node **p = &filerec_by_inum.rb_node;
@@ -82,7 +191,7 @@ static struct filerec *filerec_alloc_insert(const char *filename, uint64_t inum)
 	if (file) {
 		file->filename = strdup(filename);
 		if (!file->filename) {
-			free_filerec(file);
+			free_compared_tree(file);
 			return NULL;
 		}
 
@@ -92,6 +201,7 @@ static struct filerec *filerec_alloc_insert(const char *filename, uint64_t inum)
 		INIT_LIST_HEAD(&file->tmp_list);
 		rb_init_node(&file->inum_node);
 		file->inum = inum;
+		file->comparisons = RB_ROOT;
 
 		insert_filerec(file);
 		list_add_tail(&file->rec_list, &filerec_list);
@@ -122,6 +232,7 @@ void filerec_free(struct filerec *file)
 
 		if (!RB_EMPTY_NODE(&file->inum_node))
 			rb_erase(&file->inum_node, &filerec_by_inum);
+		free_compared_tree(file);
 		free_filerec(file);
 		num_filerecs--;
 	}

@@ -820,14 +820,23 @@ static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
 	clear_all_seen_blocks();
 }
 
+static int compare_files(struct results_tree *res, struct filerec *file1, struct filerec *file2)
+{
+	dprintf("comparing %s and %s\n", file1->filename, file2->filename);
+	find_file_dupes(file1, file2, res);
+
+	return mark_filerecs_compared(file1, file2);
+}
+
 /*
  * The following doesn't actually find all dupes. In the case of a
  * n-way dupe when n > 2 it only finds n dupes. But this shouldn't be
  * a problem because if it missed a "better pair" then it will find it
  * later anyway.
  */
-static void find_all_dups(struct hash_tree *tree, struct results_tree *res)
+static int find_all_dups(struct hash_tree *tree, struct results_tree *res)
 {
+	int ret;
 	struct rb_root *root = &tree->root;
 	struct rb_node *node = rb_first(root);
 	struct dupe_blocks_list *dups;
@@ -852,11 +861,14 @@ static void find_all_dups(struct hash_tree *tree, struct results_tree *res)
 					if (block_ever_seen(block2))
 						continue;
 
+					if (filerecs_compared(file1, file2))
+						continue;
+
 					if (file1 != file2) {
-						dprintf("comparing %s and %s\n",
-							file1->filename,
-							file2->filename);
-						find_file_dupes(file1, file2, res);
+						ret = compare_files(res, file1,
+								    file2);
+						if (ret)
+							return ret;
 						break;
 					}
 				}
@@ -865,6 +877,8 @@ static void find_all_dups(struct hash_tree *tree, struct results_tree *res)
 
 		node = rb_next(node);
 	}
+
+	return 0;
 }
 
 int main(int argc, char **argv)
@@ -936,7 +950,12 @@ int main(int argc, char **argv)
 		       "extents - this may take some time.\n", tree.num_blocks);
 	}
 
-	find_all_dups(&tree, &res);
+	ret = find_all_dups(&tree, &res);
+	if (ret) {
+		fprintf(stderr, "Error %d while finding duplicate extents: %s\n",
+			ret, strerror(ret));
+		goto out;
+	}
 
 	if (debug) {
 		print_dupes_table(&res);

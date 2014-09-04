@@ -54,6 +54,7 @@ declare_alloc_tracking_header(dupe_blocks_list);
 declare_alloc_tracking_header(dupe_extents);
 declare_alloc_tracking_header(extent);
 declare_alloc_tracking_header(filerec);
+declare_alloc_tracking_header(files_compared);
 /* Can be called anywhere we want to dump the above statistics */
 void print_mem_stats(void);
 
