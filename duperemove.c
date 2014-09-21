@@ -33,6 +33,8 @@
 #include <getopt.h>
 #include <inttypes.h>
 #include <linux/magic.h>
+#include <stdbool.h>
+#include <sys/vfs.h>
 
 #include "rbtree.h"
 #include "list.h"
@@ -441,8 +443,7 @@ static void usage(const char *prog)
 	printf("\t-r\t\tEnable recursive dir traversal.\n");
 	printf("\t-d\t\tDe-dupe the results - only works on btrfs.\n");
 	printf("\t-A\t\tOpens files readonly when deduping. Primarily for use by privileged users on readonly snapshots\n");
-	printf("\t-b bsize\tUse bsize blocks. Default is %dk.\n",
-	       DEFAULT_BLOCKSIZE / 1024);
+	printf("\t-b bsize\tUse bsize blocks. Default is automatically determined.\n");
 	printf("\t-h\t\tPrint numbers in human-readble format.\n");
 	printf("\t-v\t\tBe verbose.\n");
 	printf("\t--debug\t\tPrint debug messages, forces -v if selected.\n");
@@ -599,6 +600,20 @@ enum {
 	READ_HASHES_OPTION,
 };
 
+static unsigned int gcd(unsigned int m, unsigned int n) {
+	unsigned int tmp;
+	while (m) {
+		tmp = m;
+		m = n % m;
+		n = tmp;
+	}
+	return n;
+}
+
+static unsigned int lcm(unsigned int m, unsigned int n) {
+	return m / gcd(m, n) * n;
+}
+
 /*
  * Ok this is doing more than just parsing options.
  */
@@ -618,6 +633,7 @@ static int parse_options(int argc, char **argv)
 	if (argc < 2)
 		return 1;
 
+	bool blocksize_provided = false;
 	while ((c = getopt_long(argc, argv, "Ab:vdDrh?", long_ops, NULL))
 	       != -1) {
 		switch (c) {
@@ -629,6 +645,7 @@ static int parse_options(int argc, char **argv)
 			if (blocksize < MIN_BLOCKSIZE ||
 			    blocksize > MAX_BLOCKSIZE)
 				return EINVAL;
+			blocksize_provided = true;
 			break;
 		case 'd':
 		case 'D':
@@ -682,6 +699,24 @@ static int parse_options(int argc, char **argv)
 
 	for (i = 0; i < numfiles; i++) {
 		const char *name = argv[i + optind];
+
+		if (!blocksize_provided) {
+			struct statfs st;
+			if (statfs(name, &st) != 0) {
+				fprintf(
+					stderr,
+					"Unable to determine optimal block size (%s). "
+					"Continuing with default size of %u\n",
+					strerror(errno),
+					blocksize);
+				blocksize_provided = true;
+			} else {
+				if (blocksize == DEFAULT_BLOCKSIZE) blocksize = st.f_bsize;
+				if (st.f_bsize != blocksize) {
+					blocksize = lcm(blocksize, st.f_bsize);
+				}
+			}
+		}
 
 		if (add_file(name, AT_FDCWD))
 			return 1;
