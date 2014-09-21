@@ -18,8 +18,11 @@ ifdef USE_MHASH
 	crypt_LIBS=-lmhash
 endif
 
-CFLAGS += $(crypt_CFLAGS)
-LIBRARY_FLAGS += $(crypt_LIBS)
+glib_CFLAGS=$(shell pkg-config --cflags glib-2.0)
+glib_LIBS=$(shell pkg-config --libs glib-2.0)
+
+CFLAGS += $(crypt_CFLAGS) $(glib_CFLAGS)
+LIBRARY_FLAGS += $(crypt_LIBS) $(glib_LIBS)
 
 objects = duperemove.o rbtree.o hash-tree.o results-tree.o dedupe.o filerec.o util.o serialize.o $(hash_obj)
 progs = duperemove

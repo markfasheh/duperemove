@@ -18,11 +18,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <gcrypt.h>
+#include <errno.h>
+#include <pthread.h>
 
 #include "csum.h"
 #include "debug.h"
 
 #define	HASH_FUNC	GCRY_MD_SHA256
+
+GCRY_THREAD_OPTION_PTHREAD_IMPL;
 
 unsigned int digest_len = 0;
 
@@ -33,6 +37,8 @@ void checksum_block(char *buf, int len, unsigned char *digest)
 
 int init_hash(void)
 {
+	gcry_control (GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
+
 	/*
 	 * Version check should be the very first call because it makes sure
 	 * that important subsystems are intialized.
