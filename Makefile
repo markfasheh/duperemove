@@ -1,6 +1,9 @@
-CC=gcc
 RELEASE=v0.08
-CFLAGS=-Wall -ggdb -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\"
+
+CC = gcc
+CFLAGS = -Wall -ggdb
+
+override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\"
 
 MANPAGES=duperemove.8 btrfs-extent-same.8
 
@@ -24,10 +27,16 @@ LIBRARY_FLAGS += $(crypt_LIBS)
 objects = duperemove.o rbtree.o hash-tree.o results-tree.o dedupe.o filerec.o util.o serialize.o $(hash_obj)
 progs = duperemove
 
+DESTDIR = /
+PREFIX = /usr/local
+SHAREDIR = $(PREFIX)/share
+SBINDIR = $(PREFIX)/sbin
+MANDIR = $(SHAREDIR)/man
+
 all: $(progs) kernel.h list.h btrfs-ioctl.h debug.h
 
 duperemove: $(objects) kernel.h duperemove.c
-	$(CC) $(objects) $(LIBRARY_FLAGS) -o duperemove
+	$(CC) $(LIBRARY_FLAGS) $(CFLAGS) $(objects) -o duperemove
 
 tarball: clean
 	mkdir -p $(TEMP_INSTALL_DIR)/$(DIST)
@@ -36,17 +45,27 @@ tarball: clean
 	rm -fr $(TEMP_INSTALL_DIR)
 
 btrfs-extent-same: btrfs-extent-same.c
-	$(CC) -Wall -o btrfs-extent-same btrfs-extent-same.c
+	$(CC) $(CFLAGS) -o btrfs-extent-same btrfs-extent-same.c
+
+install: $(progs) $(MANPAGES)
+	mkdir -p -m 0755 $(DESTDIR)$(SBINDIR)
+	for prog in $(progs); do \
+		install -m 0755 $$prog $(DESTDIR)$(SBINDIR); \
+	done
+	mkdir -p -m 0755 $(DESTDIR)$(MANDIR)/man8
+	for man in $(MANPAGES); do \
+		install -m 0644 $$man $(DESTDIR)$(MANDIR)/man8; \
+	done
 
 csum-test: $(hash_obj) csum-test.c
-	$(CC) -Wall $(hash_obj) $(CFLAGS) $(LIBRARY_FLAGS) -o csum-test csum-test.c
+	$(CC) $(LIBRARY_FLAGS) $(CFLAGS) $(hash_obj) -o csum-test csum-test.c
 
 filerec-test: filerec.c filerec.h
-	$(CC) -Wall $(CFLAGS) $(LIBRARY_FLAGS) -DFILEREC_TEST filerec.c -o filerec-test
+	$(CC) $(LIBRARY_FLAGS) $(CFLAGS) -DFILEREC_TEST filerec.c -o filerec-test
 
 hashstats_obj = $(hash_obj) rbtree.o hash-tree.o filerec.o util.o serialize.o results-tree.o
 hashstats: $(hashstats_obj) hashstats.c
-	$(CC) -Wall $(CFLAGS) $(LIBRARY_FLAGS) $(hashstats_obj) hashstats.c -o hashstats
+	$(CC) $(LIBRARY_FLAGS) $(CFLAGS) $(hashstats_obj) hashstats.c -o hashstats
 
 clean:
 	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same filerec-test hashstats csum-*.o *~
