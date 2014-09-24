@@ -62,8 +62,8 @@ install: $(progs) $(MANPAGES)
 csum-test: $(hash_obj) csum-test.c
 	$(CC) $(LIBRARY_FLAGS) $(CFLAGS) $(hash_obj) -o csum-test csum-test.c
 
-filerec-test: filerec.c filerec.h
-	$(CC) $(LIBRARY_FLAGS) $(CFLAGS) -DFILEREC_TEST filerec.c -o filerec-test
+filerec-test: filerec.c filerec.h rbtree.o
+	$(CC) $(LIBRARY_FLAGS) $(CFLAGS) -DFILEREC_TEST filerec.c rbtree.o -o filerec-test
 
 hashstats_obj = $(hash_obj) rbtree.o hash-tree.o filerec.o util.o serialize.o results-tree.o
 hashstats: $(hashstats_obj) hashstats.c

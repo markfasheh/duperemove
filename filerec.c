@@ -396,7 +396,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	file = filerec_new(argv[1]);
+	file = filerec_new(argv[1], 500); /* Use made up ino */
 	if (!file) {
 		fprintf(stderr, "filerec_new(): malloc error\n");
 		return 1;
