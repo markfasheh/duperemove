@@ -33,6 +33,9 @@
 #include <getopt.h>
 #include <inttypes.h>
 #include <linux/magic.h>
+#include <assert.h>
+
+#include <glib.h>
 
 #include "rbtree.h"
 #include "list.h"
@@ -53,9 +56,7 @@ int verbose = 0, debug = 0;
 #define MAX_BLOCKSIZE	(1024*1024)
 #define DEFAULT_BLOCKSIZE	(128*1024)
 static unsigned int blocksize = DEFAULT_BLOCKSIZE;
-static char *buf = NULL;
 
-static unsigned char digest[DIGEST_LEN_MAX] = { 0, };
 static char path[PATH_MAX] = { 0, };
 char *pathp = path;
 char *path_max = &path[PATH_MAX - 1];
@@ -356,19 +357,23 @@ static void dedupe_results(struct results_tree *res)
 	       pretty_size(kern_bytes), pretty_size(fiemap_bytes));
 }
 
-static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
+static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 {
-	int ret;
-	ssize_t bytes, bytes_read;
-	uint64_t off;
+	uint64_t off = 0;
+	ssize_t bytes = 0, bytes_read = 0;
+	int ret = 0;
+
+	char *buf = malloc(blocksize);
+	assert(buf != NULL);
+	unsigned char *digest = malloc(DIGEST_LEN_MAX);
+	assert(digest != NULL);
+
+	GMutex *tree_mutex = g_dataset_get_data(tree, "mutex");
 
 	printf("csum: %s\n", file->filename);
 
 	ret = filerec_open(file, 0);
-	if (ret)
-		return ret;
-
-	ret = off = bytes = 0;
+	if (ret) goto err_noclose;
 
 	while (1) {
 		bytes_read = read(file->fd, buf+bytes, blocksize-bytes);
@@ -376,7 +381,7 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 			ret = errno;
 			fprintf(stderr, "Unable to read file %s: %s\n",
 				file->filename, strerror(ret));
-			break;
+			goto err;
 		}
 
 		/* Handle EOF */
@@ -394,7 +399,9 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 
 		checksum_block(buf, bytes, digest);
 
+		g_mutex_lock(tree_mutex);
 		ret = insert_hashed_block(tree, digest, file, off);
+		g_mutex_unlock(tree_mutex);
 		if (ret)
 			break;
 
@@ -403,24 +410,74 @@ static int csum_whole_file(struct hash_tree *tree, struct filerec *file)
 	}
 
 	filerec_close(file);
+	free(digest);
+	free(buf);
 
-	return ret;
+	return;
+
+err:
+	filerec_close(file);
+err_noclose:
+	free(digest);
+	free(buf);
+
+	fprintf(
+		stderr,
+		"Skipping file due to error %d (%s), %s\n",
+		ret,
+		strerror(ret),
+		file->filename);
+
+	g_mutex_lock(tree_mutex);
+	remove_hashed_blocks(tree, file);
+	g_mutex_unlock(tree_mutex);
+
+	filerec_free(file);
+
+	return;
 }
 
 static int populate_hash_tree(struct hash_tree *tree)
 {
-	int ret = -1;
+	int ret = 0;
 	struct filerec *file, *tmp;
+	GMutex tree_mutex;
+
+	g_mutex_init(&tree_mutex);
+	g_dataset_set_data_full(tree, "mutex", &tree_mutex, (GDestroyNotify) g_mutex_clear);
+
+	GError *err = NULL;
+	GThreadPool *pool = g_thread_pool_new(
+		(GFunc) csum_whole_file,
+		tree,
+		g_get_num_processors(),
+		FALSE,
+		&err);
+	if (err != NULL) {
+		fprintf(
+			stderr,
+			"Unable to create thread pool: %s\n",
+			err->message);
+		ret = -1;
+		g_error_free(err);
+		err = NULL;
+		goto out;
+	}
 
 	list_for_each_entry_safe(file, tmp, &filerec_list, rec_list) {
-		ret = csum_whole_file(tree, file);
-		if (ret) {
-			fprintf(stderr, "Skipping file due to error %d (%s), "
-				"%s\n", ret, strerror(ret), file->filename);
-			remove_hashed_blocks(tree, file);
-			filerec_free(file);
+		g_thread_pool_push(pool, file, &err);
+		if (err != NULL) {
+			fprintf(stderr,
+					"g_thread_pool_push: %s\n",
+					err->message);
+			g_error_free(err);
+			err = NULL;
 		}
 	}
+
+	g_thread_pool_free(pool, FALSE, TRUE);
+out:
+	g_dataset_remove_data(tree, "mutex");
 
 	return ret;
 }
@@ -910,10 +967,6 @@ int main(int argc, char **argv)
 	}
 
 	printf("Using %uK blocks\n", blocksize/1024);
-
-	buf = malloc(blocksize);
-	if (!buf)
-		return ENOMEM;
 
 	if (!read_hashes) {
 		ret = populate_hash_tree(&tree);
