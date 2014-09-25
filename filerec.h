@@ -42,4 +42,9 @@ int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
 int filerecs_compared(struct filerec *file1, struct filerec *file2);
 int mark_filerecs_compared(struct filerec *file1, struct filerec *file2);
 
+struct fiemap_ctxt;
+struct fiemap_ctxt *alloc_fiemap_ctxt(void);
+void fiemap_ctxt_init(struct fiemap_ctxt *ctxt);
+int fiemap_iter_get_flags(struct fiemap_ctxt *ctxt, struct filerec *file,
+			  uint64_t blkno, unsigned int *flags);
 #endif /* __FILEREC__ */

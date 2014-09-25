@@ -164,6 +164,7 @@ static int write_one_hash(int fd, struct file_block *block)
 	struct block_hash disk_block = { 0, };
 
 	disk_block.loff = swap64(block->b_loff);
+	disk_block.flags = swap32(block->b_flags);
 	BUILD_BUG_ON(DISK_DIGEST_LEN < DIGEST_LEN_MAX);
 	memcpy(&disk_block.digest, block->b_parent->dl_hash, DISK_DIGEST_LEN);
 
@@ -273,6 +274,7 @@ static int read_hash(int fd, struct block_hash *b)
 		return EIO;
 
 	b->loff = swap64(disk.loff);
+	b->flags = swap32(disk.flags);
 	memcpy(b->digest, disk.digest, DISK_DIGEST_LEN);
 	return 0;
 }
@@ -303,7 +305,7 @@ static int read_one_file(int fd, struct hash_tree *tree)
 			return ret;
 
 		ret = insert_hashed_block(tree, (unsigned char *)bhash.digest,
-					  file, bhash.loff);
+					  file, bhash.loff, bhash.flags);
 		if (ret)
 			return ENOMEM;
 	}

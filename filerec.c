@@ -279,6 +279,121 @@ void filerec_close_files_list(struct list_head *open_files)
 	}
 }
 
+#define FIEMAP_BUF_SIZE	16384
+#define FIEMAP_COUNT	((FIEMAP_BUF_SIZE - sizeof(struct fiemap)) / sizeof(struct fiemap_extent))
+struct fiemap_ctxt {
+	struct fiemap		*fiemap;
+	char			buf[FIEMAP_BUF_SIZE];
+	int			idx;
+};
+
+struct fiemap_ctxt *alloc_fiemap_ctxt(void)
+{
+	struct fiemap_ctxt *ctxt = malloc(sizeof(*ctxt));
+
+	if (ctxt) {
+		ctxt->fiemap = (struct fiemap *) ctxt->buf;
+		ctxt->idx = -1;
+	}
+	return ctxt;
+}
+
+static inline int block_contained(uint64_t blkno,
+				  struct fiemap_extent *extent)
+{
+	if (blkno >= extent->fe_logical &&
+	    blkno < (extent->fe_logical + extent->fe_length))
+		return 1;
+	return 0;
+}
+
+static int do_fiemap(struct fiemap *fiemap, struct filerec *file,
+		     uint64_t start)
+{
+	int err, i;
+	struct fiemap_extent *extent;
+
+	memset(fiemap, 0, sizeof(struct fiemap));
+
+	fiemap->fm_length = ~0ULL;
+	fiemap->fm_extent_count = FIEMAP_COUNT;
+	fiemap->fm_start = start;
+
+	dprintf("Fiemap file \"%s\", start: %"PRIu64", count: %u\n",
+			file->filename, start, fiemap->fm_extent_count);
+
+	err = ioctl(file->fd, FS_IOC_FIEMAP, (unsigned long) fiemap);
+	if (err < 0)
+		return errno;
+
+	dprintf("%d extents found\n", fiemap->fm_mapped_extents);
+	if (debug) {
+		for (i = 0; i < fiemap->fm_mapped_extents; i++) {
+			extent = &fiemap->fm_extents[i];
+
+			dprintf("[%d] logical: %llu, length: %llu\n",
+				i, (unsigned long long)extent->fe_logical,
+				(unsigned long long)extent->fe_length);
+		}
+	}
+	return 0;
+}
+
+int fiemap_iter_get_flags(struct fiemap_ctxt *ctxt, struct filerec *file,
+			  uint64_t blkno, unsigned int *flags)
+{
+	int err;
+	uint64_t new_start;
+	struct fiemap *fiemap;
+	struct fiemap_extent *extent;
+
+	*flags = 0;
+
+	if (ctxt == NULL)
+		return 0;
+	/* we had a previous error or have no more extents to look up */
+	if (ctxt->fiemap == NULL)
+		return 0;
+
+	fiemap = ctxt->fiemap;
+
+	if (ctxt->idx == -1) {
+		err = do_fiemap(fiemap, file, 0);
+		if (err || fiemap->fm_mapped_extents == 0)
+			goto out_last_map;
+
+		ctxt->idx = 0;
+	}
+
+check:
+	extent = &fiemap->fm_extents[ctxt->idx];
+	if (block_contained(blkno, extent)) {
+		*flags = extent->fe_flags;
+		return 0;
+	}
+
+	err = 0;
+	/* No more extents for us to look for */
+	if (extent->fe_flags & FIEMAP_EXTENT_LAST)
+		goto out_last_map;
+
+	ctxt->idx++;
+	if (ctxt->idx == fiemap->fm_mapped_extents) {
+		/* fiemap again to get more extents */
+		new_start = extent->fe_logical + extent->fe_length;
+		err = do_fiemap(fiemap, file, new_start);
+		if (err ||  fiemap->fm_mapped_extents == 0)
+			goto out_last_map;
+
+		ctxt->idx = 0;
+	}
+	goto check;
+
+out_last_map:
+	ctxt->fiemap = NULL;
+	return err;
+}
+
 /*
  * Skeleton for this function taken from e2fsprogs.git/misc/filefrag.c
  * which is Copyright 2003 by Theodore Ts'o and released under the GPL.

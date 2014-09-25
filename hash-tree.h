@@ -27,11 +27,20 @@ struct dupe_blocks_list {
 	unsigned char		dl_hash[DIGEST_LEN_MAX];
 };
 
+/* Fiemap flags that would cause us to skip comparison of the block */
+#define FIEMAP_SKIP_FLAGS	(FIEMAP_EXTENT_UNKNOWN|FIEMAP_EXTENT_DATA_INLINE|FIEMAP_EXTENT_UNWRITTEN)
+/* Fiemap flags that indicate the extent may have already been deduped */
+#define FIEMAP_DEDUPED_FLAGS	(FIEMAP_EXTENT_SHARED)
+
+#define FILE_BLOCK_SKIP_COMPARE	0x0001
+#define FILE_BLOCK_DEDUPED	0x0002
+
 struct file_block {
 	struct dupe_blocks_list	*b_parent;
 	struct filerec	*b_file;
 	unsigned int	b_seen;
 	uint64_t	b_loff;
+	unsigned int	b_flags;
 
 	struct list_head	b_list;  /* For dl_list, all blocks
 					  * with this md5. */
@@ -48,7 +57,7 @@ struct filerec_token {
 };
 
 int insert_hashed_block(struct hash_tree *tree, unsigned char *digest,
-			struct filerec *file, uint64_t loff);
+			struct filerec *file, uint64_t loff, unsigned int flags);
 void remove_hashed_blocks(struct hash_tree *tree, struct filerec *file);
 
 typedef int (for_each_dupe_t)(struct file_block *, void *);

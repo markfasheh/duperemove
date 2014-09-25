@@ -174,7 +174,7 @@ static struct dupe_blocks_list *find_block_list(struct hash_tree *tree,
 }
 
 int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
-			struct filerec *file, uint64_t loff)
+			struct filerec *file, uint64_t loff, unsigned int flags)
 {
 	struct file_block *e = malloc_file_block();
 	struct dupe_blocks_list *d;
@@ -208,6 +208,7 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 	e->b_file = file;
 	e->b_seen = 0;
 	e->b_loff = loff;
+	e->b_flags = flags;
 	list_add_tail(&e->b_file_next, &file->block_list);
 	file->num_blocks++;
 	e->b_parent = d;

@@ -34,6 +34,7 @@
 #include <inttypes.h>
 #include <linux/magic.h>
 #include <assert.h>
+#include <linux/fiemap.h>
 
 #include <glib.h>
 
@@ -363,6 +364,8 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 	uint64_t off = 0;
 	ssize_t bytes = 0, bytes_read = 0;
 	int ret = 0;
+	struct fiemap_ctxt *fc;
+	unsigned int flags;
 
 	char *buf = malloc(blocksize);
 	assert(buf != NULL);
@@ -373,8 +376,15 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 
 	printf("csum: %s\n", file->filename);
 
+	fc = alloc_fiemap_ctxt();
+	if (fc == NULL) /* This should be non-fatal */
+		fprintf(stderr,
+			"Low memory allocating fiemap context for \"%s\"\n",
+			file->filename);
+
 	ret = filerec_open(file, 0);
-	if (ret) goto err_noclose;
+	if (ret)
+		goto err_noclose;
 
 	while (1) {
 		bytes_read = read(file->fd, buf+bytes, blocksize-bytes);
@@ -395,13 +405,34 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 		if (bytes_read > 0 && bytes < blocksize)
 			continue;
 
+		flags = 0;
+		if (fc) {
+			unsigned int fieflags = 0;
+
+			ret = fiemap_iter_get_flags(fc, file, off, &fieflags);
+			if (ret) {
+				fprintf(stderr,
+					"Fiemap error %d while scanning file "
+					"\"%s\": %s\n", ret, file->filename,
+					strerror(ret));
+
+				free(fc);
+				fc = NULL;
+			} else {
+				if (fieflags & FIEMAP_SKIP_FLAGS)
+					flags |= FILE_BLOCK_SKIP_COMPARE;
+				if (fieflags & FIEMAP_DEDUPED_FLAGS)
+					flags |= FILE_BLOCK_DEDUPED;
+			}
+		}
+
 		/* Is this necessary? */
 		memset(digest, 0, DIGEST_LEN_MAX);
 
 		checksum_block(buf, bytes, digest);
 
 		g_mutex_lock(tree_mutex);
-		ret = insert_hashed_block(tree, digest, file, off);
+		ret = insert_hashed_block(tree, digest, file, off, flags);
 		g_mutex_unlock(tree_mutex);
 		if (ret)
 			break;
@@ -930,20 +961,68 @@ static int walk_large_dups(struct hash_tree *tree,
 	return 0;
 }
 
-/*
- * The following doesn't actually find all dupes. In the case of a
- * n-way dupe when n > 2 it only finds n dupes. But this shouldn't be
- * a problem because if it missed a "better pair" then it will find it
- * later anyway.
- */
+static int walk_dupe_hashes(struct dupe_blocks_list *dups,
+			    struct results_tree *res)
+{
+	int ret;
+	struct file_block *block1, *block2;
+	struct filerec *file1, *file2;
+
+	list_for_each_entry(block1, &dups->dl_list, b_list) {
+		if (block1->b_flags & FILE_BLOCK_SKIP_COMPARE)
+			continue;
+
+		file1 = block1->b_file;
+		block2 = block1;
+		list_for_each_entry_continue(block2,
+					     &dups->dl_list,
+					     b_list) {
+			if (block2->b_flags & FILE_BLOCK_SKIP_COMPARE)
+				continue;
+
+			/*
+			 * Don't compare if both blocks are already
+			 * marked as shared. In thoery however the
+			 * blocks might not be shared with each other
+			 * so we will want to account for this in a
+			 * future change.
+			 */
+			if (block1->b_flags & FILE_BLOCK_DEDUPED
+			    && block2->b_flags & FILE_BLOCK_DEDUPED)
+				continue;
+
+			file2 = block2->b_file;
+
+			if (block_ever_seen(block2))
+				continue;
+
+			if (filerecs_compared(file1, file2))
+				continue;
+
+			if (file1 != file2) {
+				ret = compare_files(res, file1, file2);
+				if (ret)
+					return ret;
+				/*
+				 * End here, after finding a set of
+				 * duplicates. Future runs will see
+				 * the deduped blocks and skip them,
+				 * allowing us to dedupe any remaining
+				 * extents (if any)
+				 */
+				break;
+			}
+		}
+	}
+	return 0;
+}
+
 static int find_all_dups(struct hash_tree *tree, struct results_tree *res)
 {
 	int ret;
 	struct rb_root *root = &tree->root;
 	struct rb_node *node = rb_first(root);
 	struct dupe_blocks_list *dups;
-	struct file_block *block1, *block2;
-	struct filerec *file1, *file2;
 	LIST_HEAD(large_dupes);
 
 	while (1) {
@@ -960,29 +1039,9 @@ static int find_all_dups(struct hash_tree *tree, struct results_tree *res)
 			printf("\") has %u items (across %u files), processing later.\n",
 			       dups->dl_num_elem, dups->dl_num_files);
 		} else if (dups->dl_num_elem > 1) {
-			list_for_each_entry(block1, &dups->dl_list, b_list) {
-				file1 = block1->b_file;
-				block2 = block1;
-				list_for_each_entry_continue(block2,
-							     &dups->dl_list,
-							     b_list) {
-					file2 = block2->b_file;
-
-					if (block_ever_seen(block2))
-						continue;
-
-					if (filerecs_compared(file1, file2))
-						continue;
-
-					if (file1 != file2) {
-						ret = compare_files(res, file1,
-								    file2);
-						if (ret)
-							return ret;
-						break;
-					}
-				}
-			}
+			ret = walk_dupe_hashes(dups, res);
+			if (ret)
+				return ret;
 		}
 
 		node = rb_next(node);
