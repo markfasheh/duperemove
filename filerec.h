@@ -39,8 +39,26 @@ void filerec_close_files_list(struct list_head *open_files);
 int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
 			 uint64_t *shared_bytes);
 
+/*
+ * Track unique filerecs in a tree. Two places in the code use this:
+ *	- filerec comparison tracking in filerec.c
+ *	- conversion of large dupe lists in hash-tree.c
+ * User has to define an rb_root, and a "free all" function.
+ */
+struct filerec_token {
+	struct filerec	*t_file;
+	struct rb_node	t_node;
+};
+struct filerec_token *find_filerec_token_rb(struct rb_root *root,
+					    struct filerec *val);
+void insert_filerec_token_rb(struct rb_root *root,
+			     struct filerec_token *token);
+void filerec_token_free(struct filerec_token *token);
+struct filerec_token *filerec_token_new(struct filerec *file);
+
 int filerecs_compared(struct filerec *file1, struct filerec *file2);
 int mark_filerecs_compared(struct filerec *file1, struct filerec *file2);
+
 
 struct fiemap_ctxt;
 struct fiemap_ctxt *alloc_fiemap_ctxt(void);

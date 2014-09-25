@@ -27,36 +27,71 @@ struct rb_root filerec_by_inum = RB_ROOT;
 unsigned long long num_filerecs = 0ULL;
 
 declare_alloc_tracking(filerec);
+declare_alloc_tracking(filerec_token);
 
 void init_filerec(void)
 {
 	INIT_LIST_HEAD(&filerec_list);
 }
 
-struct files_compared {
-	struct filerec	*file;
-	struct rb_node	node;
-};
-
-declare_alloc_tracking(files_compared);
-
-struct files_compared *files_compared_search(struct filerec *file,
-					     struct filerec *val)
+struct filerec_token *find_filerec_token_rb(struct rb_root *root,
+					    struct filerec *val)
 {
-	struct rb_node *n = file->comparisons.rb_node;
-	struct files_compared *c;
+	struct rb_node *n = root->rb_node;
+	struct filerec_token *t;
 
 	while (n) {
-		c = rb_entry(n, struct files_compared, node);
+		t = rb_entry(n, struct filerec_token, t_node);
 
-		if (c->file > val)
+		if (t->t_file > val)
 			n = n->rb_left;
-		else if (c->file < val)
+		else if (t->t_file < val)
 			n = n->rb_right;
 		else
-			return c;
+			return t;
 	}
 	return NULL;
+}
+
+void insert_filerec_token_rb(struct rb_root *root,
+			     struct filerec_token *token)
+{
+	struct rb_node **p = &root->rb_node;
+	struct rb_node *parent = NULL;
+	struct filerec_token *tmp;
+
+	while (*p) {
+		parent = *p;
+
+		tmp = rb_entry(parent, struct filerec_token, t_node);
+
+		if (tmp->t_file > token->t_file)
+			p = &(*p)->rb_left;
+		else if (tmp->t_file < token->t_file)
+			p = &(*p)->rb_right;
+		else
+			abort_lineno(); /* We should never find a duplicate */
+	}
+
+	rb_link_node(&token->t_node, parent, p);
+	rb_insert_color(&token->t_node, root);
+}
+
+void filerec_token_free(struct filerec_token *token)
+{
+	if (token)
+		free_filerec_token(token);
+}
+
+struct filerec_token *filerec_token_new(struct filerec *file)
+{
+	struct filerec_token *token = malloc_filerec_token();
+
+	if (token) {
+		rb_init_node(&token->t_node);
+		token->t_file = file;
+	}
+	return token;
 }
 
 int filerecs_compared(struct filerec *file1, struct filerec *file2)
@@ -74,39 +109,15 @@ int filerecs_compared(struct filerec *file1, struct filerec *file2)
 		test = file1;
 	}
 
-	if (files_compared_search(file, test))
+	if (find_filerec_token_rb(&file->comparisons, test))
 		return 1;
 
 	return 0;
 }
 
-static void files_compared_insert(struct filerec *file,
-				  struct files_compared *c)
-{
-	struct rb_node **p = &file->comparisons.rb_node;
-	struct rb_node *parent = NULL;
-	struct files_compared *tmp;
-
-	while (*p) {
-		parent = *p;
-
-		tmp = rb_entry(parent, struct files_compared, node);
-
-		if (tmp->file > c->file)
-			p = &(*p)->rb_left;
-		else if (tmp->file < c->file)
-			p = &(*p)->rb_right;
-		else
-			abort_lineno(); /* We should never find a duplicate */
-	}
-
-	rb_link_node(&c->node, parent, p);
-	rb_insert_color(&c->node, &file->comparisons);
-}
-
 int mark_filerecs_compared(struct filerec *file1, struct filerec *file2)
 {
-	struct files_compared *c;
+	struct filerec_token *t;
 	struct filerec *file = file1;
 	struct filerec *test = file2;
 
@@ -115,17 +126,14 @@ int mark_filerecs_compared(struct filerec *file1, struct filerec *file2)
 		test = file1;
 	}
 
-	if (files_compared_search(file, test))
+	if (find_filerec_token_rb(&file->comparisons, test))
 		return 0;
 
-	c = calloc_files_compared(1);
-	if (!c)
+	t = filerec_token_new(test);
+	if (!t)
 		return ENOMEM;
 
-	c->file = test;
-	rb_init_node(&c->node);
-
-	files_compared_insert(file, c);
+	insert_filerec_token_rb(&file->comparisons, t);
 
 	return 0;
 }
@@ -133,13 +141,13 @@ int mark_filerecs_compared(struct filerec *file1, struct filerec *file2)
 static void free_compared_tree(struct filerec *file)
 {
 	struct rb_node *n = file->comparisons.rb_node;
-	struct files_compared *c;
+	struct filerec_token *t;
 
 	while (n) {
-		c = rb_entry(n, struct files_compared, node);
+		t = rb_entry(n, struct filerec_token, t_node);
 		n = rb_next(n);
-		rb_erase(&c->node, &file->comparisons);
-		free_files_compared(c);
+		rb_erase(&t->t_node, &file->comparisons);
+		filerec_token_free(t);
 	}
 }
 

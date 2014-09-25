@@ -27,6 +27,9 @@ struct dupe_blocks_list {
 	unsigned char		dl_hash[DIGEST_LEN_MAX];
 };
 
+/* Max number of blocks before we'll add filerec tokens */
+#define	DUPLIST_CONVERT_LIMIT		30000
+
 /* Fiemap flags that would cause us to skip comparison of the block */
 #define FIEMAP_SKIP_FLAGS	(FIEMAP_EXTENT_UNKNOWN|FIEMAP_EXTENT_DATA_INLINE|FIEMAP_EXTENT_UNWRITTEN)
 /* Fiemap flags that indicate the extent may have already been deduped */
@@ -46,14 +49,6 @@ struct file_block {
 					  * with this md5. */
 
 	struct list_head	b_file_next; /* filerec->block_list */
-};
-
-/* Max number of blocks before we'll add filerec tokens */
-#define	DUPLIST_CONVERT_LIMIT		30000
-
-struct filerec_token {
-	struct filerec	*t_file;
-	struct rb_node	t_node;
 };
 
 int insert_hashed_block(struct hash_tree *tree, unsigned char *digest,
