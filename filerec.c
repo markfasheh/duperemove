@@ -348,7 +348,8 @@ static int do_fiemap(struct fiemap *fiemap, struct filerec *file,
 }
 
 int fiemap_iter_get_flags(struct fiemap_ctxt *ctxt, struct filerec *file,
-			  uint64_t blkno, unsigned int *flags)
+			  uint64_t blkno, unsigned int *flags,
+			  unsigned int *hole)
 {
 	int err;
 	uint64_t new_start;
@@ -356,6 +357,7 @@ int fiemap_iter_get_flags(struct fiemap_ctxt *ctxt, struct filerec *file,
 	struct fiemap_extent *extent;
 
 	*flags = 0;
+	*hole = 0;
 
 	if (ctxt == NULL)
 		return 0;
@@ -377,6 +379,12 @@ check:
 	extent = &fiemap->fm_extents[ctxt->idx];
 	if (block_contained(blkno, extent)) {
 		*flags = extent->fe_flags;
+		return 0;
+	}
+
+	/* blkno is in a hole, no need to move forward an extent yet */
+	if (blkno < extent->fe_logical) {
+		*hole = 1;
 		return 0;
 	}
 

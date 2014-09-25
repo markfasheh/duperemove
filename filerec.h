@@ -64,5 +64,6 @@ struct fiemap_ctxt;
 struct fiemap_ctxt *alloc_fiemap_ctxt(void);
 void fiemap_ctxt_init(struct fiemap_ctxt *ctxt);
 int fiemap_iter_get_flags(struct fiemap_ctxt *ctxt, struct filerec *file,
-			  uint64_t blkno, unsigned int *flags);
+			  uint64_t blkno, unsigned int *flags,
+			  unsigned int *hole);
 #endif /* __FILEREC__ */

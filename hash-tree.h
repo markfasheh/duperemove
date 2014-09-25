@@ -37,6 +37,7 @@ struct dupe_blocks_list {
 
 #define FILE_BLOCK_SKIP_COMPARE	0x0001
 #define FILE_BLOCK_DEDUPED	0x0002
+#define FILE_BLOCK_HOLE		0x0004
 
 struct file_block {
 	struct dupe_blocks_list	*b_parent;

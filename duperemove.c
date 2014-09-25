@@ -365,7 +365,7 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 	ssize_t bytes = 0, bytes_read = 0;
 	int ret = 0;
 	struct fiemap_ctxt *fc;
-	unsigned int flags;
+	unsigned int flags, hole;
 
 	char *buf = malloc(blocksize);
 	assert(buf != NULL);
@@ -405,11 +405,12 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 		if (bytes_read > 0 && bytes < blocksize)
 			continue;
 
-		flags = 0;
+		flags = hole = 0;
 		if (fc) {
 			unsigned int fieflags = 0;
 
-			ret = fiemap_iter_get_flags(fc, file, off, &fieflags);
+			ret = fiemap_iter_get_flags(fc, file, off, &fieflags,
+						    &hole);
 			if (ret) {
 				fprintf(stderr,
 					"Fiemap error %d while scanning file "
@@ -419,6 +420,8 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 				free(fc);
 				fc = NULL;
 			} else {
+				if (hole)
+					flags |= FILE_BLOCK_HOLE;
 				if (fieflags & FIEMAP_SKIP_FLAGS)
 					flags |= FILE_BLOCK_SKIP_COMPARE;
 				if (fieflags & FIEMAP_DEDUPED_FLAGS)
@@ -972,8 +975,10 @@ static int walk_dupe_hashes(struct dupe_blocks_list *dups,
 	struct file_block *block1, *block2;
 	struct filerec *file1, *file2;
 
+#define SKIP_FLAGS	(FILE_BLOCK_SKIP_COMPARE|FILE_BLOCK_HOLE)
+
 	list_for_each_entry(block1, &dups->dl_list, b_list) {
-		if (block1->b_flags & FILE_BLOCK_SKIP_COMPARE)
+		if (block1->b_flags & SKIP_FLAGS)
 			continue;
 
 		file1 = block1->b_file;
@@ -981,7 +986,7 @@ static int walk_dupe_hashes(struct dupe_blocks_list *dups,
 		list_for_each_entry_continue(block2,
 					     &dups->dl_list,
 					     b_list) {
-			if (block2->b_flags & FILE_BLOCK_SKIP_COMPARE)
+			if (block2->b_flags & SKIP_FLAGS)
 				continue;
 
 			/*
