@@ -8,8 +8,6 @@
     mode for hash file usage. Now the user can run duperemove, with one command, on a regular basis and we'll automatically
     keep the hash database updated.
 
-- Do checksumming in seperate threads
-
 - Add an optional mode to do duplicate checking with resolution of extent
   owners.
 
