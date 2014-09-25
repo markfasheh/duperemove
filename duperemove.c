@@ -462,9 +462,13 @@ err_noclose:
 
 	g_mutex_lock(tree_mutex);
 	remove_hashed_blocks(tree, file);
-	g_mutex_unlock(tree_mutex);
-
+	/*
+	 * filerec_free will remove from the filerec tree keep it
+	 * under tree_mutex until we have a need for real locking in
+	 * filerec.c
+	 */
 	filerec_free(file);
+	g_mutex_unlock(tree_mutex);
 
 	return;
 }
