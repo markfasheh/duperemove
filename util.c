@@ -125,4 +125,5 @@ void print_mem_stats(void)
 	show_allocs_dupe_extents();
 	show_allocs_extent();
 	show_allocs_filerec();
+	show_allocs_files_compared();
 }

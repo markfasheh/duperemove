@@ -23,6 +23,8 @@ struct filerec {
 	struct list_head	rec_list;	/* all filerecs */
 
 	struct list_head	tmp_list;
+
+	struct rb_root		comparisons;
 };
 
 void init_filerec(void);
@@ -36,5 +38,8 @@ void filerec_close_files_list(struct list_head *open_files);
 
 int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
 			 uint64_t *shared_bytes);
+
+int filerecs_compared(struct filerec *file1, struct filerec *file2);
+int mark_filerecs_compared(struct filerec *file1, struct filerec *file2);
 
 #endif /* __FILEREC__ */

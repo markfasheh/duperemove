@@ -14,6 +14,7 @@ struct dupe_extents {
 	uint64_t	de_score;
 
 	struct list_head	de_extents;
+	struct rb_root		de_extents_root;
 
 	struct rb_node		de_node;
 };
@@ -25,6 +26,7 @@ struct extent	{
 	struct filerec	*e_file;
 
 	struct list_head	e_list; /* For de_extents */
+	struct rb_node		e_node; /* For de_extents_root */
 
 	/* Each file keeps a list of it's own dupes. This makes it
 	 * easier to remove overlapping duplicates. */

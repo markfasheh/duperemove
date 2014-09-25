@@ -42,28 +42,63 @@ static struct extent *alloc_extent(struct filerec *file, uint64_t loff)
 	if (e) {
 		INIT_LIST_HEAD(&e->e_list);
 		INIT_LIST_HEAD(&e->e_file_extents);
+		rb_init_node(&e->e_node);
 		e->e_file = file;
 		e->e_loff = loff;
 	}
 	return e;
 }
 
-static int insert_extent_list(struct dupe_extents *dext, struct extent *e)
+static int extents_rb_cmp(struct extent *e1, struct extent *e2)
 {
-	struct extent *tmp;
+	if (e1->e_file > e2->e_file)
+		return -1;
+	if (e1->e_file < e2->e_file)
+		return 1;
+	if (e1->e_loff > e2->e_loff)
+		return -1;
+	if (e1->e_loff < e2->e_loff)
+		return 1;
+	return 0;
+}
 
-	list_for_each_entry(tmp, &dext->de_extents, e_list) {
-		if (tmp->e_loff == e->e_loff && tmp->e_file == e->e_file)
+static int insert_extent_rb(struct dupe_extents *dext, struct extent *e)
+{
+	int res;
+	struct extent *tmp;
+	struct rb_node **p = &dext->de_extents_root.rb_node;
+	struct rb_node *parent = NULL;
+
+	while (*p) {
+		parent = *p;
+
+		tmp = rb_entry(parent, struct extent, e_node);
+		res = extents_rb_cmp(tmp, e);
+		if (res < 0) {
+			p = &(*p)->rb_left;
+		} else if (res > 0) {
+			p = &(*p)->rb_right;
+		} else {
 			return 1;
+		}
 	}
 
-	e->e_parent = dext;
-	dext->de_num_dupes++;
-	list_add_tail(&e->e_list, &dext->de_extents);
-
-//	dext->de_score += dext->de_len;
-
+	rb_link_node(&e->e_node, parent, p);
+	rb_insert_color(&e->e_node, &dext->de_extents_root);
 	return 0;
+}
+
+static int insert_extent_list(struct dupe_extents *dext, struct extent *e)
+{
+	/* We keep this tree free of duplicates  */
+	if (insert_extent_rb(dext, e) == 0) {
+		e->e_parent = dext;
+		dext->de_num_dupes++;
+		list_add_tail(&e->e_list, &dext->de_extents);
+		return 0;
+	}
+
+	return 1;
 }
 
 static void insert_dupe_extents(struct results_tree *res,
@@ -159,6 +194,8 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 		memcpy(dext->de_hash, digest, digest_len);
 		dext->de_len = len;
 		INIT_LIST_HEAD(&dext->de_extents);
+		rb_init_node(&dext->de_node);
+		dext->de_extents_root = RB_ROOT;
 
 		insert_dupe_extents(res, dext);
 
@@ -193,6 +230,7 @@ static uint64_t extent_len(struct extent *extent)
 static void remove_extent(struct results_tree *res, struct extent *extent)
 {
 	struct dupe_extents *p = extent->e_parent;
+	struct rb_node *n;
 
 again:
 	p->de_score -= p->de_len;
@@ -200,14 +238,16 @@ again:
 
 	list_del_init(&extent->e_list);
 	list_del_init(&extent->e_file_extents);
+	rb_erase(&extent->e_node, &p->de_extents_root);
 	free_extent(extent);
 
 	if (p->de_num_dupes == 1) {
 		/* It doesn't make sense to have one extent in a dup
 		 * list. */
-		abort_on(list_empty(&p->de_extents));/* logic error */
+		abort_on(RB_EMPTY_ROOT(&p->de_extents_root));/* logic error */
 
-		extent = list_entry(p->de_extents.next, struct extent, e_list);
+		n = rb_first(&p->de_extents_root);
+		extent = rb_entry(n, struct extent, e_node);
 		goto again;
 	}
 
