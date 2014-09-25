@@ -172,6 +172,30 @@ static void insert_extent_list_free(struct dupe_extents *dext,
 	}
 }
 
+static struct dupe_extents *dupe_extents_new(struct results_tree *res,
+					     unsigned char *digest,
+					     uint64_t len)
+{
+	struct dupe_extents *dext;
+
+	dext = calloc_dupe_extents(1);
+	if (!dext)
+		return NULL;
+
+	memcpy(dext->de_hash, digest, digest_len);
+	dext->de_len = len;
+	INIT_LIST_HEAD(&dext->de_extents);
+	dext->de_extents_root = RB_ROOT;
+
+	rb_init_node(&dext->de_node);
+
+	insert_dupe_extents(res, dext);
+
+	dext->de_score = len;
+
+	return dext;
+}
+
 int insert_result(struct results_tree *res, unsigned char *digest,
 		  struct filerec *recs[2], uint64_t startoff[2],
 		  uint64_t endoff[2])
@@ -187,19 +211,9 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 
 	dext = find_dupe_extents(res, digest, len);
 	if (!dext) {
-		dext = calloc_dupe_extents(1);
+		dext = dupe_extents_new(res, digest, len);
 		if (!dext)
 			return ENOMEM;
-
-		memcpy(dext->de_hash, digest, digest_len);
-		dext->de_len = len;
-		INIT_LIST_HEAD(&dext->de_extents);
-		rb_init_node(&dext->de_node);
-		dext->de_extents_root = RB_ROOT;
-
-		insert_dupe_extents(res, dext);
-
-		dext->de_score = len;
 		add_score = 0;
 	}
 

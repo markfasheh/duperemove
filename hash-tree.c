@@ -33,6 +33,97 @@
 
 declare_alloc_tracking(file_block);
 declare_alloc_tracking(dupe_blocks_list);
+declare_alloc_tracking(filerec_token);
+
+struct filerec_token *find_filerec_token_rb(struct dupe_blocks_list *dups,
+					    struct filerec *val)
+{
+	struct rb_node *n = dups->dl_files_root.rb_node;
+	struct filerec_token *t;
+
+	while (n) {
+		t = rb_entry(n, struct filerec_token, t_node);
+
+		if (t->t_file > val)
+			n = n->rb_left;
+		else if (t->t_file < val)
+			n = n->rb_right;
+		else
+			return t;
+	}
+	return NULL;
+}
+
+static void insert_filerec_token_rb(struct dupe_blocks_list *dups,
+				    struct filerec_token *token)
+{
+	struct rb_node **p = &dups->dl_files_root.rb_node;
+	struct rb_node *parent = NULL;
+	struct filerec_token *tmp;
+
+	while (*p) {
+		parent = *p;
+
+		tmp = rb_entry(parent, struct filerec_token, t_node);
+
+		if (tmp->t_file > token->t_file)
+			p = &(*p)->rb_left;
+		else if (tmp->t_file < token->t_file)
+			p = &(*p)->rb_right;
+		else
+			abort_lineno(); /* We should never find a duplicate */
+	}
+
+	rb_link_node(&token->t_node, parent, p);
+	rb_insert_color(&token->t_node, &dups->dl_files_root);
+}
+
+static int add_one_filerec_token(struct dupe_blocks_list *dups,
+				 struct filerec *file)
+{
+	struct filerec_token *t = NULL;
+
+	if (find_filerec_token_rb(dups, file))
+		return 0;
+
+	t = malloc_filerec_token();
+	if (!t)
+		return ENOMEM;
+
+	rb_init_node(&t->t_node);
+	t->t_file = file;
+
+	insert_filerec_token_rb(dups, t);
+	dups->dl_num_files++;
+	return 0;
+}
+
+static int add_filerec_tokens(struct dupe_blocks_list *dups)
+{
+	struct file_block *block;
+
+	list_for_each_entry(block, &dups->dl_list, b_list) {
+		if (add_one_filerec_token(dups, block->b_file))
+			return ENOMEM;
+	}
+	return 0;
+}
+
+static void free_filerec_tokens(struct dupe_blocks_list *dups)
+{
+	struct rb_node *node = rb_first(&dups->dl_files_root);
+	struct filerec_token *t;
+
+	while (node) {
+		t = rb_entry(node, struct filerec_token, t_node);
+
+		node = rb_next(node);
+
+		dups->dl_num_files--;
+		rb_erase(&t->t_node, &dups->dl_files_root);
+		free_filerec_token(t);
+	}
+}
 
 static void insert_block_list(struct hash_tree *tree,
 			      struct dupe_blocks_list *list)
@@ -103,8 +194,15 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 		rb_init_node(&d->dl_node);
 		rb_init_node(&d->dl_by_size);
 		INIT_LIST_HEAD(&d->dl_list);
+		INIT_LIST_HEAD(&d->dl_large_list);
+		d->dl_files_root = RB_ROOT;
 
 		insert_block_list(tree, d);
+	}
+
+	if (d->dl_num_elem >= DUPLIST_CONVERT_LIMIT && d->dl_num_files == 0) {
+		if (add_filerec_tokens(d))
+			return ENOMEM;
 	}
 
 	e->b_file = file;
@@ -113,6 +211,11 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 	list_add_tail(&e->b_file_next, &file->block_list);
 	file->num_blocks++;
 	e->b_parent = d;
+
+	if (d->dl_num_files) {
+		if (add_one_filerec_token(d, file))
+			return ENOMEM;
+	}
 
 	d->dl_num_elem++;
 	list_add_tail(&e->b_list, &d->dl_list);
@@ -141,6 +244,7 @@ static void remove_hashed_block(struct hash_tree *tree,
 		rb_erase(&blocklist->dl_node, &tree->root);
 		tree->num_hashes--;
 
+		free_filerec_tokens(blocklist);
 		free_dupe_blocks_list(blocklist);
 	}
 

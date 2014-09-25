@@ -14,6 +14,16 @@ struct dupe_blocks_list {
 	unsigned int	dl_num_elem;
 	struct list_head	dl_list;
 
+	/*
+	 * num_files and files_root are used when the total number of
+	 * blocks in the list exceeds DUPLIST_CONVERT_LIMIT (defined
+	 * below)
+	 */
+	unsigned int		dl_num_files;
+	struct rb_root		dl_files_root;
+	struct list_head	dl_large_list; /* Temporary list for
+						* use by extent finding code */
+
 	unsigned char		dl_hash[DIGEST_LEN_MAX];
 };
 
@@ -27,6 +37,14 @@ struct file_block {
 					  * with this md5. */
 
 	struct list_head	b_file_next; /* filerec->block_list */
+};
+
+/* Max number of blocks before we'll add filerec tokens */
+#define	DUPLIST_CONVERT_LIMIT		30000
+
+struct filerec_token {
+	struct filerec	*t_file;
+	struct rb_node	t_node;
 };
 
 int insert_hashed_block(struct hash_tree *tree, unsigned char *digest,

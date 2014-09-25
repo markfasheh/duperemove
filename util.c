@@ -126,4 +126,5 @@ void print_mem_stats(void)
 	show_allocs_extent();
 	show_allocs_filerec();
 	show_allocs_files_compared();
+	show_allocs_filerec_token();
 }

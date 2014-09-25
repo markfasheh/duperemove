@@ -150,7 +150,8 @@ static void print_dupes_table(struct results_tree *res)
 			printf("\n");
 		}
 
-		printf("Start\t\tLength\t\tFilename\n");
+		printf("Start\t\tLength\t\tFilename (%u extents)\n",
+		       dext->de_num_dupes);
 		list_for_each_entry(extent, &dext->de_extents, e_list) {
 			printf("%s\t%s\t\"%s\"\n",
 			       pretty_size(extent->e_loff),
@@ -886,6 +887,50 @@ static int compare_files(struct results_tree *res, struct filerec *file1, struct
 }
 
 /*
+ * This dupe list is too large for the extent search algorithm to
+ * handle efficiently. Instead of walking the block list, we walk the
+ * list of files referenced and compare them to each other directly.
+ *
+ * A future improvement might be to always do this, at the cost of
+ * extra memory usage.
+ */
+static int walk_large_dups(struct hash_tree *tree,
+			   struct results_tree *res,
+			   struct dupe_blocks_list *dups)
+{
+	int ret;
+	struct rb_node *node = rb_first(&dups->dl_files_root);
+	struct rb_node *next;
+	struct filerec_token *t1, *t2;
+	struct filerec *file1, *file2;
+
+	while (node) {
+		t1 = rb_entry(node, struct filerec_token, t_node);
+		file1 = t1->t_file;
+
+		next = rb_next(node);
+		while (next) {
+			t2 = rb_entry(next, struct filerec_token, t_node);
+			file2 = t2->t_file;
+
+			/* filerec token tree does not allow duplicates */
+			abort_on(file1 == file2);
+			if (!filerecs_compared(file1, file2)) {
+				ret = compare_files(res, file1, file2);
+				if (ret)
+					return ret;
+				break;
+			}
+
+			next = rb_next(next);
+		}
+		node = rb_next(node);
+	}
+
+	return 0;
+}
+
+/*
  * The following doesn't actually find all dupes. In the case of a
  * n-way dupe when n > 2 it only finds n dupes. But this shouldn't be
  * a problem because if it missed a "better pair" then it will find it
@@ -899,6 +944,7 @@ static int find_all_dups(struct hash_tree *tree, struct results_tree *res)
 	struct dupe_blocks_list *dups;
 	struct file_block *block1, *block2;
 	struct filerec *file1, *file2;
+	LIST_HEAD(large_dupes);
 
 	while (1) {
 		if (node == NULL)
@@ -906,7 +952,14 @@ static int find_all_dups(struct hash_tree *tree, struct results_tree *res)
 
 		dups = rb_entry(node, struct dupe_blocks_list, dl_node);
 
-		if (dups->dl_num_elem > 1) {
+		if (dups->dl_num_files) {
+			list_add_tail(&dups->dl_large_list, &large_dupes);
+
+			printf("Hash (\"");
+			debug_print_digest(stdout, dups->dl_hash);
+			printf("\") has %u items (across %u files), processing later.\n",
+			       dups->dl_num_elem, dups->dl_num_files);
+		} else if (dups->dl_num_elem > 1) {
 			list_for_each_entry(block1, &dups->dl_list, b_list) {
 				file1 = block1->b_file;
 				block2 = block1;
@@ -933,6 +986,12 @@ static int find_all_dups(struct hash_tree *tree, struct results_tree *res)
 		}
 
 		node = rb_next(node);
+	}
+
+	list_for_each_entry(dups, &large_dupes, dl_large_list) {
+		ret = walk_large_dups(tree, res, dups);
+		if (ret)
+			return ret;
 	}
 
 	return 0;
