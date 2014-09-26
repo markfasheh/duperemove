@@ -547,6 +547,10 @@ static void usage(const char *prog)
 	printf("\t-v\t\tBe verbose.\n");
 	printf("\t--hash-threads=N\n\t\t\tUse N threads for hashing phase. "
 	       "Default is automatically detected.\n");
+	printf("\t--read-hashes=hashfile\n\t\t\tRead hashes from a hashfile. "
+	       "A file list is not required with this option.\n");
+	printf("\t--write-hashes=hashfile\n\t\t\tWrite hashes to a hashfile. "
+	       "These can be read in at a later date and deduped from.\n");
 	printf("\t--debug\t\tPrint debug messages, forces -v if selected.\n");
 	printf("\t--help\t\tPrints this help text.\n");
 }
