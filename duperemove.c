@@ -71,6 +71,7 @@ static int write_hashes = 0;
 static int scramble_filenames = 0;
 static int read_hashes = 0;
 static char *serialize_fname = NULL;
+static unsigned int hash_threads = 0;
 
 static void debug_print_block(struct file_block *e)
 {
@@ -481,17 +482,18 @@ static int populate_hash_tree(struct hash_tree *tree)
 	int ret = 0;
 	struct filerec *file, *tmp;
 	GMutex tree_mutex;
+	GError *err = NULL;
+	GThreadPool *pool;
 
 	g_mutex_init(&tree_mutex);
-	g_dataset_set_data_full(tree, "mutex", &tree_mutex, (GDestroyNotify) g_mutex_clear);
+	g_dataset_set_data_full(tree, "mutex", &tree_mutex,
+				(GDestroyNotify) g_mutex_clear);
 
-	GError *err = NULL;
-	GThreadPool *pool = g_thread_pool_new(
-		(GFunc) csum_whole_file,
-		tree,
-		g_get_num_processors(),
-		FALSE,
-		&err);
+	if (!hash_threads)
+		hash_threads = g_get_num_processors();
+
+	pool = g_thread_pool_new((GFunc) csum_whole_file, tree, hash_threads,
+				 FALSE, &err);
 	if (err != NULL) {
 		fprintf(
 			stderr,
@@ -502,6 +504,8 @@ static int populate_hash_tree(struct hash_tree *tree)
 		err = NULL;
 		goto out;
 	}
+
+	printf("Using %d threads for file hashing phase\n", hash_threads);
 
 	list_for_each_entry_safe(file, tmp, &filerec_list, rec_list) {
 		g_thread_pool_push(pool, file, &err);
@@ -541,6 +545,8 @@ static void usage(const char *prog)
 	       DEFAULT_BLOCKSIZE / 1024);
 	printf("\t-h\t\tPrint numbers in human-readble format.\n");
 	printf("\t-v\t\tBe verbose.\n");
+	printf("\t--hash-threads=N\n\t\t\tUse N threads for hashing phase. "
+	       "Default is automatically detected.\n");
 	printf("\t--debug\t\tPrint debug messages, forces -v if selected.\n");
 	printf("\t--help\t\tPrints this help text.\n");
 }
@@ -693,6 +699,7 @@ enum {
 	WRITE_HASHES_OPTION,
 	WRITE_HASHES_SCRAMBLE_OPTION,
 	READ_HASHES_OPTION,
+	HASH_THREADS_OPTION,
 };
 
 /*
@@ -708,6 +715,7 @@ static int parse_options(int argc, char **argv)
 		{ "write-hashes", 1, 0, WRITE_HASHES_OPTION },
 		{ "write-hashes-scramble", 1, 0, WRITE_HASHES_SCRAMBLE_OPTION },
 		{ "read-hashes", 1, 0, READ_HASHES_OPTION },
+		{ "hash-threads", 1, 0, HASH_THREADS_OPTION },
 		{ 0, 0, 0, 0}
 	};
 
@@ -754,6 +762,11 @@ static int parse_options(int argc, char **argv)
 		case READ_HASHES_OPTION:
 			read_hashes = 1;
 			serialize_fname = strdup(optarg);
+			break;
+		case HASH_THREADS_OPTION:
+			hash_threads = strtoul(optarg, NULL, 10);
+			if (!hash_threads)
+				return EINVAL;
 			break;
 		case HELP_OPTION:
 		case '?':
