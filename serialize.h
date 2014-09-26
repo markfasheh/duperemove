@@ -47,7 +47,8 @@ struct file_info {
 	uint16_t	rec_len;
 	uint16_t	name_len;
 	uint32_t	pad0;
-/*20*/	uint64_t	pad1[3];
+	uint64_t	subvolid;
+/*20*/	uint64_t	pad1[2];
 	char		name[0];
 };
 

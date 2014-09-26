@@ -17,7 +17,6 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/statfs.h>
 #include <limits.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -32,7 +31,6 @@
 #include <ctype.h>
 #include <getopt.h>
 #include <inttypes.h>
-#include <linux/magic.h>
 #include <assert.h>
 #include <linux/fiemap.h>
 
@@ -47,6 +45,7 @@
 #include "dedupe.h"
 #include "util.h"
 #include "serialize.h"
+#include "btrfs-util.h"
 #include "debug.h"
 
 /* exported via debug.h */
@@ -593,44 +592,18 @@ static int walk_dir(const char *name)
 	return 0;
 }
 
-static int check_file_fs(struct filerec *file, int *bad_fs)
-{
-	int ret;
-	struct statfs fs;
-
-	*bad_fs = 0;
-
-	if (!run_dedupe)
-		return 0;
-
-	ret = filerec_open(file, 0);
-	if (ret)
-		return ret;
-
-	ret = fstatfs(file->fd, &fs);
-	if (ret) {
-		ret = -errno;
-		goto out;
-	}
-
-	if (fs.f_type != BTRFS_SUPER_MAGIC)
-		*bad_fs = 1;
-
-out:
-	filerec_close(file);
-	return ret;
-}
-
 /*
  * Returns nonzero on fatal errors only
  */
 static int add_file(const char *name, int dirfd)
 {
 	int ret, len = strlen(name);
-	int bad_fs;
+	int fd;
+	int on_btrfs = 0;
 	struct stat st;
 	char *pathtmp;
 	struct filerec *file;
+	uint64_t subvolid;
 
 	if (len > (path_max - pathp)) {
 		fprintf(stderr, "Path max exceeded: %s %s\n", path, name);
@@ -671,24 +644,56 @@ static int add_file(const char *name, int dirfd)
 		goto out;
 	}
 
-	file = filerec_new(path, st.st_ino);
+	fd = open(path, O_RDONLY);
+	if (fd == -1) {
+		ret = errno;
+		fprintf(stderr, "Error %d: %s while opening file \"%s\". "
+			"Skipping.\n", ret, strerror(ret), path);
+		goto out;
+	}
+
+	ret = check_file_btrfs(fd, &on_btrfs);
+	if (ret) {
+		close(fd);
+		fprintf(stderr, "Skip file \"%s\" due to errors\n", path);
+		goto out;
+	}
+
+	if (run_dedupe && on_btrfs) {
+		close(fd);
+		fprintf(stderr, "Can only dedupe files on btrfs\n");
+		return ENOSYS;
+	}
+
+	if (on_btrfs) {
+		/*
+		 * Inodes between subvolumes on a btrfs file system
+		 * can have the same i_ino. Get the subvolume id of
+		 * our file so hard link detection works.
+		 */
+		ret = lookup_btrfs_subvolid(fd, &subvolid);
+		if (ret) {
+			close(fd);
+			fprintf(stderr,
+				"Error %d: %s while finding subvolid for file "
+				"\"%s\". Skipping.\n", ret, strerror(ret),
+				path);
+			goto out;
+		}
+	} else {
+		subvolid = st.st_dev;
+	}
+
+//	printf("\"%s\", ino: %llu, subvolid: %"PRIu64"\n", path,
+//	       (unsigned long long)st.st_ino, subvolid);
+
+	close(fd);
+
+	file = filerec_new(path, st.st_ino, subvolid);
 	if (file == NULL) {
 		fprintf(stderr, "Out of memory while allocating file record "
 			"for: %s\n", path);
 		return ENOMEM;
-	}
-
-	ret = check_file_fs(file, &bad_fs);
-	if (ret) {
-		fprintf(stderr, "Skip file \"%s\" due to errors\n",
-			file->filename);
-		filerec_free(file);
-		return ENOMEM;
-	}
-	if (bad_fs) {
-		fprintf(stderr, "Can only dedupe files on btrfs\n");
-		filerec_free(file);
-		return ENOSYS;
 	}
 
 out:

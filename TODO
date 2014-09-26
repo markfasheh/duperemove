@@ -1,6 +1,3 @@
-- Inodes between subvolumes on a btrfs file system can have the same i_ino (hooray!).
-  We need to handle this, probably by recording subvolid on the filerec.
-
 - Store results of our search to speed up subsequent runs.
   - When writing hashes, store latest btrfs transaction id in the hash file (import find-new from btrfsprogs for this)
   - When reading hashes and we have a transaction id, do a scan of btrfs objects to see which inodes have changed.

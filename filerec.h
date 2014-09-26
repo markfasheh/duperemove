@@ -11,6 +11,7 @@ extern unsigned long long num_filerecs;
 struct filerec {
 	int		fd;			/* file descriptor */
 	char	*filename;		/* path to file */
+	uint64_t subvolid;
 
 	uint64_t		inum;
 	struct rb_node		inum_node;
@@ -29,7 +30,8 @@ struct filerec {
 
 void init_filerec(void);
 
-struct filerec *filerec_new(const char *filename, uint64_t inum);
+struct filerec *filerec_new(const char *filename, uint64_t inum,
+			    uint64_t subvolid);
 void filerec_free(struct filerec *file);
 int filerec_open(struct filerec *file, int write);
 void filerec_close(struct filerec *file);
