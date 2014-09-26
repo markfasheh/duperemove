@@ -75,6 +75,23 @@ Print numbers in human-readable format.
 Be verbose.
 
 .TP
+\fB\--hash-threads=N\fR
+Use N threads for hashing phase. Default is automatically detected
+based on number of host cpus.
+
+.TP
+\fB\--read-hashes=hashfile\fR
+Read hashes from a hashfile. A file list is not required with this
+option. Dedupe can be done if duperemove is run from the same base
+directory as is stored in the hash file (basically duperemove has to
+be able to find the files).
+
+.TP
+\fB\--write-hashes=hashfile\fR
+Write hashes to a hashfile. These can be read in at a later date and
+deduped from.
+
+.TP
 \fB\-?, --help\fR
 Prints help text.
 
