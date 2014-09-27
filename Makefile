@@ -38,7 +38,7 @@ MANDIR = $(SHAREDIR)/man
 all: $(progs) kernel.h list.h btrfs-ioctl.h debug.h
 
 duperemove: $(objects) kernel.h duperemove.c
-	$(CC) $(LIBRARY_FLAGS) $(CFLAGS) $(objects) -o duperemove
+	$(CC) $(CFLAGS) $(objects) -o duperemove $(LIBRARY_FLAGS)
 
 tarball: clean
 	mkdir -p $(TEMP_INSTALL_DIR)/$(DIST)
@@ -60,14 +60,14 @@ install: $(progs) $(MANPAGES)
 	done
 
 csum-test: $(hash_obj) csum-test.c
-	$(CC) $(LIBRARY_FLAGS) $(CFLAGS) $(hash_obj) -o csum-test csum-test.c
+	$(CC) $(CFLAGS) $(hash_obj) -o csum-test csum-test.c  $(LIBRARY_FLAGS)
 
 filerec-test: filerec.c filerec.h rbtree.o
-	$(CC) $(LIBRARY_FLAGS) $(CFLAGS) -DFILEREC_TEST filerec.c rbtree.o -o filerec-test
+	$(CC) $(CFLAGS) -DFILEREC_TEST filerec.c rbtree.o -o filerec-test $(LIBRARY_FLAGS)
 
 hashstats_obj = $(hash_obj) rbtree.o hash-tree.o filerec.o util.o serialize.o results-tree.o
 hashstats: $(hashstats_obj) hashstats.c
-	$(CC) $(LIBRARY_FLAGS) $(CFLAGS) $(hashstats_obj) hashstats.c -o hashstats
+	$(CC) $(CFLAGS) $(hashstats_obj) hashstats.c -o hashstats $(LIBRARY_FLAGS)
 
 clean:
 	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same filerec-test hashstats csum-*.o *~
