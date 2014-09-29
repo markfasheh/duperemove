@@ -786,12 +786,22 @@ static int parse_options(int argc, char **argv)
 
 	/* Filter out option combinations that don't make sense. */
 	if (write_hashes &&
-	    (read_hashes || run_dedupe))
+	    (read_hashes || run_dedupe)) {
+		if (run_dedupe)
+			fprintf(stderr,
+				"Error: Can not dedupe with --write-hashes "
+				"option. Try writing hashes and then deduping "
+				"with --read-hashes instead.\n");
 		return 1;
+	}
 
 	if (read_hashes) {
-		if (numfiles)
+		if (numfiles) {
+			fprintf(stderr,
+				"Error: --read-hashes option does not take a "
+				"file list argument\n");
 			return 1;
+		}
 		goto out_nofiles;
 	}
 
