@@ -792,6 +792,11 @@ static int parse_options(int argc, char **argv)
 				"Error: Can not dedupe with --write-hashes "
 				"option. Try writing hashes and then deduping "
 				"with --read-hashes instead.\n");
+		if (read_hashes)
+			fprintf(stderr,
+				"Error: Specify only one of --write-hashes or "
+				"--read-hashes.\n");
+
 		return 1;
 	}
 
