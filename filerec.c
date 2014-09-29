@@ -151,8 +151,23 @@ static void free_compared_tree(struct filerec *file)
 	}
 }
 
+static int cmp_filerecs(struct filerec *file1, uint64_t file2_inum,
+			uint64_t file2_subvolid)
+{
+	if (file1->inum < file2_inum)
+		return -1;
+	else if (file1->inum > file2_inum)
+		return 1;
+	if (file1->subvolid < file2_subvolid)
+		return -1;
+	if (file1->subvolid > file2_subvolid)
+		return -1;
+	return 0;
+}
+
 static void insert_filerec(struct filerec *file)
 {
+	int c;
 	struct rb_node **p = &filerec_by_inum.rb_node;
 	struct rb_node *parent = NULL;
 	struct filerec *tmp;
@@ -162,9 +177,10 @@ static void insert_filerec(struct filerec *file)
 
 		tmp = rb_entry(parent, struct filerec, inum_node);
 
-		if (file->inum < tmp->inum)
+		c = cmp_filerecs(tmp, file->inum, file->subvolid);
+		if (c < 0)
 			p = &(*p)->rb_left;
-		else if (file->inum > tmp->inum)
+		else if (c > 0)
 			p = &(*p)->rb_right;
 		else
 			abort_lineno(); /* We should never find a duplicate */
@@ -175,17 +191,19 @@ static void insert_filerec(struct filerec *file)
 	return;
 }
 
-static struct filerec *find_filerec(uint64_t inum)
+static struct filerec *find_filerec(uint64_t inum, uint64_t subvolid)
 {
+	int c;
 	struct rb_node *n = filerec_by_inum.rb_node;
 	struct filerec *file;
 
 	while (n) {
 		file = rb_entry(n, struct filerec, inum_node);
 
-		if (inum < file->inum)
+		c = cmp_filerecs(file, inum, subvolid);
+		if (c < 0)
 			n = n->rb_left;
-		else if (inum > file->inum)
+		else if (c > 0)
 			n = n->rb_right;
 		else
 			return file;
@@ -193,7 +211,8 @@ static struct filerec *find_filerec(uint64_t inum)
 	return NULL;
 }
 
-static struct filerec *filerec_alloc_insert(const char *filename, uint64_t inum)
+static struct filerec *filerec_alloc_insert(const char *filename,
+					    uint64_t inum, uint64_t subvolid)
 {
 	struct filerec *file = calloc_filerec(1);
 
@@ -210,6 +229,7 @@ static struct filerec *filerec_alloc_insert(const char *filename, uint64_t inum)
 		INIT_LIST_HEAD(&file->tmp_list);
 		rb_init_node(&file->inum_node);
 		file->inum = inum;
+		file->subvolid = subvolid;
 		file->comparisons = RB_ROOT;
 
 		insert_filerec(file);
@@ -219,11 +239,12 @@ static struct filerec *filerec_alloc_insert(const char *filename, uint64_t inum)
 	return file;
 }
 
-struct filerec *filerec_new(const char *filename, uint64_t inum)
+struct filerec *filerec_new(const char *filename, uint64_t inum,
+			    uint64_t subvolid)
 {
-	struct filerec *file = find_filerec(inum);
+	struct filerec *file = find_filerec(inum, subvolid);
 	if (!file)
-		file = filerec_alloc_insert(filename, inum);
+		file = filerec_alloc_insert(filename, inum, subvolid);
 	return file;
 }
 
@@ -527,7 +548,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	file = filerec_new(argv[1], 500); /* Use made up ino */
+	file = filerec_new(argv[1], 500, 1); /* Use made up ino */
 	if (!file) {
 		fprintf(stderr, "filerec_new(): malloc error\n");
 		return 1;

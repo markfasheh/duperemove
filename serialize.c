@@ -131,6 +131,7 @@ static int write_file_info(int fd, struct filerec *file, int scramble)
 	finfo.ino = swap64(file->inum);
 	finfo.file_size = 0ULL; /* We don't store this yet */
 	finfo.num_blocks = swap64(file->num_blocks);
+	finfo.subvolid = swap64(file->subvolid);
 
 	name_len = strlen(file->filename);
 	finfo.name_len = swap16(name_len);
@@ -256,6 +257,7 @@ static int read_file(int fd, struct file_info *f, char *fname)
 	f->ino = swap64(disk.ino);
 	f->file_size = swap64(disk.file_size);
 	f->num_blocks = swap64(disk.num_blocks);
+	f->subvolid = swap64(disk.subvolid);
 	f->rec_len = swap16(disk.rec_len);
 	f->name_len = swap16(disk.name_len);
 
@@ -295,7 +297,7 @@ static int read_one_file(int fd, struct hash_tree *tree)
 	dprintf("Load %"PRIu64" hashes for \"%s\"\n", finfo.num_blocks,
 		fname);
 
-	file = filerec_new(fname, finfo.ino);
+	file = filerec_new(fname, finfo.ino, finfo.subvolid);
 	if (file == NULL)
 		return ENOMEM;
 
