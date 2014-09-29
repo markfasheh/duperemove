@@ -661,7 +661,7 @@ static int add_file(const char *name, int dirfd)
 		goto out;
 	}
 
-	if (run_dedupe && on_btrfs) {
+	if (run_dedupe && !on_btrfs) {
 		close(fd);
 		fprintf(stderr, "Can only dedupe files on btrfs\n");
 		return ENOSYS;
