@@ -375,8 +375,9 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 	static long long unsigned cur_num_filerecs = 0;
 
 	GMutex *tree_mutex = g_dataset_get_data(tree, "mutex");
-	cur_num_filerecs++;
-	printf("csum: %s \t[%llu/%llu]\n", file->filename, cur_num_filerecs, num_filerecs);
+
+	printf("csum: %s \t[%llu/%llu]\n", file->filename,
+	       __sync_add_and_fetch(&cur_num_filerecs, 1), num_filerecs);
 
 	fc = alloc_fiemap_ctxt();
 	if (fc == NULL) /* This should be non-fatal */
