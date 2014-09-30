@@ -93,6 +93,21 @@ static void sort_by_size(struct hash_tree *tree)
 	}
 }
 
+static void printf_file_block_flags(struct file_block *block)
+{
+	if (!block->b_flags)
+		return;
+
+	printf("( ");
+	if (block->b_flags & FILE_BLOCK_SKIP_COMPARE)
+		printf("skip_compare ");
+	if (block->b_flags & FILE_BLOCK_DEDUPED)
+		printf("deduped ");
+	if (block->b_flags & FILE_BLOCK_HOLE)
+		printf("hole ");
+	printf(")");
+}
+
 static void print_by_size(void)
 {
 	struct rb_node *node = rb_first(&by_size);
@@ -116,9 +131,13 @@ static void print_by_size(void)
 			list_for_each_entry(block, &dups->dl_list,
 					    b_list) {
 				struct filerec *f = block->b_file;
-				printf("  %s\tloff: %llu lblock: %llu\n", f->filename,
+				printf("  %s\tloff: %llu lblock: %llu "
+				       "flags: 0x%x ", f->filename,
 				       (unsigned long long)block->b_loff,
-				       (unsigned long long)block->b_loff / blocksize);
+				       (unsigned long long)block->b_loff / blocksize,
+				       block->b_flags);
+				printf_file_block_flags(block);
+				printf("\n");
 			}
 		}
 
@@ -133,12 +152,12 @@ static void print_filerecs(void)
 {
 	struct filerec *file;
 
-	printf("Showing %llu files.\nInode\tBlocks Stored\tFilename\n",
+	printf("Showing %llu files.\nInode\tBlocks Stored\tSubvold ID\tFilename\n",
 		num_filerecs);
 
 	list_for_each_entry(file, &filerec_list, rec_list) {
-		printf("%"PRIu64"\t%"PRIu64"\t%s\n", file->inum,
-		       file->num_blocks, file->filename);
+		printf("%"PRIu64"\t%"PRIu64"\t%"PRIu64"\t%s\n", file->inum,
+		       file->num_blocks, file->subvolid, file->filename);
 	}
 }
 
