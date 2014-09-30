@@ -11,6 +11,18 @@
 - Add an optional mode to do duplicate checking with resolution of extent
   owners.
 
+- Multi-threaded extent search.
+  - This needs locking and atomic updates to some fields, so it's not quite
+    as straight forward as threading the hash stage. A start would be to have
+    find_all_dups queue up appropriate dup_blocks_lists to worker threads.
+    The threads have to properly lock the filerec compared trees and results
+    trees. b_seen also needs to be read/written atomically.
+
+- csum_whole_file() still does a read/checksum of holes and unwritten
+  extents (even though we detect and mark them now).  If we calculate and
+  store (in memory) the checksum of a zero'd block, we can skip the read and
+  copy our known value directly into the block digest member.
+
 - Allow checking for similar files by some criteria (approximate size,
   file magic type, file extension, etc)
 
