@@ -544,7 +544,7 @@ static void usage(const char *prog)
 	printf("\t-A\t\tOpens files readonly when deduping. Primarily for use by privileged users on readonly snapshots\n");
 	printf("\t-b bsize\tUse bsize blocks. Default is %dk.\n",
 	       DEFAULT_BLOCKSIZE / 1024);
-	printf("\t-h\t\tPrint numbers in human-readble format.\n");
+	printf("\t-h\t\tPrint numbers in human-readable format.\n");
 	printf("\t-v\t\tBe verbose.\n");
 	printf("\t--hash-threads=N\n\t\t\tUse N threads for hashing phase. "
 	       "Default is automatically detected.\n");
