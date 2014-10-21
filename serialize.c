@@ -34,8 +34,8 @@
 #include "debug.h"
 
 #include "csum.h"
-#include "hash-tree.h"
 #include "filerec.h"
+#include "hash-tree.h"
 
 #include "serialize.h"
 

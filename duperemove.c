@@ -927,23 +927,27 @@ out:
 }
 
 /*
- * Start and extent search at each block in our dups list which is
- * owned by walk_file.
+ * Start an extent search (with orig_block) at each block in our dups
+ * list which is owned by walk_file.
  */
-static void walk_each_shared_dupe(struct file_block *orig_block,
-				  struct filerec *walk_file,
-				  struct results_tree *res)
+static void lookup_walk_file_hash_head(struct file_block *orig_block,
+				       struct filerec *walk_file,
+				       struct results_tree *res)
 {
 	struct dupe_blocks_list *parent = orig_block->b_parent;
 	struct file_block *cur;
+	struct file_hash_head *head = find_file_hash_head(parent, walk_file);
 
-	list_for_each_entry(cur, &parent->dl_list, b_list) {
-		/* Ignore self and any blocks from another file */
+	/* find_file_dups should have checked this for us already */
+	abort_on(head == NULL);
+
+	list_for_each_entry(cur, &head->h_blocks, b_head_list) {
+		/* Ignore self. Technically this shouldn't happen (see above)
+		 * until we allow walking a file against itself. */
 		if (cur == orig_block)
 			continue;
 
-		if (cur->b_file != walk_file)
-			continue;
+		abort_on(cur->b_file != walk_file);
 
 		if (walk_dupe_block(orig_block->b_file, orig_block,
 				    walk_file, cur, res))
@@ -959,12 +963,16 @@ static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
 	list_for_each_entry(cur, &file->block_list, b_file_next) {
 		if (block_seen(cur))
 			continue;
+
+		if (!file_in_dups_list(cur->b_parent, walk_file))
+			continue;
+
 		/*
 		 * For each file block with the same hash:
 		 *  - Traverse, along with original file until we have no match
 		 *     - record
 		 */
-		walk_each_shared_dupe(cur, walk_file, res);
+		lookup_walk_file_hash_head(cur, walk_file, res);
 	}
 	clear_all_seen_blocks();
 }
@@ -975,50 +983,6 @@ static int compare_files(struct results_tree *res, struct filerec *file1, struct
 	find_file_dupes(file1, file2, res);
 
 	return mark_filerecs_compared(file1, file2);
-}
-
-/*
- * This dupe list is too large for the extent search algorithm to
- * handle efficiently. Instead of walking the block list, we walk the
- * list of files referenced and compare them to each other directly.
- *
- * A future improvement might be to always do this, at the cost of
- * extra memory usage.
- */
-static int walk_large_dups(struct hash_tree *tree,
-			   struct results_tree *res,
-			   struct dupe_blocks_list *dups)
-{
-	int ret;
-	struct rb_node *node = rb_first(&dups->dl_files_root);
-	struct rb_node *next;
-	struct filerec_token *t1, *t2;
-	struct filerec *file1, *file2;
-
-	while (node) {
-		t1 = rb_entry(node, struct filerec_token, t_node);
-		file1 = t1->t_file;
-
-		next = rb_next(node);
-		while (next) {
-			t2 = rb_entry(next, struct filerec_token, t_node);
-			file2 = t2->t_file;
-
-			/* filerec token tree does not allow duplicates */
-			abort_on(file1 == file2);
-			if (!filerecs_compared(file1, file2)) {
-				ret = compare_files(res, file1, file2);
-				if (ret)
-					return ret;
-				break;
-			}
-
-			next = rb_next(next);
-		}
-		node = rb_next(node);
-	}
-
-	return 0;
 }
 
 static int walk_dupe_hashes(struct dupe_blocks_list *dups,
@@ -1085,7 +1049,6 @@ static int find_all_dups(struct hash_tree *tree, struct results_tree *res)
 	struct rb_root *root = &tree->root;
 	struct rb_node *node = rb_first(root);
 	struct dupe_blocks_list *dups;
-	LIST_HEAD(large_dupes);
 
 	while (1) {
 		if (node == NULL)
@@ -1093,26 +1056,11 @@ static int find_all_dups(struct hash_tree *tree, struct results_tree *res)
 
 		dups = rb_entry(node, struct dupe_blocks_list, dl_node);
 
-		if (dups->dl_num_files) {
-			list_add_tail(&dups->dl_large_list, &large_dupes);
-
-			printf("Hash (\"");
-			debug_print_digest(stdout, dups->dl_hash);
-			printf("\") has %u items (across %u files), processing later.\n",
-			       dups->dl_num_elem, dups->dl_num_files);
-		} else if (dups->dl_num_elem > 1) {
-			ret = walk_dupe_hashes(dups, res);
-			if (ret)
-				return ret;
-		}
-
-		node = rb_next(node);
-	}
-
-	list_for_each_entry(dups, &large_dupes, dl_large_list) {
-		ret = walk_large_dups(tree, res, dups);
+		ret = walk_dupe_hashes(dups, res);
 		if (ret)
 			return ret;
+
+		node = rb_next(node);
 	}
 
 	return 0;

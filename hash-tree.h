@@ -14,21 +14,11 @@ struct dupe_blocks_list {
 	unsigned int	dl_num_elem;
 	struct list_head	dl_list;
 
-	/*
-	 * num_files and files_root are used when the total number of
-	 * blocks in the list exceeds DUPLIST_CONVERT_LIMIT (defined
-	 * below)
-	 */
 	unsigned int		dl_num_files;
-	struct rb_root		dl_files_root;
-	struct list_head	dl_large_list; /* Temporary list for
-						* use by extent finding code */
+	struct rb_root		dl_files_root; /* stores file_hash_head nodes */
 
 	unsigned char		dl_hash[DIGEST_LEN_MAX];
 };
-
-/* Max number of blocks before we'll add filerec tokens */
-#define	DUPLIST_CONVERT_LIMIT		30000
 
 /* Fiemap flags that would cause us to skip comparison of the block */
 #define FIEMAP_SKIP_FLAGS	(FIEMAP_EXTENT_UNKNOWN|FIEMAP_EXTENT_DATA_INLINE|FIEMAP_EXTENT_UNWRITTEN)
@@ -50,11 +40,33 @@ struct file_block {
 					  * with this md5. */
 
 	struct list_head	b_file_next; /* filerec->block_list */
+
+	struct list_head	b_head_list; /* file_hash_head->h_blocks */
 };
 
 int insert_hashed_block(struct hash_tree *tree, unsigned char *digest,
 			struct filerec *file, uint64_t loff, unsigned int flags);
 void remove_hashed_blocks(struct hash_tree *tree, struct filerec *file);
+
+/*
+ * Stores a list of blocks with the same hash / filerec
+ * combination. Each dupe_blocks_list keeps a tree of these (sorted by
+ * file).
+ *
+ * This speeds up the extent search by allowing us to skip blocks that
+ * don't belong to the file we are 'walking'. Blocks are inserted into
+ * h_blocks in the same order they are given to insert_hashed_block()
+ * (that is, in order of increasing offset).
+ */
+struct file_hash_head {
+	struct filerec *h_file;
+	struct rb_node h_node;
+	struct list_head h_blocks;
+};
+
+int file_in_dups_list(struct dupe_blocks_list *dups, struct filerec *file);
+struct file_hash_head *find_file_hash_head(struct dupe_blocks_list *dups,
+					   struct filerec *file);
 
 int block_seen(struct file_block *block);
 int block_ever_seen(struct file_block *block);

@@ -34,48 +34,83 @@
 declare_alloc_tracking(file_block);
 declare_alloc_tracking(dupe_blocks_list);
 
-static int add_one_filerec_token(struct dupe_blocks_list *dups,
-				 struct filerec *file)
+struct file_hash_head *find_file_hash_head(struct dupe_blocks_list *dups,
+					   struct filerec *file)
 {
-	struct filerec_token *t = NULL;
+	struct rb_node *n = dups->dl_files_root.rb_node;
+	struct file_hash_head *head;
 
-	if (find_filerec_token_rb(&dups->dl_files_root, file))
-		return 0;
+	while (n) {
+		head = rb_entry(n, struct file_hash_head, h_node);
 
-	t = filerec_token_new(file);
-	if (!t)
+		if (head->h_file < file)
+			n = n->rb_left;
+		else if (head->h_file > file)
+			n = n->rb_right;
+		else return head;
+	}
+	return NULL;
+}
+
+static void insert_file_hash_head(struct dupe_blocks_list *dups,
+				  struct file_hash_head *head)
+{
+	struct rb_node **p = &dups->dl_files_root.rb_node;
+	struct rb_node *parent = NULL;
+	struct file_hash_head *tmp;
+
+	while (*p) {
+		parent = *p;
+
+		tmp = rb_entry(parent, struct file_hash_head, h_node);
+
+		if (tmp->h_file < head->h_file)
+			p = &(*p)->rb_left;
+		else if (tmp->h_file > head->h_file)
+			p = &(*p)->rb_right;
+		else abort_lineno(); /* We should never find a duplicate */
+	}
+
+	rb_link_node(&head->h_node, parent, p);
+	rb_insert_color(&head->h_node, &dups->dl_files_root);
+}
+
+static int add_file_hash_head(struct dupe_blocks_list *dups,
+			      struct file_block *block)
+{
+	struct filerec *file = block->b_file;
+	struct file_hash_head *head = find_file_hash_head(dups, file);
+
+	if (head)
+		goto add;
+
+	head = malloc(sizeof(*head));
+	if (!head)
 		return ENOMEM;
 
-	insert_filerec_token_rb(&dups->dl_files_root, t);
+	head->h_file = file;
+	rb_init_node(&head->h_node);
+	INIT_LIST_HEAD(&head->h_blocks);
+	insert_file_hash_head(dups, head);
 	dups->dl_num_files++;
+add:
+	/* We depend on this being added in increasing block order */
+	list_add_tail(&block->b_head_list, &head->h_blocks);
 	return 0;
 }
 
-static int add_filerec_tokens(struct dupe_blocks_list *dups)
+static void free_one_hash_head(struct dupe_blocks_list *dups,
+			       struct file_hash_head *head)
 {
-	struct file_block *block;
-
-	list_for_each_entry(block, &dups->dl_list, b_list) {
-		if (add_one_filerec_token(dups, block->b_file))
-			return ENOMEM;
-	}
-	return 0;
+	rb_erase(&head->h_node, &dups->dl_files_root);
+	free(head);
 }
 
-static void free_filerec_tokens(struct dupe_blocks_list *dups)
+int file_in_dups_list(struct dupe_blocks_list *dups, struct filerec *file)
 {
-	struct rb_node *node = rb_first(&dups->dl_files_root);
-	struct filerec_token *t;
-
-	while (node) {
-		t = rb_entry(node, struct filerec_token, t_node);
-
-		node = rb_next(node);
-
-		dups->dl_num_files--;
-		rb_erase(&t->t_node, &dups->dl_files_root);
-		filerec_token_free(t);
-	}
+	if (find_file_hash_head(dups, file))
+		return 1;
+	return 0;
 }
 
 static void insert_block_list(struct hash_tree *tree,
@@ -147,29 +182,26 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 		rb_init_node(&d->dl_node);
 		rb_init_node(&d->dl_by_size);
 		INIT_LIST_HEAD(&d->dl_list);
-		INIT_LIST_HEAD(&d->dl_large_list);
 		d->dl_files_root = RB_ROOT;
 
 		insert_block_list(tree, d);
-	}
-
-	if (d->dl_num_elem >= DUPLIST_CONVERT_LIMIT && d->dl_num_files == 0) {
-		if (add_filerec_tokens(d))
-			return ENOMEM;
 	}
 
 	e->b_file = file;
 	e->b_seen = 0;
 	e->b_loff = loff;
 	e->b_flags = flags;
-	list_add_tail(&e->b_file_next, &file->block_list);
-	file->num_blocks++;
 	e->b_parent = d;
 
-	if (d->dl_num_files) {
-		if (add_one_filerec_token(d, file))
-			return ENOMEM;
+	INIT_LIST_HEAD(&e->b_head_list);
+
+	if (add_file_hash_head(d, e)) {
+		free_file_block(e);
+		return ENOMEM;
 	}
+
+	list_add_tail(&e->b_file_next, &file->block_list);
+	file->num_blocks++;
 
 	d->dl_num_elem++;
 	list_add_tail(&e->b_list, &d->dl_list);
@@ -182,6 +214,7 @@ static void remove_hashed_block(struct hash_tree *tree,
 				struct file_block *block, struct filerec *file)
 {
 	struct dupe_blocks_list *blocklist = block->b_parent;
+	struct file_hash_head *head;
 
 	abort_on(blocklist->dl_num_elem == 0);
 
@@ -193,12 +226,16 @@ static void remove_hashed_block(struct hash_tree *tree,
 	list_del(&block->b_file_next);
 	list_del(&block->b_list);
 
+	list_del(&block->b_head_list);
+	head = find_file_hash_head(blocklist, file);
+	if (head && list_empty(&head->h_blocks))
+		free_one_hash_head(blocklist, head);
+
 	blocklist->dl_num_elem--;
 	if (blocklist->dl_num_elem == 0) {
 		rb_erase(&blocklist->dl_node, &tree->root);
 		tree->num_hashes--;
 
-		free_filerec_tokens(blocklist);
 		free_dupe_blocks_list(blocklist);
 	}
 

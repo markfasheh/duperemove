@@ -119,6 +119,8 @@ static void print_by_size(void)
 	else
 		printf("Print top %d hashes\n", num_to_print);
 
+	printf("Hash, # Blocks, # Files\n");
+
 	while (1) {
 		if (node == NULL)
 			break;
@@ -126,7 +128,7 @@ static void print_by_size(void)
 		dups = rb_entry(node, struct dupe_blocks_list, dl_by_size);
 
 		debug_print_digest(stdout, dups->dl_hash);
-		printf(", %u\n", dups->dl_num_elem);
+		printf(", %u, %u\n", dups->dl_num_elem, dups->dl_num_files);
 		if (print_blocks) {
 			list_for_each_entry(block, &dups->dl_list,
 					    b_list) {

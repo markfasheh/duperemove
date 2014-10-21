@@ -83,13 +83,19 @@ void filerec_token_free(struct filerec_token *token)
 		free_filerec_token(token);
 }
 
+static void filerec_token_init(struct filerec_token *token,
+			       struct filerec *file)
+{
+	rb_init_node(&token->t_node);
+	token->t_file = file;
+}
+
 struct filerec_token *filerec_token_new(struct filerec *file)
 {
 	struct filerec_token *token = malloc_filerec_token();
 
 	if (token) {
-		rb_init_node(&token->t_node);
-		token->t_file = file;
+		filerec_token_init(token, file);
 	}
 	return token;
 }
