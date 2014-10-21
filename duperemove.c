@@ -72,6 +72,8 @@ static int read_hashes = 0;
 static char *serialize_fname = NULL;
 static unsigned int hash_threads = 0;
 
+static int fancy_status = 0;
+
 static void debug_print_block(struct file_block *e)
 {
 	struct filerec *f = e->b_file;
@@ -1043,12 +1045,59 @@ static int walk_dupe_hashes(struct dupe_blocks_list *dups,
 	return 0;
 }
 
+static void update_extent_search_status(struct hash_tree *tree,
+					unsigned long long processed)
+{
+	static int last_pos = -1;
+	int i, pos;
+	int width = 40;
+	float progress;
+
+	if (!fancy_status)
+		return;
+
+	progress = (float) processed / tree->num_hashes;
+	pos = width * progress;
+
+	/* Only update our status every width% */
+	if (pos <= last_pos)
+		return;
+	last_pos = pos;
+
+	printf("\r[");
+	for(i = 0; i < width; i++) {
+		if (i < pos)
+			printf("#");
+		else if (i == pos)
+			printf("%%");
+		else
+			printf(" ");
+	}
+	printf("]");
+	fflush(stdout);
+}
+
+static void clear_extent_search_status(unsigned long long processed,
+				       int err)
+{
+	if (!fancy_status)
+		return;
+
+	if (err)
+		printf("\rSearch exited (%llu processed) with error %d: "
+		       "\"%s\"\n", processed, err, strerror(err));
+	else
+		printf("\rSearch completed with no errors.             \n");
+	fflush(stdout);
+}
+
 static int find_all_dups(struct hash_tree *tree, struct results_tree *res)
 {
-	int ret;
+	int ret = 0;
 	struct rb_root *root = &tree->root;
 	struct rb_node *node = rb_first(root);
 	struct dupe_blocks_list *dups;
+	unsigned long long processed = 0;
 
 	while (1) {
 		if (node == NULL)
@@ -1056,14 +1105,20 @@ static int find_all_dups(struct hash_tree *tree, struct results_tree *res)
 
 		dups = rb_entry(node, struct dupe_blocks_list, dl_node);
 
+		update_extent_search_status(tree, processed);
+
 		ret = walk_dupe_hashes(dups, res);
 		if (ret)
-			return ret;
+			goto out;
+
+		processed++;
 
 		node = rb_next(node);
 	}
+out:
 
-	return 0;
+	clear_extent_search_status(processed, ret);
+	return ret;
 }
 
 int main(int argc, char **argv)
@@ -1084,6 +1139,9 @@ int main(int argc, char **argv)
 		usage(argv[0]);
 		return EINVAL;
 	}
+
+	if (isatty(STDOUT_FILENO))
+		fancy_status = 1;
 
 	if (read_hashes) {
 		ret = read_hash_tree(serialize_fname, &tree, &blocksize, NULL);
@@ -1127,8 +1185,9 @@ int main(int argc, char **argv)
 			fprintf(stderr, "Error %d while writing to hash file\n", ret);
 		goto out;
 	} else {
-		printf("Hashed %"PRIu64" blocks. Calculating duplicate "
-		       "extents - this may take some time.\n", tree.num_blocks);
+		printf("Hashed %"PRIu64" blocks, resulting in %"PRIu64" unique "
+		       "hashes. Calculating duplicate extents - this may take "
+		       "some time.\n", tree.num_blocks, tree.num_hashes);
 	}
 
 	ret = find_all_dups(&tree, &res);
