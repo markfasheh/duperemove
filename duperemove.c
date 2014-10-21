@@ -874,19 +874,14 @@ static void record_match(struct results_tree *res, unsigned char *digest,
 		(unsigned long long)eoff[1] / blocksize);
 }
 
-struct dupe_walk_ctxt {
-	struct file_block	*orig;
-
-	struct filerec		*orig_file;
-	struct filerec		*walk_file;
-
-	struct results_tree	*res;
-};
-
-static int walk_dupe_block(struct file_block *block, void *priv)
+static int walk_dupe_block(struct filerec *orig_file,
+			   struct file_block *orig_file_block,
+			   struct filerec *walk_file,
+			   struct file_block *walk_file_block,
+			   struct results_tree *res)
 {
-	struct dupe_walk_ctxt *ctxt = priv;
-	struct file_block *orig = ctxt->orig;
+	struct file_block *orig = orig_file_block;
+	struct file_block *block = walk_file_block;
 	struct file_block *start[2] = { orig, block };
 	struct file_block *end[2];
 	struct running_checksum *csum;
@@ -913,8 +908,8 @@ static int walk_dupe_block(struct file_block *block, void *priv)
 		 * This is kind of ugly, however it does correctly
 		 * signify the end of our list.
 		 */
-		if (orig->b_file_next.next == &ctxt->orig_file->block_list ||
-		    block->b_file_next.next == &ctxt->walk_file->block_list)
+		if (orig->b_file_next.next == &orig_file->block_list ||
+		    block->b_file_next.next == &walk_file->block_list)
 			break;
 
 		orig =	list_entry(orig->b_file_next.next, struct file_block,
@@ -925,17 +920,41 @@ static int walk_dupe_block(struct file_block *block, void *priv)
 
 	finish_running_checksum(csum, match_id);
 
-	record_match(ctxt->res, match_id, ctxt->orig_file, ctxt->walk_file,
+	record_match(res, match_id, orig_file, walk_file,
 		     start, end);
 out:
 	return 0;
+}
+
+/*
+ * Start and extent search at each block in our dups list which is
+ * owned by walk_file.
+ */
+static void walk_each_shared_dupe(struct file_block *orig_block,
+				  struct filerec *walk_file,
+				  struct results_tree *res)
+{
+	struct dupe_blocks_list *parent = orig_block->b_parent;
+	struct file_block *cur;
+
+	list_for_each_entry(cur, &parent->dl_list, b_list) {
+		/* Ignore self and any blocks from another file */
+		if (cur == orig_block)
+			continue;
+
+		if (cur->b_file != walk_file)
+			continue;
+
+		if (walk_dupe_block(orig_block->b_file, orig_block,
+				    walk_file, cur, res))
+			break;
+	}
 }
 
 static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
 			    struct results_tree *res)
 {
 	struct file_block *cur;
-	struct dupe_walk_ctxt ctxt = { 0, };
 
 	list_for_each_entry(cur, &file->block_list, b_file_next) {
 		if (block_seen(cur))
@@ -945,12 +964,7 @@ static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
 		 *  - Traverse, along with original file until we have no match
 		 *     - record
 		 */
-		memset(&ctxt, 0, sizeof(struct dupe_walk_ctxt));
-		ctxt.orig_file = file;
-		ctxt.walk_file = walk_file;
-		ctxt.orig = cur;
-		ctxt.res = res;
-		for_each_dupe(cur, walk_file, walk_dupe_block, &ctxt);
+		walk_each_shared_dupe(cur, walk_file, res);
 	}
 	clear_all_seen_blocks();
 }
