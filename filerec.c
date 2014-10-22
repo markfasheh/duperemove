@@ -449,7 +449,7 @@ int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
 	struct fiemap_extent *fm_ext = &fiemap->fm_extents[0];
 	int count = (sizeof(buf) - sizeof(*fiemap)) /
 			sizeof(struct fiemap_extent);
-	unsigned int i;
+	unsigned int i, fe_flags;
 	int last = 0;
 	int rc;
 	uint64_t search_end = start + len;
@@ -492,6 +492,7 @@ int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
 			loff = fm_ext[i].fe_logical;
 			ext_len = fm_ext[i].fe_length;
 			ext_end = loff + ext_len;
+			fe_flags = fm_ext[i].fe_flags;
 
 			if (ext_end <= start) {
 				/* extent is before our search area */
@@ -521,8 +522,9 @@ int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
 				last = 1;
 			}
 
-			dprintf("(fiemap) loff: %"PRIu64" ext_len: %"PRIu64"\n",
-				loff, ext_len);
+			dprintf("(fiemap) loff: %"PRIu64" ext_len: %"PRIu64
+				" flags: 0x%x\n",
+				loff, ext_len, fe_flags);
 
 			if (fm_ext[i].fe_flags & FIEMAP_EXTENT_SHARED)
 				*shared_bytes += ext_len;
