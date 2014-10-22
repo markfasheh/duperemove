@@ -1109,9 +1109,11 @@ static int find_all_dups(struct hash_tree *tree, struct results_tree *res)
 
 		update_extent_search_status(tree, processed);
 
-		ret = walk_dupe_hashes(dups, res);
-		if (ret)
-			goto out;
+		if (dups->dl_num_elem > 1) {
+			ret = walk_dupe_hashes(dups, res);
+			if (ret)
+				goto out;
+		}
 
 		processed++;
 
