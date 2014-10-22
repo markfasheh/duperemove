@@ -78,9 +78,11 @@ static void debug_print_block(struct file_block *e)
 {
 	struct filerec *f = e->b_file;
 
-	printf("%s\tloff: %llu lblock: %llu seen: %u\n", f->filename,
+	printf("%s\tloff: %llu lblock: %llu seen: %u flags: 0x%x\n",
+	       f->filename,
 	       (unsigned long long)e->b_loff,
-	       (unsigned long long)e->b_loff / blocksize, e->b_seen);
+	       (unsigned long long)e->b_loff / blocksize, e->b_seen,
+	       e->b_flags);
 }
 
 static void debug_print_tree(struct hash_tree *tree)
