@@ -453,6 +453,8 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 	filerec_close(file);
 	free(digest);
 	free(buf);
+	if (fc)
+		free(fc);
 
 	return;
 
@@ -461,6 +463,8 @@ err:
 err_noclose:
 	free(digest);
 	free(buf);
+	if (fc)
+		free(fc);
 
 	fprintf(
 		stderr,
