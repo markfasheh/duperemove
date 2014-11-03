@@ -65,6 +65,8 @@ static int run_dedupe = 0;
 static int recurse_dirs = 0;
 static int target_rw = 1;
 static int version_only = 0;
+static int one_file_system = 0;
+static dev_t one_fs_dev = 0;
 
 static int write_hashes = 0;
 static int scramble_filenames = 0;
@@ -553,6 +555,7 @@ static void usage(const char *prog)
 	printf("\t-b bsize\tUse bsize blocks. Default is %dk.\n",
 	       DEFAULT_BLOCKSIZE / 1024);
 	printf("\t-h\t\tPrint numbers in human-readable format.\n");
+	printf("\t-x\t\tDon't cross filesystem boundaries.\n");
 	printf("\t-v\t\tBe verbose.\n");
 	printf("\t--hash-threads=N\n\t\t\tUse N threads for hashing phase. "
 	       "Default is automatically detected.\n");
@@ -614,6 +617,7 @@ static int add_file(const char *name, int dirfd)
 	char *pathtmp;
 	struct filerec *file;
 	uint64_t subvolid;
+	dev_t dev;
 
 	if (len > (path_max - pathp)) {
 		fprintf(stderr, "Path max exceeded: %s %s\n", path, name);
@@ -633,6 +637,16 @@ static int add_file(const char *name, int dirfd)
 			"Skipping.\n",
 			errno, strerror(errno), path);
 		goto out;
+	}
+
+	dev = st.st_dev;
+	if (one_file_system) {
+		if (!one_fs_dev)
+			one_fs_dev = dev;
+		if (one_fs_dev != dev) {
+			dprintf("Skipping file %s because of -x\n", path);
+			goto out;
+		}
 	}
 
 	if (S_ISDIR(st.st_mode)) {
@@ -720,6 +734,7 @@ enum {
 	WRITE_HASHES_SCRAMBLE_OPTION,
 	READ_HASHES_OPTION,
 	HASH_THREADS_OPTION,
+	ONE_FILESYSTEM_OPTION,
 };
 
 /*
@@ -736,13 +751,14 @@ static int parse_options(int argc, char **argv)
 		{ "write-hashes-scramble", 1, 0, WRITE_HASHES_SCRAMBLE_OPTION },
 		{ "read-hashes", 1, 0, READ_HASHES_OPTION },
 		{ "hash-threads", 1, 0, HASH_THREADS_OPTION },
+		{ "one-file-system", 0, 0, ONE_FILESYSTEM_OPTION },
 		{ 0, 0, 0, 0}
 	};
 
 	if (argc < 2)
 		return 1;
 
-	while ((c = getopt_long(argc, argv, "Ab:vdDrh?", long_ops, NULL))
+	while ((c = getopt_long(argc, argv, "Ab:vdDrh?x", long_ops, NULL))
 	       != -1) {
 		switch (c) {
 		case 'A':
@@ -787,6 +803,10 @@ static int parse_options(int argc, char **argv)
 			hash_threads = strtoul(optarg, NULL, 10);
 			if (!hash_threads)
 				return EINVAL;
+			break;
+		case ONE_FILESYSTEM_OPTION:
+		case 'x':
+			one_file_system = 1;
 			break;
 		case HELP_OPTION:
 		case '?':
