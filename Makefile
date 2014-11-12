@@ -8,7 +8,7 @@ MANPAGES=duperemove.8 btrfs-extent-same.8
 CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
 	btrfs-util.c util.c serialize.c memstats.c file_scan.c find_dupes.c \
 	run_dedupe.c
-hash_impl_CFILES=csum-gcrypt.c csum-xxhash.c xxhash.c
+hash_impl_CFILES=csum-gcrypt.c csum-xxhash.c xxhash.c csum-murmur3.c
 hashstats_CFILES=hashstats.c
 btrfs_extent_same_CFILES=btrfs-extent-same.c
 csum_test_CFILES=csum-test.c
@@ -29,6 +29,11 @@ crypt_LIBS=$(shell libgcrypt-config --libs)
 ifdef USE_XXHASH
 	crypt_CFILES=csum-xxhash.c xxhash.c
 	crypt_CFLAGS=-DUSE_XXHASH
+	crypt_LIBS=
+endif
+ifdef USE_MURMUR3
+	crypt_CFILES=csum-murmur3.o
+	crypt_CFLAGS=
 	crypt_LIBS=
 endif
 crypt_obj=$(crypt_CFILES:.c=.o)
