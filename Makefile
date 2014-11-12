@@ -19,6 +19,12 @@ ifdef USE_MHASH
 	crypt_LIBS=-lmhash
 endif
 
+ifdef USE_MURMUR3
+	hash_obj=csum-murmur3.o
+	crypt_CFLAGS=
+	crypt_LIBS=
+endif
+
 glib_CFLAGS=$(shell pkg-config --cflags glib-2.0)
 glib_LIBS=$(shell pkg-config --libs glib-2.0)
 
