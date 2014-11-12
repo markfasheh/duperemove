@@ -1,7 +1,7 @@
 RELEASE=v0.09.beta2
 
 CC = gcc
-CFLAGS = -Wall -ggdb
+CFLAGS = -Wall -ggdb -O3
 
 MANPAGES=duperemove.8 btrfs-extent-same.8
 
