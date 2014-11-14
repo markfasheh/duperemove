@@ -62,12 +62,12 @@ install: $(progs) $(MANPAGES)
 csum-test: $(hash_obj) csum-test.c
 	$(CC) $(CFLAGS) $(hash_obj) -o csum-test csum-test.c  $(LIBRARY_FLAGS)
 
-filerec-test: filerec.c filerec.h rbtree.o
-	$(CC) $(CFLAGS) -DFILEREC_TEST filerec.c rbtree.o -o filerec-test $(LIBRARY_FLAGS)
+show-shared-extents: filerec.c filerec.h rbtree.o
+	$(CC) $(CFLAGS) -DFILEREC_TEST filerec.c rbtree.o -o show-shared-extents $(LIBRARY_FLAGS)
 
 hashstats_obj = $(hash_obj) rbtree.o hash-tree.o filerec.o util.o serialize.o results-tree.o
 hashstats: $(hashstats_obj) hashstats.c
 	$(CC) $(CFLAGS) $(hashstats_obj) hashstats.c -o hashstats $(LIBRARY_FLAGS)
 
 clean:
-	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same filerec-test hashstats csum-*.o *~
+	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same filerec-test show-shared-extents hashstats csum-*.o *~
