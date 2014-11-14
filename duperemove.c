@@ -71,6 +71,7 @@ static int scramble_filenames = 0;
 static int read_hashes = 0;
 static char *serialize_fname = NULL;
 static unsigned int hash_threads = 0;
+static int do_lookup_extents = 1;
 
 static int fancy_status = 0;
 
@@ -368,7 +369,7 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 	uint64_t off = 0;
 	ssize_t bytes = 0, bytes_read = 0;
 	int ret = 0;
-	struct fiemap_ctxt *fc;
+	struct fiemap_ctxt *fc = NULL;
 	unsigned int flags, hole;
 
 	char *buf = malloc(blocksize);
@@ -382,11 +383,13 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 	printf("csum: %s \t[%llu/%llu]\n", file->filename,
 	       __sync_add_and_fetch(&cur_num_filerecs, 1), num_filerecs);
 
-	fc = alloc_fiemap_ctxt();
-	if (fc == NULL) /* This should be non-fatal */
-		fprintf(stderr,
-			"Low memory allocating fiemap context for \"%s\"\n",
-			file->filename);
+	if (do_lookup_extents) {
+		fc = alloc_fiemap_ctxt();
+		if (fc == NULL) /* This should be non-fatal */
+			fprintf(stderr,
+				"Low memory allocating fiemap context for \"%s\"\n",
+				file->filename);
+	}
 
 	ret = filerec_open(file, 0);
 	if (ret)
@@ -560,6 +563,8 @@ static void usage(const char *prog)
 	       "A file list is not required with this option.\n");
 	printf("\t--write-hashes=hashfile\n\t\t\tWrite hashes to a hashfile. "
 	       "These can be read in at a later date and deduped from.\n");
+	printf("\t--lookup-extents=[yes|no]\n\t\t\tLookup extent info during "
+	       "checksum phase. Defaults to yes.\n");
 	printf("\t--debug\t\tPrint debug messages, forces -v if selected.\n");
 	printf("\t--help\t\tPrints this help text.\n");
 }
@@ -712,6 +717,15 @@ out:
 	return 0;
 }
 
+static int parse_yesno_option(char *arg, int default_val)
+{
+	if (strncmp(arg, "yes", 3) == 0)
+		return 1;
+	else if (strncmp(arg, "no", 2) == 0)
+		return 0;
+	return default_val;
+}
+
 enum {
 	DEBUG_OPTION = CHAR_MAX + 1,
 	HELP_OPTION,
@@ -720,6 +734,7 @@ enum {
 	WRITE_HASHES_SCRAMBLE_OPTION,
 	READ_HASHES_OPTION,
 	HASH_THREADS_OPTION,
+	LOOKUP_EXTENTS_OPTION,
 };
 
 /*
@@ -736,6 +751,7 @@ static int parse_options(int argc, char **argv)
 		{ "write-hashes-scramble", 1, 0, WRITE_HASHES_SCRAMBLE_OPTION },
 		{ "read-hashes", 1, 0, READ_HASHES_OPTION },
 		{ "hash-threads", 1, 0, HASH_THREADS_OPTION },
+		{ "lookup-extents", 1, 0, LOOKUP_EXTENTS_OPTION },
 		{ 0, 0, 0, 0}
 	};
 
@@ -787,6 +803,9 @@ static int parse_options(int argc, char **argv)
 			hash_threads = strtoul(optarg, NULL, 10);
 			if (!hash_threads)
 				return EINVAL;
+			break;
+		case LOOKUP_EXTENTS_OPTION:
+			do_lookup_extents = parse_yesno_option(optarg, 1);
 			break;
 		case HELP_OPTION:
 		case '?':

@@ -92,6 +92,25 @@ Write hashes to a hashfile. These can be read in at a later date and
 deduped from.
 
 .TP
+\fB\--lookup-extents=[yes|no]\fR
+While checksumming a file, duperemove will lookup file extent
+state. This information is later used to optimize the search for
+duplicate extents. This defaults to on. However, if you use duperemove on a
+subvolume that has been snapshotted you will want to read below.
+
+On btrfs, extents which have been snapshotted are reported as
+shared. Internally duperemove considers shared extents as
+deduped. When run on a subvolume with snapshots then, duperemove may
+skip some or all extents, depending on when the most recent snapshot
+was taken.
+
+The workaround is to run duperemove at least once with
+\fB\--lookup-extents=no\fR so that it considers all extents for
+dedupe. You can then run with extent lookups on until your next snapshot.
+
+We plan to remove this restriction in a future version of duperemove.
+
+.TP
 \fB\-?, --help\fR
 Prints help text.
 
