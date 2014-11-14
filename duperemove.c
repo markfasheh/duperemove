@@ -1102,7 +1102,7 @@ static void update_extent_search_status(struct hash_tree *tree,
 	if (!fancy_status)
 		return;
 
-	progress = (float) processed / tree->num_hashes;
+	progress = (float) processed / tree->num_blocks;
 	pos = width * progress;
 
 	/* Only update our status every width% */
@@ -1130,10 +1130,10 @@ static void clear_extent_search_status(unsigned long long processed,
 		return;
 
 	if (err)
-		printf("\rSearch exited (%llu processed) with error %d: "
+		printf("\nSearch exited (%llu processed) with error %d: "
 		       "\"%s\"\n", processed, err, strerror(err));
 	else
-		printf("\rSearch completed with no errors.             \n");
+		printf("\nSearch completed with no errors.             \n");
 	fflush(stdout);
 }
 
@@ -1159,10 +1159,12 @@ static int find_all_dups(struct hash_tree *tree, struct results_tree *res)
 				goto out;
 		}
 
-		processed++;
+		processed += dups->dl_num_elem;
 
 		node = rb_next(node);
 	}
+
+	update_extent_search_status(tree, processed);
 out:
 
 	clear_extent_search_status(processed, ret);
