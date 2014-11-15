@@ -281,17 +281,17 @@ int filerec_open(struct filerec *file, int write)
 	if (write)
 		flags = O_RDWR;
 
-	if (file->fd == -1) {
-		fd = open(file->filename, flags);
-		if (fd == -1) {
-			fprintf(stderr, "Error %d: %s while opening \"%s\" "
-				"(write=%d)\n",
-				errno, strerror(errno), file->filename, write);
-			return errno;
-		}
+	abort_on(file->fd != -1);
 
-		file->fd = fd;
+	fd = open(file->filename, flags);
+	if (fd == -1) {
+		fprintf(stderr, "Error %d: %s while opening \"%s\" "
+			"(write=%d)\n",
+			errno, strerror(errno), file->filename, write);
+		return errno;
 	}
+
+	file->fd = fd;
 
 	return 0;
 }
