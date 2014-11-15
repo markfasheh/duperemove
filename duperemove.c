@@ -576,6 +576,7 @@ static int add_file(const char *name, int dirfd);
 
 static int walk_dir(const char *name)
 {
+	int ret = 0;
 	struct dirent *entry;
 	DIR *dirp;
 
@@ -596,8 +597,10 @@ static int walk_dir(const char *name)
 
 			if (entry->d_type == DT_REG ||
 			    (recurse_dirs && entry->d_type == DT_DIR))
-				if (add_file(entry->d_name, dirfd(dirp)))
-					return 1;
+				if (add_file(entry->d_name, dirfd(dirp))) {
+					ret = 1;
+					goto out;
+				}
 		}
 	} while (entry != NULL);
 
@@ -606,8 +609,9 @@ static int walk_dir(const char *name)
 			errno, strerror(errno), path);
 	}
 
+out:
 	closedir(dirp);
-	return 0;
+	return ret;
 }
 
 /*
