@@ -23,7 +23,7 @@ glib_CFLAGS=$(shell pkg-config --cflags glib-2.0)
 glib_LIBS=$(shell pkg-config --libs glib-2.0)
 
 override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\" \
-	$(crypt_CFLAGS) $(glib_CFLAGS)
+	$(crypt_CFLAGS) $(glib_CFLAGS) -rdynamic
 LIBRARY_FLAGS += $(crypt_LIBS) $(glib_LIBS)
 
 objects = duperemove.o rbtree.o hash-tree.o results-tree.o dedupe.o filerec.o util.o serialize.o btrfs-util.o $(hash_obj)

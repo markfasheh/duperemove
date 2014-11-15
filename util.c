@@ -24,6 +24,7 @@
 #include <stdint.h>
 #include <ctype.h>
 #include <inttypes.h>
+#include <execinfo.h>
 
 #include "debug.h"
 #include "util.h"
@@ -126,4 +127,18 @@ void print_mem_stats(void)
 	show_allocs_extent();
 	show_allocs_filerec();
 	show_allocs_filerec_token();
+}
+
+void print_stack_trace(void)
+{
+	void *trace[16];
+	char **messages = (char **)NULL;
+	int i, trace_size = 0;
+
+	trace_size = backtrace(trace, 16);
+	messages = backtrace_symbols(trace, trace_size);
+	printf("[stack trace follows]\n");
+	for (i=0; i < trace_size; i++)
+		printf("%s\n", messages[i]);
+	free(messages);
 }

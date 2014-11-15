@@ -63,14 +63,17 @@ void print_mem_stats(void);
 
 #define dprintf(args...)	if (debug) printf(args)
 #define vprintf(args...)	if (verbose) printf(args)
+void print_stack_trace(void);/* defined in util.c */
 #define	abort_lineno()	do {						\
 		printf("ERROR: %s:%d\n", __FILE__, __LINE__);		\
+		print_stack_trace();					\
 		abort();						\
 	} while (0)
 
 #define abort_on(condition) do {					\
 		if (condition) {					\
-			printf("ERROR: %s:%d\n", __FILE__, __LINE__);\
+			printf("ERROR: %s:%d\n", __FILE__, __LINE__);	\
+			print_stack_trace();				\
 			abort();					\
 		}							\
 	} while(0)
