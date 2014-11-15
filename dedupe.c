@@ -142,13 +142,15 @@ struct dedupe_ctxt *new_dedupe_ctxt(unsigned int max_extents, uint64_t loff,
 	struct dedupe_ctxt *ctxt = calloc(1, sizeof(*ctxt));
 	struct btrfs_ioctl_same_args *same;
 	unsigned int same_size;
-	unsigned int max_dest_files = max_extents - 1;
+	unsigned int max_dest_files;
 
 	if (ctxt == NULL)
 		return NULL;
 
 	if (max_extents > MAX_DEDUPES_PER_IOCTL)
 		max_extents = MAX_DEDUPES_PER_IOCTL;
+
+	max_dest_files = max_extents - 1;
 
 	same_size = sizeof(*same) +
 		max_dest_files * sizeof(struct btrfs_ioctl_same_extent_info);
