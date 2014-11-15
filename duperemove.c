@@ -332,6 +332,8 @@ out:
 	 */
 	free_dedupe_ctxt(ctxt);
 
+	abort_on(!list_empty(&open_files));
+
 	return ret;
 }
 
