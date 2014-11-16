@@ -5,19 +5,41 @@ CFLAGS = -Wall -ggdb
 
 MANPAGES=duperemove.8 btrfs-extent-same.8
 
-DIST_SOURCES=csum-gcrypt.c csum-mhash.c csum.h duperemove.c hash-tree.c hash-tree.h results-tree.c results-tree.h kernel.h LICENSE list.h Makefile rbtree.c rbtree.h rbtree.txt README TODO dedupe.c dedupe.h btrfs-ioctl.h filerec.c filerec.h btrfs-util.c btrfs-util.h $(MANPAGES) btrfs-extent-same.c debug.h util.c util.h serialize.c serialize.h hashstats.c memstats.c memstats.h
+CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
+	btrfs-util.c util.c serialize.c memstats.c
+hashstats_CFILES=hashstats.c
+btrfs_extent_same_CFILES=btrfs-extent-same.c
+csum_test_CFILES=csum-test.c
+DIST_CFILES=$(CFILES) $(hashstats_CFILES) $(btrfs_extent_same_CFILES) \
+	$(csum_test_CFILES) csum-mhash.c csum-gcrypt.c
+HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
+	btrfs-ioctl.h filerec.h btrfs-util.h debug.h util.h serialize.h \
+	memstats.h
+DIST_SOURCES=$(DIST_CFILES) $(HEADERS) LICENSE Makefile rbtree.txt README TODO \
+	$(MANPAGES) SubmittingPatches
 DIST=duperemove-$(RELEASE)
 DIST_TARBALL=$(DIST).tar.gz
 TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
 
-hash_obj=csum-gcrypt.o
+crypt_CFILES=csum-gcrypt.c
 crypt_CFLAGS=$(shell libgcrypt-config --cflags)
 crypt_LIBS=$(shell libgcrypt-config --libs)
 ifdef USE_MHASH
-	hash_obj=csum-mhash.o
+	crypt_CFILES=csum-mhash.c
 	crypt_CFLAGS=
 	crypt_LIBS=-lmhash
 endif
+crypt_obj=$(crypt_CFILES:.c=.o)
+
+CFILES += $(crypt_CFILES)
+objects = $(CFILES:.c=.o)
+
+hashstats_obj = $(crypt_obj) rbtree.o hash-tree.o filerec.o util.o serialize.o \
+	 results-tree.o
+show_shared_obj = rbtree.o util.o
+csum_test_obj = $(crypt_obj) util.o
+
+progs = duperemove hashstats btrfs-extent-same show-shared-extents csum-test
 
 glib_CFLAGS=$(shell pkg-config --cflags glib-2.0)
 glib_LIBS=$(shell pkg-config --libs glib-2.0)
@@ -26,18 +48,19 @@ override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\" \
 	$(crypt_CFLAGS) $(glib_CFLAGS) -rdynamic
 LIBRARY_FLAGS += $(crypt_LIBS) $(glib_LIBS)
 
-objects = duperemove.o rbtree.o hash-tree.o results-tree.o dedupe.o filerec.o util.o serialize.o btrfs-util.o $(hash_obj) memstats.o
-progs = duperemove
-
 DESTDIR = /
 PREFIX = /usr/local
 SHAREDIR = $(PREFIX)/share
 SBINDIR = $(PREFIX)/sbin
 MANDIR = $(SHAREDIR)/man
 
-all: $(progs) kernel.h list.h btrfs-ioctl.h debug.h
+.c.o:
+	$(CC) $(CFLAGS) -c $< -o $@ $(LIBRARY_FLAGS)
 
-duperemove: $(objects) kernel.h duperemove.c
+all: $(progs)
+#TODO: Replace this with an auto-dependency
+$(objects): $(HEADERS)
+duperemove: $(objects)
 	$(CC) $(CFLAGS) $(objects) -o duperemove $(LIBRARY_FLAGS)
 
 tarball: clean
@@ -59,13 +82,12 @@ install: $(progs) $(MANPAGES)
 		install -m 0644 $$man $(DESTDIR)$(MANDIR)/man8; \
 	done
 
-csum-test: $(hash_obj) csum-test.c
-	$(CC) $(CFLAGS) $(hash_obj) -o csum-test csum-test.c  $(LIBRARY_FLAGS)
+csum-test: $(csum_test_obj) csum-test.c
+	$(CC) $(CFLAGS) $(csum_test_obj) -o csum-test csum-test.c  $(LIBRARY_FLAGS)
 
-show-shared-extents: filerec.c filerec.h rbtree.o
-	$(CC) $(CFLAGS) -DFILEREC_TEST filerec.c rbtree.o -o show-shared-extents $(LIBRARY_FLAGS)
+show-shared-extents: $(show_shared_obj) filerec.c
+	$(CC) $(CFLAGS) -DFILEREC_TEST filerec.c $(show_shared_obj) -o show-shared-extents $(LIBRARY_FLAGS)
 
-hashstats_obj = $(hash_obj) rbtree.o hash-tree.o filerec.o util.o serialize.o results-tree.o
 hashstats: $(hashstats_obj) hashstats.c
 	$(CC) $(CFLAGS) $(hashstats_obj) hashstats.c -o hashstats $(LIBRARY_FLAGS)
 
