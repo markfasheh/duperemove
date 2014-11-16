@@ -118,17 +118,6 @@ int pretty_size_snprintf(uint64_t size, char *str, size_t str_bytes)
 			size_strs[num_divs]);
 }
 
-void print_mem_stats(void)
-{
-	printf("Duperemove memory usage statistics:\n");
-	show_allocs_file_block();
-	show_allocs_dupe_blocks_list();
-	show_allocs_dupe_extents();
-	show_allocs_extent();
-	show_allocs_filerec();
-	show_allocs_filerec_token();
-}
-
 void print_stack_trace(void)
 {
 	void *trace[16];

@@ -46,6 +46,7 @@
 #include "util.h"
 #include "serialize.h"
 #include "btrfs-util.h"
+#include "memstats.h"
 #include "debug.h"
 
 /* exported via debug.h */

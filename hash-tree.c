@@ -30,6 +30,7 @@
 
 #include "hash-tree.h"
 #include "debug.h"
+#include "memstats.h"
 
 declare_alloc_tracking(file_block);
 declare_alloc_tracking(dupe_blocks_list);

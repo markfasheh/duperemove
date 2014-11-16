@@ -19,6 +19,7 @@
 #include "rbtree.h"
 #include "list.h"
 #include "debug.h"
+#include "memstats.h"
 
 #include "filerec.h"
 

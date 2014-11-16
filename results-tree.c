@@ -31,6 +31,7 @@
 #include "results-tree.h"
 
 #include "debug.h"
+#include "memstats.h"
 
 declare_alloc_tracking(dupe_extents);
 declare_alloc_tracking(extent);
