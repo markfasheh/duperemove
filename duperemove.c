@@ -1102,8 +1102,9 @@ static int walk_dupe_hashes(struct dupe_blocks_list *dups,
 			 * so we will want to account for this in a
 			 * future change.
 			 */
-			if (block1->b_flags & FILE_BLOCK_DEDUPED
-			    && block2->b_flags & FILE_BLOCK_DEDUPED)
+			if (do_lookup_extents &&
+			    block1->b_flags & FILE_BLOCK_DEDUPED &&
+			    block2->b_flags & FILE_BLOCK_DEDUPED)
 				continue;
 
 			file2 = block2->b_file;
