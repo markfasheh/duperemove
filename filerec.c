@@ -305,6 +305,20 @@ void filerec_close(struct filerec *file)
 	}
 }
 
+int filerec_open_once(struct filerec *file, int write,
+		      struct list_head *open_files)
+{
+	int ret;
+
+	if (list_empty(&file->tmp_list)) {
+		ret = filerec_open(file, write);
+		if (ret)
+			return ret;
+		list_add(&file->tmp_list, open_files);
+	}
+	return 0;
+}
+
 void filerec_close_files_list(struct list_head *open_files)
 {
 	struct filerec *file, *tmp;
