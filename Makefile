@@ -8,7 +8,7 @@ MANPAGES=duperemove.8 btrfs-extent-same.8
 CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
 	btrfs-util.c util.c serialize.c memstats.c file_scan.c find_dupes.c \
 	run_dedupe.c
-hash_impl_CFILES=csum-mhash.c csum-gcrypt.c
+hash_impl_CFILES=csum-gcrypt.c
 hashstats_CFILES=hashstats.c
 btrfs_extent_same_CFILES=btrfs-extent-same.c
 csum_test_CFILES=csum-test.c
@@ -26,11 +26,6 @@ TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
 crypt_CFILES=csum-gcrypt.c
 crypt_CFLAGS=$(shell libgcrypt-config --cflags)
 crypt_LIBS=$(shell libgcrypt-config --libs)
-ifdef USE_MHASH
-	crypt_CFILES=csum-mhash.c
-	crypt_CFLAGS=
-	crypt_LIBS=-lmhash
-endif
 crypt_obj=$(crypt_CFILES:.c=.o)
 
 CFILES += $(crypt_CFILES)
