@@ -57,7 +57,7 @@ You can contact the author at :
 // Should endian-independance be of no importance for your application, you may set the #define below to 1.
 // It will improve speed for Big-endian CPU.
 // This option has no impact on Little_Endian CPU.
-#define XXH_FORCE_NATIVE_FORMAT 1
+#define XXH_FORCE_NATIVE_FORMAT 0
 
 //**************************************
 // Includes & Memory related functions
