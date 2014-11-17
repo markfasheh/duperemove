@@ -299,7 +299,7 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 			if (rc < 0) {
 				/* This can only be ENOMEM. */
 				fprintf(stderr, "%s: Request not queued.\n",
-					extent->e_file->filename);
+					to_add->e_file->filename);
 				ret = ENOMEM;
 				goto out;
 			}
