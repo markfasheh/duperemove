@@ -301,8 +301,11 @@ int pop_one_dedupe_result(struct dedupe_ctxt *ctxt, int *status,
 {
 	struct dedupe_req *req;
 
-	if (list_empty(&ctxt->completed))
-		goto out;
+	/*
+	 * We should not be called if dedupe_extents wasn't called or if
+	 * we already passed back all the results..
+	 */
+	abort_on(list_empty(&ctxt->completed));
 
 	req = list_entry(ctxt->completed.next, struct dedupe_req, req_list);
 	list_del_init(&req->req_list);
@@ -313,6 +316,6 @@ int pop_one_dedupe_result(struct dedupe_ctxt *ctxt, int *status,
 	*file = req->req_file;
 
 	free_dedupe_req(req);
-out:
+
 	return !!list_empty(&ctxt->completed);
 }

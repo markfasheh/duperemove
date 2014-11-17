@@ -226,6 +226,8 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 	uint64_t len = dext->de_len;
 	LIST_HEAD(open_files);
 	struct filerec *file;
+	struct extent *prev = NULL;
+	struct extent *to_add;
 
 	abort_on(dext->de_num_dupes < 2);
 
@@ -241,6 +243,7 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 		if (list_is_last(&extent->e_list, &dext->de_extents))
 			last = 1;
 
+		to_add = extent;
 		file = extent->e_file;
 		ret = filerec_open_once(file, target_rw, &open_files);
 		if (ret) {
@@ -268,21 +271,39 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 				goto out;
 			}
 
-			/*
-			 * We added our file already here during
-			 * allocation so go to the next loop
-			 * iteration.
-			 */
-			continue;
-		}
+			if (!last) {
+				/*
+				 * We added our file already here via
+				 * new_dedupe_ctxt, so go to the next
+				 * loop iteration.
+				 */
+				continue;
+			}
 
-		rc = add_extent_to_dedupe(ctxt, extent->e_loff, file);
+			/*
+			 * We started a new context, but only have one
+			 * extent left to dedupe (need at least
+			 * 2). This is pretty rare but instead of
+			 * leaving it not-deduped, we can pick the
+			 * most recent extent off the list and re-add
+			 * that. The old extent won't be deduped again
+			 * but this one will.
+			 */
+			abort_on(!prev);
+			to_add = prev; /* The ole' extent switcharoo */
+		}
+		prev = extent; /* save previous extent for condition above */
+
+		rc = add_extent_to_dedupe(ctxt, to_add->e_loff, to_add->e_file);
 		if (rc) {
-			if (rc < 0)
+			if (rc < 0) {
+				/* This can only be ENOMEM. */
 				fprintf(stderr, "%s: Request not queued.\n",
 					extent->e_file->filename);
+				ret = ENOMEM;
+				goto out;
+			}
 
-			/* Don't continue if we reached the end of our list */
 			if (last)
 				goto run_dedupe;
 			continue;
@@ -290,25 +311,36 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 
 run_dedupe:
 
-		printf("Dedupe %d extents with target: (%s, %s), \"%s\"\n",
-		       ctxt->num_queued, pretty_size(ctxt->orig_file_off),
-		       pretty_size(ctxt->orig_len), ctxt->ioctl_file->filename);
+		/*
+		 * We can get here with only the target extent (0 queued) if
+		 * filerec_open_list fails on the 2nd (and last)
+		 * extent.
+		 */
+		if (ctxt->num_queued) {
+			printf("Dedupe %d extents with target: (%s, %s), "
+			       "\"%s\"\n",
+			       ctxt->num_queued,
+			       pretty_size(ctxt->orig_file_off),
+			       pretty_size(ctxt->orig_len),
+			       ctxt->ioctl_file->filename);
 
-		ret = dedupe_extents(ctxt);
-		if (ret) {
-			ret = errno;
-			fprintf(stderr,
-				"FAILURE: Dedupe ioctl returns %d: %s\n",
-				ret, strerror(ret));
+			ret = dedupe_extents(ctxt);
+			if (ret) {
+				ret = errno;
+				fprintf(stderr,
+					"FAILURE: Dedupe ioctl returns %d: %s\n",
+					ret, strerror(ret));
+			}
+
+			process_dedupe_results(ctxt, kern_bytes);
 		}
-
-		process_dedupe_results(ctxt, kern_bytes);
 
 		filerec_close_files_list(&open_files);
 		free_dedupe_ctxt(ctxt);
 		ctxt = NULL;
 	}
 
+	abort_on(ctxt != NULL);
 	abort_on(!list_empty(&open_files));
 
 	add_shared_extents(dext, &shared_post);
