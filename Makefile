@@ -14,7 +14,7 @@ DIST_CFILES=$(CFILES) $(hashstats_CFILES) $(btrfs_extent_same_CFILES) \
 	$(csum_test_CFILES) csum-mhash.c csum-gcrypt.c
 HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
 	btrfs-ioctl.h filerec.h btrfs-util.h debug.h util.h serialize.h \
-	memstats.h
+	memstats.h xxhash.h
 DIST_SOURCES=$(DIST_CFILES) $(HEADERS) LICENSE Makefile rbtree.txt README TODO \
 	$(MANPAGES) SubmittingPatches
 DIST=duperemove-$(RELEASE)
@@ -28,6 +28,11 @@ ifdef USE_MHASH
 	crypt_CFILES=csum-mhash.c
 	crypt_CFLAGS=
 	crypt_LIBS=-lmhash
+endif
+ifdef USE_XXHASH
+	crypt_CFILES=csum-xxhash.c xxhash.c
+	crypt_CFLAGS=
+	crypt_LIBS=
 endif
 crypt_obj=$(crypt_CFILES:.c=.o)
 
