@@ -42,7 +42,8 @@ void debug_print_digest(FILE *stream, unsigned char *digest)
 
 #define FACTOR DIGEST_LEN_MAX/__SIZEOF_POINTER__
 
-#if __SIZEOF_POINTER__ == 8
+/* #if __SIZEOF_POINTER__ == 8 */
+#if 1
 #define XXH XXH64
 #define XXH_state_t XXH64_state_t
 #define XXH_update XXH64_update
