@@ -264,7 +264,7 @@ int main(int argc, char **argv)
 		return EINVAL;
 	}
 
-	ret = read_hash_tree(serialize_fname, &tree, &blocksize, &h);
+	ret = read_hash_tree(serialize_fname, &tree, &blocksize, &h, 0);
 	if (ret == FILE_VERSION_ERROR) {
 		fprintf(stderr,
 			"Hash file \"%s\": "

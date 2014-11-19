@@ -17,7 +17,7 @@
 #define __SERIALIZE__
 
 #define HASH_FILE_MAJOR	1
-#define HASH_FILE_MINOR	0
+#define HASH_FILE_MINOR	1
 
 #define HASH_FILE_MAGIC		"dupehash"
 struct hash_file_header {
@@ -28,7 +28,8 @@ struct hash_file_header {
 /*20*/	uint64_t	num_hashes;
 	uint32_t	block_size; /* In bytes */
 	uint32_t	pad0;
-	uint64_t	pad1[10];
+	char		hash_type[8];
+	uint64_t	pad1[9];
 };
 
 #define DISK_DIGEST_LEN		32
@@ -57,7 +58,10 @@ int serialize_hash_tree(char *filename, struct hash_tree *tree,
 
 #define	FILE_VERSION_ERROR	1001
 #define	FILE_MAGIC_ERROR	1002
+#define	FILE_HASH_TYPE_ERROR	1003
+extern char unknown_hash_type[8];
 int read_hash_tree(char *filename, struct hash_tree *tree,
-		   unsigned int *block_size, struct hash_file_header *ret_hdr);
+		   unsigned int *block_size, struct hash_file_header *ret_hdr,
+		   int ignore_hash_type);
 
 #endif /* __SERIALIZE__ */

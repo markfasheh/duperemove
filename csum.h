@@ -6,6 +6,7 @@
 #define	DIGEST_LEN_MAX	32
 
 extern unsigned int digest_len;
+extern char hash_type[8];
 
 /* Init / debug */
 int init_hash(void);

@@ -29,6 +29,8 @@
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
 
 unsigned int digest_len = 0;
+#define	HASH_TYPE	"SHA256  "
+char hash_type[8];
 
 void checksum_block(char *buf, int len, unsigned char *digest)
 {
@@ -58,6 +60,8 @@ int init_hash(void)
 	digest_len = gcry_md_get_algo_dlen(HASH_FUNC);
 	if (!digest_len)
 		return 1;
+
+	strncpy(hash_type, HASH_TYPE, 8);
 
 	abort_on(digest_len == 0 || digest_len > DIGEST_LEN_MAX);
 

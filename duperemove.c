@@ -1236,7 +1236,8 @@ int main(int argc, char **argv)
 		fancy_status = 1;
 
 	if (read_hashes) {
-		ret = read_hash_tree(serialize_fname, &tree, &blocksize, NULL);
+		ret = read_hash_tree(serialize_fname, &tree, &blocksize, NULL,
+				     0);
 		if (ret == FILE_VERSION_ERROR) {
 			fprintf(stderr,
 				"Hash file \"%s\": "
@@ -1250,6 +1251,12 @@ int main(int argc, char **argv)
 				"Bad magic.\n",
 				serialize_fname);
 			goto out;
+		} else if (ret == FILE_HASH_TYPE_ERROR) {
+			fprintf(stderr,
+				"Hash file \"%s\": Unkown hash type \"%.*s\".\n"
+				"(we use \"%.*s\").\n", serialize_fname,
+				8, unknown_hash_type, 8, hash_type);
+			goto out;
 		} else if (ret) {
 			fprintf(stderr, "Hash file \"%s\": "
 				"Error %d while reading: %s.\n",
@@ -1259,6 +1266,7 @@ int main(int argc, char **argv)
 	}
 
 	printf("Using %uK blocks\n", blocksize/1024);
+	printf("Using hash: %.*s\n", 8, hash_type);
 
 	if (!read_hashes) {
 		ret = populate_hash_tree(&tree);

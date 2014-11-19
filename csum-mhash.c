@@ -27,6 +27,8 @@ static MHASH td;
 #define	HASH_FUNC	MHASH_SHA256
 
 uint32_t digest_len = 0;
+#define	HASH_TYPE	"SHA256  "
+char hash_type[8];
 
 void checksum_block(char *buf, int len, unsigned char *digest)
 {
@@ -42,6 +44,8 @@ int init_hash(void)
 	digest_len = mhash_get_block_size(HASH_FUNC);
 	if (!digest_len)
 		return 1;
+
+	strncpy(hash_type, HASH_TYPE, 8);
 
 	abort_on(digest_len == 0 || digest_len > DIGEST_LEN_MAX);
 
