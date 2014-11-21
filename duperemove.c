@@ -74,7 +74,7 @@ static int scramble_filenames = 0;
 static int read_hashes = 0;
 static char *serialize_fname = NULL;
 static unsigned int hash_threads = 0;
-static int do_lookup_extents = 1;
+static int do_lookup_extents = 0;
 
 static int fancy_status = 0;
 
@@ -604,7 +604,7 @@ static void usage(const char *prog)
 	printf("\t--write-hashes=hashfile\n\t\t\tWrite hashes to a hashfile. "
 	       "These can be read in at a later date and deduped from.\n");
 	printf("\t--lookup-extents=[yes|no]\n\t\t\tLookup extent info during "
-	       "checksum phase. Defaults to yes.\n");
+	       "checksum phase. Defaults to no.\n");
 	printf("\t--debug\t\tPrint debug messages, forces -v if selected.\n");
 	printf("\t--help\t\tPrints this help text.\n");
 }

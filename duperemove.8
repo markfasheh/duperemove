@@ -93,22 +93,26 @@ deduped from.
 
 .TP
 \fB\--lookup-extents=[yes|no]\fR
-While checksumming a file, duperemove will lookup file extent
-state. This information is later used to optimize the search for
-duplicate extents. This defaults to on. However, if you use duperemove on a
-subvolume that has been snapshotted you will want to read below.
+Defaults to no. While checksumming a file, duperemove can optionally
+lookup file extent state to see whether a given file block is already
+shared. This information can later be used to optimize the search for
+duplicate extents. There are some caveats to this, so please read
+below.
 
-On btrfs, extents which have been snapshotted are reported as
-shared. Internally duperemove considers shared extents as
-deduped. When run on a subvolume with snapshots then, duperemove may
-skip some or all extents, depending on when the most recent snapshot
-was taken.
+On btrfs, extents which have been snapshotted are reported as shared,
+as more than one inode points to them. A deduped extent also gets
+reported as shared for the same reasons. Internally duperemove can not
+yet make the distinction between the two. If \fB--lookup-extents\fR is
+turned on, duperemove will consider a shared extent to have already
+been deduped. On a snapshotted file system this might cause all or
+most of the extents to be skipped for dedupe.
 
-The workaround is to run duperemove at least once with
-\fB\--lookup-extents=no\fR so that it considers all extents for
-dedupe. You can then run with extent lookups on until your next snapshot.
+If you are not making snapshots on the fs you are deduping, this
+option will allow duperemove to make better decisions on which extents
+to dedupe.
 
-We plan to remove this restriction in a future version of duperemove.
+A future version of duperemove will remove this restriction, allowing
+us to default this option to on.
 
 .TP
 \fB\-?, --help\fR
