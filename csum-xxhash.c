@@ -25,6 +25,13 @@
 #include "xxhash.h"
 
 /*
+ * define type as XXHASHa because we deviate slightly by summing
+ * several hashes (see below)
+ */
+#define		HASH_TYPE	"XXHASHa "
+char hash_type[8];
+
+/*
  * xxhash don't support big hash size (64bit or 32bit supported only) -> split
  * input array in severals and summ out hashs
  */
