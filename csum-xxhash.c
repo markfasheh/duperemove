@@ -40,7 +40,8 @@ void debug_print_digest(FILE *stream, unsigned char *digest)
 		fprintf(stream, "%.2x", digest[i]);
 }
 
-#define FACTOR DIGEST_LEN_MAX/__SIZEOF_POINTER__
+#define FACTOR DIGEST_LEN_MAX/8
+//#define FACTOR DIGEST_LEN_MAX/__SIZEOF_POINTER__
 
 /* #if __SIZEOF_POINTER__ == 8 */
 #if 1
