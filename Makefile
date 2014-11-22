@@ -8,7 +8,7 @@ MANPAGES=duperemove.8 btrfs-extent-same.8
 CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
 	btrfs-util.c util.c serialize.c memstats.c file_scan.c find_dupes.c \
 	run_dedupe.c
-hash_impl_CFILES=csum-gcrypt.c
+hash_impl_CFILES=csum-gcrypt.c csum-xxhash.c xxhash.c
 hashstats_CFILES=hashstats.c
 btrfs_extent_same_CFILES=btrfs-extent-same.c
 csum_test_CFILES=csum-test.c
@@ -16,7 +16,7 @@ DIST_CFILES:=$(CFILES) $(hashstats_CFILES) $(btrfs_extent_same_CFILES) \
 	$(csum_test_CFILES) $(hash_impl_CFILES)
 HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
 	btrfs-ioctl.h filerec.h btrfs-util.h debug.h util.h serialize.h \
-	memstats.h file_scan.h find_dupes.h run_dedupe.h
+	memstats.h file_scan.h find_dupes.h run_dedupe.h xxhash.h
 DIST_SOURCES:=$(DIST_CFILES) $(HEADERS) LICENSE Makefile rbtree.txt README.md \
 	TODO $(MANPAGES) SubmittingPatches FAQ.md
 DIST=duperemove-$(RELEASE)
@@ -26,6 +26,11 @@ TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
 crypt_CFILES=csum-gcrypt.c
 crypt_CFLAGS=$(shell libgcrypt-config --cflags)
 crypt_LIBS=$(shell libgcrypt-config --libs)
+ifdef USE_XXHASH
+	crypt_CFILES=csum-xxhash.c xxhash.c
+	crypt_CFLAGS=
+	crypt_LIBS=
+endif
 crypt_obj=$(crypt_CFILES:.c=.o)
 
 CFILES += $(crypt_CFILES)
