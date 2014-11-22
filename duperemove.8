@@ -120,39 +120,7 @@ Prints help text.
 
 .SH "FAQ"
 
-.B "Is there an upper limit to the amount of data duperemove can process?"
-
-Right now duperemove has been tested on small numbers of VMS or iso
-files (5-10). I don't believe there should be a major problem scaling
-that up to 50 or so.
-
-.B "Why does it not print out all duplicate extents?"
-
-Internally duperemove is classifying extents based on various criteria
-like length, number of identical extents, etc. The printout we give is
-based on the results of that classification.
-
-.B "How can I find out my space savings after a dedupe?"
-
-\fBDuperemove\fR will print out an estimate of the saved space after a
-dedupe operation. You can also do a \fBdf\fR before the dedupe
-operation, then a \fBdf\fR about 60 seconds after the operation. It is
-common for \fIbtrfs\fR space reporting to be 'behind' while delayed
-updates get processed, so an immediate df after deduping might not
-show any savings.
-
-.B "Why is the total deduped data report an estimate?"
-
-At the moment \fBduperemove\fR can detect that some underlying extents are
-shared with other files, but it can not resolve which files those
-extents are shared with.
-
-Imagine \fBduperemove\fR is examing a series of files and it notes a
-shared data region in one of them. That data could be shared with a
-file outside of the series. Since \fBduperemove\fR can't resolve that
-information it will account the shared data against our dedupe
-operation while in reality, the kernel might deduplicate it further
-for us.
+Please see the \fBFAQ.md\fR file which should have been included with your duperemove package.
 
 .SH "NOTES"
 Deduplication is currently only supported by the \fIbtrfs\fR filesystem.

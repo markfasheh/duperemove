@@ -17,7 +17,7 @@ HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
 	btrfs-ioctl.h filerec.h btrfs-util.h debug.h util.h serialize.h \
 	memstats.h
 DIST_SOURCES:=$(DIST_CFILES) $(HEADERS) LICENSE Makefile rbtree.txt README.md \
-	TODO $(MANPAGES) SubmittingPatches
+	TODO $(MANPAGES) SubmittingPatches FAQ.md
 DIST=duperemove-$(RELEASE)
 DIST_TARBALL=$(DIST).tar.gz
 TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
