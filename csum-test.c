@@ -38,7 +38,7 @@ int main(int argc, char **argv)
 {
 	char *fname = argv[1];
 	int fd, ret;
-	size_t len;
+	ssize_t len;
 	struct stat s;
 	struct running_checksum *csum;
 
