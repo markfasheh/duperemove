@@ -54,7 +54,7 @@ struct file_info {
 };
 
 int serialize_hash_tree(char *filename, struct hash_tree *tree,
-			unsigned int block_size, int scramble);
+			unsigned int block_size);
 
 #define	FILE_VERSION_ERROR	1001
 #define	FILE_MAGIC_ERROR	1002

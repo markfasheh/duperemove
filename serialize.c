@@ -109,28 +109,10 @@ static int write_header(int fd, struct hash_file_header *h)
 	return 0;
 }
 
-/* name scrambling code taken from e2fsprogs */
-static int name_id[256];
-static void scramble_name(char *name, int len)
-{
-	int id;
-	char *cp = name;
-
-	memset(cp, 'A', len);
-	id = name_id[len]++;
-	while ((len > 0) && (id > 0)) {
-		*cp += id % 26;
-		id = id / 26;
-		cp++;
-		len--;
-	}
-}
-
-static int write_file_info(int fd, struct filerec *file, int scramble)
+static int write_file_info(int fd, struct filerec *file)
 {
 	int written, name_len;
 	struct file_info finfo = { 0, };
-	char fname[PATH_MAX+1];
 	char *n;
 
 	finfo.ino = swap64(file->inum);
@@ -149,11 +131,6 @@ static int write_file_info(int fd, struct filerec *file, int scramble)
 		return EIO;
 
 	n = file->filename;
-	if (scramble) {
-		strcpy(fname, file->filename);
-		n = fname;
-		scramble_name(n, name_len);
-	}
 
 	written = write(fd, n, name_len);
 	if (written == -1)
@@ -184,7 +161,7 @@ static int write_one_hash(int fd, struct file_block *block)
 }
 
 int serialize_hash_tree(char *filename, struct hash_tree *tree,
-			unsigned int block_size, int scramble)
+			unsigned int block_size)
 {
 	int ret, fd;
 	struct hash_file_header *h = calloc(1, sizeof(*h));
@@ -211,7 +188,7 @@ int serialize_hash_tree(char *filename, struct hash_tree *tree,
 		if (list_empty(&file->block_list))
 			continue;
 
-		ret = write_file_info(fd, file, scramble);
+		ret = write_file_info(fd, file);
 		if (ret)
 			goto out;
 		tot_files++;

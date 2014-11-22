@@ -70,7 +70,6 @@ static int one_file_system = 0;
 static dev_t one_fs_dev = 0;
 
 static int write_hashes = 0;
-static int scramble_filenames = 0;
 static int read_hashes = 0;
 static char *serialize_fname = NULL;
 static unsigned int hash_threads = 0;
@@ -779,7 +778,6 @@ enum {
 	HELP_OPTION,
 	VERSION_OPTION,
 	WRITE_HASHES_OPTION,
-	WRITE_HASHES_SCRAMBLE_OPTION,
 	READ_HASHES_OPTION,
 	HASH_THREADS_OPTION,
 	LOOKUP_EXTENTS_OPTION,
@@ -797,7 +795,6 @@ static int parse_options(int argc, char **argv)
 		{ "help", 0, 0, HELP_OPTION },
 		{ "version", 0, 0, VERSION_OPTION },
 		{ "write-hashes", 1, 0, WRITE_HASHES_OPTION },
-		{ "write-hashes-scramble", 1, 0, WRITE_HASHES_SCRAMBLE_OPTION },
 		{ "read-hashes", 1, 0, READ_HASHES_OPTION },
 		{ "hash-threads", 1, 0, HASH_THREADS_OPTION },
 		{ "lookup-extents", 1, 0, LOOKUP_EXTENTS_OPTION },
@@ -839,8 +836,6 @@ static int parse_options(int argc, char **argv)
 		case 'h':
 			human_readable = 1;
 			break;
-		case WRITE_HASHES_SCRAMBLE_OPTION:
-			scramble_filenames = 1;
 		case WRITE_HASHES_OPTION:
 			write_hashes = 1;
 			serialize_fname = strdup(optarg);
@@ -1272,8 +1267,7 @@ int main(int argc, char **argv)
 	debug_print_tree(&tree);
 
 	if (write_hashes) {
-		ret = serialize_hash_tree(serialize_fname, &tree, blocksize,
-					  scramble_filenames);
+		ret = serialize_hash_tree(serialize_fname, &tree, blocksize);
 		if (ret)
 			fprintf(stderr, "Error %d while writing to hash file\n", ret);
 		goto out;
