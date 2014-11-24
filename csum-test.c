@@ -30,13 +30,38 @@
 #include "csum.h"
 
 
-#define BUF_LEN	4096
-static unsigned char buf[BUF_LEN];
+static unsigned int buf_len = 4096;
+static unsigned char *buf = NULL;
+
 static unsigned char digest[DIGEST_LEN_MAX] = { 0, };
+
+static int parse_opts(int argc, char **argv, char **fname)
+{
+	int c;
+
+	if (argc < 2)
+		return 1;
+
+	while ((c = getopt(argc, argv, "b:"))
+	       != -1) {
+		switch (c) {
+		case 'b':
+			buf_len = atoi(optarg);
+			printf("User provided buffer len: %u\n", buf_len);
+			break;
+		default:
+			return 1;
+		}
+	}
+
+	*fname = argv[optind];
+
+	return 0;
+}
 
 int main(int argc, char **argv)
 {
-	char *fname = argv[1];
+	char *fname = NULL;
 	int fd, ret;
 	ssize_t len;
 	struct stat s;
@@ -44,10 +69,15 @@ int main(int argc, char **argv)
 
 	init_hash();
 
-	if (argc != 2) {
-		fprintf(stderr, "Usage: %s filename\n", argv[0]);
+	ret = parse_opts(argc, argv, &fname);
+	if (ret) {
+		fprintf(stderr, "Usage: %s [-b buflen] filename\n", argv[0]);
 		return 1;
 	}
+
+	buf = malloc(buf_len);
+	if (buf == NULL)
+		return ENOMEM;
 
 	fd = open(fname, O_RDONLY);
 	if (fd < 0)
@@ -64,18 +94,21 @@ int main(int argc, char **argv)
 	if (s.st_size == 0)
 		return 0;
 
-	if (s.st_size <= BUF_LEN) {
-		len = read(fd, buf, BUF_LEN);
+	if (s.st_size <= buf_len) {
+		printf("File size is smaller than buffer, using one shot\n");
+		len = read(fd, buf, buf_len);
 		if (len < 0)
 			return errno;
 		if (len == 0)
 			return 1;
 		checksum_block((char *)buf, len, digest);
 	} else {
+		printf("File size is larger than buffer, using running "
+		       "checksum\n");
 		csum = start_running_checksum();
 
 		while (1) {
-			len = read(fd, buf, BUF_LEN);
+			len = read(fd, buf, buf_len);
 			if (len < 0)
 				return errno;
 			if (len) {
