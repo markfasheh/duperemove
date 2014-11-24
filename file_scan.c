@@ -282,9 +282,15 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 			}
 		}
 
-		/* Is this necessary? */
+		/*
+		 * The checksum routine will not do any zeroing of the
+		 * digest for us.
+		 *
+		 * XXX: We should optimize this by having
+		 * checksum_block() memset any bytes between len and
+		 * DIGEST_LEN_MAX
+		 */
 		memset(digest, 0, DIGEST_LEN_MAX);
-
 		checksum_block(buf, bytes, digest);
 
 		g_mutex_lock(tree_mutex);
