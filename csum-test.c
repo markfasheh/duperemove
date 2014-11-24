@@ -18,6 +18,19 @@
  * Authors: Mark Fasheh <mfasheh@suse.de>
  */
 
+/*
+ * Use this for two tests:
+ *
+ * - hash a file so we can compare the result against a 3rd party tool
+ *   using the same hash.
+ * - test that one-off and running checksum functions return the same
+ *   digest for the same input. For example:
+ *	$ dd if=/dev/urandom of=4kfilerand count=1 bs=4096
+ *	$ ./csum-test -b 1024 4kfilerand
+ *	$ ./csum-test -b 4096 4kfilerand
+ *   both runs of csum-test above should show the same digest.
+ */
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
