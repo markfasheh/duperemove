@@ -24,17 +24,8 @@
 #include "debug.h"
 #include "xxhash.h"
 
-/*
- * define type as XXHASHa because we deviate slightly by summing
- * several hashes (see below)
- */
-#define		HASH_TYPE	"XXHASHa "
+#define		HASH_TYPE	"XXHASH  "
 char hash_type[8];
-
-/*
- * xxhash don't support big hash size (64bit or 32bit supported only) -> split
- * input array in severals and summ out hashs
- */
 
 inline int init_hash(void){return 0;}
 uint32_t digest_len = DIGEST_LEN_MAX;
@@ -47,61 +38,33 @@ void debug_print_digest(FILE *stream, unsigned char *digest)
 		fprintf(stream, "%.2x", digest[i]);
 }
 
-#define FACTOR DIGEST_LEN_MAX/8
-//#define FACTOR DIGEST_LEN_MAX/__SIZEOF_POINTER__
-
-/* #if __SIZEOF_POINTER__ == 8 */
-#if 1
-#define XXH XXH64
-#define XXH_state_t XXH64_state_t
-#define XXH_update XXH64_update
-#define XXH_digest XXH64_digest
-#else
-#define XXH XXH32
-#define XXH_state_t XXH32_state_t
-#define XXH_update XXH32_update
-#define XXH_digest XXH32_digest
-#endif
-
 void checksum_block(char *buf, int len, unsigned char *digest) {
-	unsigned long long *hash = (unsigned long long *)digest;
-	unsigned i;
-	char *current = buf;
-	for (i=0;i<FACTOR;i++) {
-		size_t offset = len/FACTOR*(i+1);
-		hash[i] = XXH(current, offset, 0);
-		current += offset;
-	}
+	unsigned long long d;
+
+	d = XXH64(buf, len, 0);
+	memcpy(digest, &d, sizeof(d));
 }
 
 struct running_checksum {
-	XXH_state_t	td[FACTOR];
+	XXH64_state_t	td64;
 };
 
 struct running_checksum *start_running_checksum(void)
 {
 	struct running_checksum *c = calloc(1, sizeof(struct running_checksum));
 	memset(c, 0, sizeof(struct running_checksum));
+	XXH64_reset(&c->td64, 0);
 	return c;
 }
 
 void add_to_running_checksum(struct running_checksum *c, unsigned int len, unsigned char *buf)
 {
-	unsigned i;
-	unsigned char *current = buf;
-	for (i=0;i<FACTOR;i++) {
-		size_t offset = len/FACTOR*(i+1);
-		XXH_update (&c->td[i], current, offset);
-		current += offset;
-	}
+	XXH64_update(&c->td64, buf, len);
 }
 
 void finish_running_checksum(struct running_checksum *c, unsigned char *digest)
 {
-	size_t *hash = (size_t *)digest;
-	unsigned i;
-	for (i=0;i<FACTOR;i++) {
-		hash[i]=XXH_digest (&c->td[i]);
-	}
+	unsigned long long d = XXH64_digest(&c->td64);
+	memcpy(digest, &d, sizeof(d));
 	free(c);
 }
