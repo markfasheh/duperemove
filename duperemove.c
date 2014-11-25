@@ -263,6 +263,9 @@ int main(int argc, char **argv)
 #ifdef USE_XXHASH
 	printf("Warning: xxhash support is experimental and might change!\n");
 #endif
+#ifdef USE_MURMUR3
+	printf("Warning: murmur3 support is experimental and might change!\n");
+#endif
 
 	if (isatty(STDOUT_FILENO))
 		fancy_status = 1;

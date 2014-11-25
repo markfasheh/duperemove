@@ -33,7 +33,7 @@ ifdef USE_XXHASH
 endif
 ifdef USE_MURMUR3
 	crypt_CFILES=csum-murmur3.o
-	crypt_CFLAGS=
+	crypt_CFLAGS=-DUSE_MURMUR3
 	crypt_LIBS=
 endif
 crypt_obj=$(crypt_CFILES:.c=.o)
