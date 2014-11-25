@@ -26,9 +26,13 @@
 
 #define		HASH_TYPE	"XXHASH  "
 char hash_type[8];
-
-inline int init_hash(void){return 0;}
 uint32_t digest_len = DIGEST_LEN_MAX;
+
+int init_hash(void)
+{
+	strncpy(hash_type, HASH_TYPE, 8);
+	return 0;
+}
 
 void debug_print_digest(FILE *stream, unsigned char *digest)
 {
