@@ -23,11 +23,14 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <assert.h>
+#include <string.h>
 
 #include "csum.h"
 #include "debug.h"
 
-unsigned int digest_len = 0;
+#define		HASH_TYPE       "Murmur3 "
+char		hash_type[8];
+unsigned int	digest_len = 0;
 
 #ifdef __GNUC__
 #define FORCE_INLINE __attribute__((always_inline)) inline
@@ -76,6 +79,7 @@ static FORCE_INLINE uint64_t fmix64(uint64_t k)
 
 int init_hash(void)
 {
+	strncpy(hash_type, HASH_TYPE, 8);
 	digest_len = 16;
 	abort_on(digest_len == 0 || digest_len > DIGEST_LEN_MAX);
 	return 0;
