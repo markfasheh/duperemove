@@ -43,10 +43,9 @@ void debug_print_digest(FILE *stream, unsigned char *digest)
 }
 
 void checksum_block(char *buf, int len, unsigned char *digest) {
-	unsigned long long d;
+	unsigned long long *hash = digest;
 
-	d = XXH64(buf, len, 0);
-	memcpy(digest, &d, sizeof(d));
+	*hash = XXH64(buf, len, 0);
 }
 
 struct running_checksum {
@@ -68,7 +67,8 @@ void add_to_running_checksum(struct running_checksum *c, unsigned int len, unsig
 
 void finish_running_checksum(struct running_checksum *c, unsigned char *digest)
 {
-	unsigned long long d = XXH64_digest(&c->td64);
-	memcpy(digest, &d, sizeof(d));
+	unsigned long long *hash = digest;
+
+	*hash = XXH64_digest(&c->td64);
 	free(c);
 }
