@@ -260,6 +260,10 @@ int main(int argc, char **argv)
 		return EINVAL;
 	}
 
+#ifdef USE_XXHASH
+	printf("Warning: xxhash support is experimental and might change!\n");
+#endif
+
 	if (isatty(STDOUT_FILENO))
 		fancy_status = 1;
 

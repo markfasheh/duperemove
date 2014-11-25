@@ -28,7 +28,7 @@ crypt_CFLAGS=$(shell libgcrypt-config --cflags)
 crypt_LIBS=$(shell libgcrypt-config --libs)
 ifdef USE_XXHASH
 	crypt_CFILES=csum-xxhash.c xxhash.c
-	crypt_CFLAGS=
+	crypt_CFLAGS=-DUSE_XXHASH
 	crypt_LIBS=
 endif
 crypt_obj=$(crypt_CFILES:.c=.o)

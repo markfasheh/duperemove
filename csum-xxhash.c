@@ -1,5 +1,5 @@
 /*
- * csum.c
+ * csum-xxhash.c
  *
  * Copyright (C) 2013 SUSE.  All rights reserved.
  *
@@ -43,7 +43,7 @@ void debug_print_digest(FILE *stream, unsigned char *digest)
 }
 
 void checksum_block(char *buf, int len, unsigned char *digest) {
-	unsigned long long *hash = digest;
+	unsigned long long *hash = (unsigned long long*)digest;
 
 	*hash = XXH64(buf, len, 0);
 }
@@ -67,7 +67,7 @@ void add_to_running_checksum(struct running_checksum *c, unsigned int len, unsig
 
 void finish_running_checksum(struct running_checksum *c, unsigned char *digest)
 {
-	unsigned long long *hash = digest;
+	unsigned long long *hash = (unsigned long long*)digest;
 
 	*hash = XXH64_digest(&c->td64);
 	free(c);
