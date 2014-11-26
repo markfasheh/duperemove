@@ -44,7 +44,11 @@ void debug_print_digest(FILE *stream, unsigned char *digest)
 
 void checksum_block(char *buf, int len, unsigned char *digest) {
 	unsigned long long *hash = (unsigned long long*)digest;
-
+	/*
+	 * For xxhash one use only first 64 bit from 256 bit hash field
+	 * Zeroing empty 192 bits with offset
+	 */
+	memset(&hash[1], 0, DIGEST_LEN_MAX-sizeof(*hash));
 	*hash = XXH64(buf, len, 0);
 }
 
