@@ -59,7 +59,6 @@ struct running_checksum {
 struct running_checksum *start_running_checksum(void)
 {
 	struct running_checksum *c = calloc(1, sizeof(struct running_checksum));
-	memset(c, 0, sizeof(struct running_checksum));
 	XXH64_reset(&c->td64, 0);
 	return c;
 }
