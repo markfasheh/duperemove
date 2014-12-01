@@ -128,21 +128,28 @@ struct running_checksum *start_running_checksum(void)
 void add_to_running_checksum(struct running_checksum *c,
 			     unsigned int len, unsigned char *buf)
 {
+	unsigned char block[16];
 	const uint8_t * data = (const uint8_t*)buf;
-	const int nblocks = len / 16;
-
-	c->len += nblocks * 16;
-
 	int i;
 
 	uint64_t c1 = BIG_CONSTANT(0x87c37b91114253d5);
 	uint64_t c2 = BIG_CONSTANT(0x4cf5ad432745937f);
 
-	const uint64_t * blocks = (const uint64_t *)(data);
+	/* Process pending data first */
+	if(c->rem_len + len >= 16 && c->rem_len != 0){
+		memcpy(block, c->rem_buffer, c->rem_len);
+		for(i = 0; i < (16 - c->rem_len); i++)
+			block[c->rem_len + i] = data[i];
+		data = data + (16 - c->rem_len);
+		len -= (16 - c->rem_len);
+		c->rem_len = 0;
+		add_to_running_checksum(c, 16, block);
+	}
 
-	for (i = 0; i < nblocks; i++) {
-		uint64_t k1 = blocks[i * 2];
-		uint64_t k2 = blocks[i * 2 + 1];
+	/* We will now process 16-bytes blocks, as much as possible */
+	while(len >= 16){
+		uint64_t k1 = ((uint64_t *)data)[0];
+		uint64_t k2 = ((uint64_t *)data)[1];
 
 		k1 *= c1;
 		k1 = ROTL64(k1, 31);
@@ -161,20 +168,22 @@ void add_to_running_checksum(struct running_checksum *c,
 		c->h2 = ROTL64(c->h2, 31);
 		c->h2 += c->h1;
 		c->h2 = c->h2 * 5 + 0x38495ab5;
+
+		/* Move the cursor to process the next block */
+		data += 16;
+		c->len += 16;
+		len -= 16;
 	}
 
-	for(i = nblocks * 16; i < len; i++){
-		c->rem_buffer[c->rem_len] = buf[i];
-		c->rem_len++;
-	}
+	/* We will concat instead of just copy
+	 * we can update multiple too-low blocks in a row
+	 */
+	strncat(c->rem_buffer, data, len);
+	c->rem_len += len;
 	c->rem_buffer[c->rem_len] = '\0';
 
 	if(c->rem_len >= 16){
 		c->rem_len -= 16;
-
-                /* recursive call won't write the c->rem* members
-                 * we are sending a single16-bytes block
-                 */
 		add_to_running_checksum(c, 16, c->rem_buffer);
 		c->rem_buffer[c->rem_len] = '\0';
 	}
@@ -186,6 +195,7 @@ void checksum_tailing_data(struct running_checksum *c)
 	uint64_t c2 = BIG_CONSTANT(0x4cf5ad432745937f);
 
 	const uint8_t * tail = c->rem_buffer;
+	c->len += c->rem_len;
 
 	uint64_t k1 = 0;
 	uint64_t k2 = 0;
@@ -236,8 +246,7 @@ void checksum_tailing_data(struct running_checksum *c)
 
 void finish_running_checksum(struct running_checksum *c, unsigned char *digest)
 {
-	if(c->rem_len != 0)
-		checksum_tailing_data(c);
+	checksum_tailing_data(c);
 
 	uint64_t h1 = c->h1;
 	uint64_t h2 = c->h2;
