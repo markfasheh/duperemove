@@ -239,5 +239,7 @@ void finish_running_checksum(struct running_checksum *c, unsigned char *digest)
 	((uint64_t*)digest)[0] = h1;
 	((uint64_t*)digest)[1] = h2;
 
+	memset(&digest[digest_len], 0, DIGEST_LEN_MAX - digest_len);
+
 	free(c);
 }
