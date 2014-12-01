@@ -21,6 +21,9 @@
 #include <stddef.h>
 #include <string.h>
 
+#include <stdio.h>
+#include <inttypes.h>
+
 #include "kernel.h"
 #include "rbtree.h"
 #include "list.h"
@@ -30,9 +33,55 @@
 
 #include "hash-tree.h"
 #include "debug.h"
+#include "memstats.h"
 
 declare_alloc_tracking(file_block);
 declare_alloc_tracking(dupe_blocks_list);
+
+extern unsigned int blocksize;
+
+void debug_print_block(struct file_block *e)
+{
+	struct filerec *f = e->b_file;
+
+	printf("%s\tloff: %llu lblock: %llu seen: %u flags: 0x%x\n",
+	       f->filename,
+	       (unsigned long long)e->b_loff,
+	       (unsigned long long)e->b_loff / blocksize, e->b_seen,
+	       e->b_flags);
+}
+
+void debug_print_hash_tree(struct hash_tree *tree)
+{
+	struct rb_root *root = &tree->root;
+	struct rb_node *node = rb_first(root);
+	struct dupe_blocks_list *dups;
+	struct file_block *block;
+	struct list_head *p;
+
+	if (!debug)
+		return;
+
+	dprintf("Block hash tree has %"PRIu64" hash nodes and %"PRIu64" block items\n",
+		tree->num_hashes, tree->num_blocks);
+
+	while (1) {
+		if (node == NULL)
+			break;
+
+		dups = rb_entry(node, struct dupe_blocks_list, dl_node);
+
+		dprintf("All blocks with hash: ");
+		debug_print_digest(stdout, dups->dl_hash);
+		dprintf("\n");
+
+		list_for_each(p, &dups->dl_list) {
+			block = list_entry(p, struct file_block, b_list);
+			debug_print_block(block);
+		}
+		node = rb_next(node);
+	}
+}
 
 struct file_hash_head *find_file_hash_head(struct dupe_blocks_list *dups,
 					   struct filerec *file)

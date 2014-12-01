@@ -24,6 +24,7 @@
 #include <stdint.h>
 #include <ctype.h>
 #include <inttypes.h>
+#include <execinfo.h>
 
 #include "debug.h"
 #include "util.h"
@@ -117,13 +118,16 @@ int pretty_size_snprintf(uint64_t size, char *str, size_t str_bytes)
 			size_strs[num_divs]);
 }
 
-void print_mem_stats(void)
+void print_stack_trace(void)
 {
-	printf("Duperemove memory usage statistics:\n");
-	show_allocs_file_block();
-	show_allocs_dupe_blocks_list();
-	show_allocs_dupe_extents();
-	show_allocs_extent();
-	show_allocs_filerec();
-	show_allocs_filerec_token();
+	void *trace[16];
+	char **messages = (char **)NULL;
+	int i, trace_size = 0;
+
+	trace_size = backtrace(trace, 16);
+	messages = backtrace_symbols(trace, trace_size);
+	printf("[stack trace follows]\n");
+	for (i=0; i < trace_size; i++)
+		printf("%s\n", messages[i]);
+	free(messages);
 }

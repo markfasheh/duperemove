@@ -142,13 +142,15 @@ struct dedupe_ctxt *new_dedupe_ctxt(unsigned int max_extents, uint64_t loff,
 	struct dedupe_ctxt *ctxt = calloc(1, sizeof(*ctxt));
 	struct btrfs_ioctl_same_args *same;
 	unsigned int same_size;
-	unsigned int max_dest_files = max_extents - 1;
+	unsigned int max_dest_files;
 
 	if (ctxt == NULL)
 		return NULL;
 
 	if (max_extents > MAX_DEDUPES_PER_IOCTL)
 		max_extents = MAX_DEDUPES_PER_IOCTL;
+
+	max_dest_files = max_extents - 1;
 
 	same_size = sizeof(*same) +
 		max_dest_files * sizeof(struct btrfs_ioctl_same_extent_info);
@@ -299,8 +301,11 @@ int pop_one_dedupe_result(struct dedupe_ctxt *ctxt, int *status,
 {
 	struct dedupe_req *req;
 
-	if (list_empty(&ctxt->completed))
-		goto out;
+	/*
+	 * We should not be called if dedupe_extents wasn't called or if
+	 * we already passed back all the results..
+	 */
+	abort_on(list_empty(&ctxt->completed));
 
 	req = list_entry(ctxt->completed.next, struct dedupe_req, req_list);
 	list_del_init(&req->req_list);
@@ -311,6 +316,6 @@ int pop_one_dedupe_result(struct dedupe_ctxt *ctxt, int *status,
 	*file = req->req_file;
 
 	free_dedupe_req(req);
-out:
+
 	return !!list_empty(&ctxt->completed);
 }

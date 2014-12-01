@@ -39,6 +39,9 @@
 
 #include "serialize.h"
 
+char unknown_hash_type[8];
+#define	hash_type_v1_0	"\0\0\0\0\0\0\0\0"
+
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 #define swap16(_x)	((uint16_t)_x)
 #define swap32(_x)	((uint32_t)_x)
@@ -60,6 +63,7 @@ static void debug_print_header(struct hash_file_header *h)
 	dprintf("num_files: %"PRIu64"\t", h->num_files);
 	dprintf("num_hashes: %"PRIu64"\t", h->num_hashes);
 	dprintf("block_size: %u\t", h->block_size);
+	dprintf("hash_type: %.*s\t", 8, h->hash_type);
 	dprintf(" ]\n");
 }
 
@@ -91,6 +95,7 @@ static int write_header(int fd, struct hash_file_header *h)
 	disk.num_files = swap64(h->num_files);
 	disk.num_hashes = swap64(h->num_hashes);
 	disk.block_size = swap32(h->block_size);
+	memcpy(&disk.hash_type, hash_type, 8);
 
 	ret = lseek(fd, 0, SEEK_SET);
 	if (ret == (loff_t)-1)
@@ -104,28 +109,10 @@ static int write_header(int fd, struct hash_file_header *h)
 	return 0;
 }
 
-/* name scrambling code taken from e2fsprogs */
-static int name_id[256];
-static void scramble_name(char *name, int len)
-{
-	int id;
-	char *cp = name;
-
-	memset(cp, 'A', len);
-	id = name_id[len]++;
-	while ((len > 0) && (id > 0)) {
-		*cp += id % 26;
-		id = id / 26;
-		cp++;
-		len--;
-	}
-}
-
-static int write_file_info(int fd, struct filerec *file, int scramble)
+static int write_file_info(int fd, struct filerec *file)
 {
 	int written, name_len;
 	struct file_info finfo = { 0, };
-	char fname[PATH_MAX+1];
 	char *n;
 
 	finfo.ino = swap64(file->inum);
@@ -144,11 +131,6 @@ static int write_file_info(int fd, struct filerec *file, int scramble)
 		return EIO;
 
 	n = file->filename;
-	if (scramble) {
-		strcpy(fname, file->filename);
-		n = fname;
-		scramble_name(n, name_len);
-	}
 
 	written = write(fd, n, name_len);
 	if (written == -1)
@@ -179,7 +161,7 @@ static int write_one_hash(int fd, struct file_block *block)
 }
 
 int serialize_hash_tree(char *filename, struct hash_tree *tree,
-			unsigned int block_size, int scramble)
+			unsigned int block_size)
 {
 	int ret, fd;
 	struct hash_file_header *h = calloc(1, sizeof(*h));
@@ -206,7 +188,7 @@ int serialize_hash_tree(char *filename, struct hash_tree *tree,
 		if (list_empty(&file->block_list))
 			continue;
 
-		ret = write_file_info(fd, file, scramble);
+		ret = write_file_info(fd, file);
 		if (ret)
 			goto out;
 		tot_files++;
@@ -332,12 +314,14 @@ static int read_header(int fd, struct hash_file_header *h)
 	h->num_files = swap64(disk.num_files);
 	h->num_hashes = swap64(disk.num_hashes);
 	h->block_size = swap32(disk.block_size);
+	memcpy(&h->hash_type, &disk.hash_type, 8);
 
 	return 0;
 }
 
 int read_hash_tree(char *filename, struct hash_tree *tree,
-		   unsigned int *block_size, struct hash_file_header *ret_hdr)
+		   unsigned int *block_size, struct hash_file_header *ret_hdr,
+		   int ignore_hash_type)
 {
 	int ret, fd;
 	uint32_t i;
@@ -359,6 +343,22 @@ int read_hash_tree(char *filename, struct hash_tree *tree,
 	if (h.major > HASH_FILE_MAJOR) {
 		ret = FILE_VERSION_ERROR;
 		goto out;
+	}
+
+	if (!ignore_hash_type) {
+		/*
+		 * v1.0 hash files were SHA256 but wrote out hash_type
+		 * as nulls
+		 */
+		if (h.minor == 0 && memcmp(hash_type_v1_0, h.hash_type, 8)) {
+			ret = FILE_HASH_TYPE_ERROR;
+			memcpy(unknown_hash_type, hash_type_v1_0, 8);
+			goto out;
+		} else  if (h.minor > 0 && memcmp(h.hash_type, hash_type, 8)) {
+			ret = FILE_HASH_TYPE_ERROR;
+			memcpy(unknown_hash_type, h.hash_type, 8);
+			goto out;
+		}
 	}
 
 	*block_size = h.block_size;

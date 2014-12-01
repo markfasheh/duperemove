@@ -1,5 +1,5 @@
 /*
- * csum.c
+ * csum-xxhash.c
  *
  * Copyright (C) 2013 SUSE.  All rights reserved.
  *
@@ -17,34 +17,20 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <mhash.h>
+#include <stddef.h>
+#include <string.h>
 
 #include "csum.h"
 #include "debug.h"
+#include "xxhash.h"
 
-static MHASH td;
-
-#define	HASH_FUNC	MHASH_SHA256
-
-uint32_t digest_len = 0;
-
-void checksum_block(char *buf, int len, unsigned char *digest)
-{
-	td = mhash_init(HASH_FUNC);
-	abort_on(td == MHASH_FAILED);
-
-	mhash(td, buf, len);
-	mhash_deinit(td, digest);
-}
+#define		HASH_TYPE	"XXHASH  "
+char hash_type[8];
+uint32_t digest_len = DIGEST_LEN_MAX;
 
 int init_hash(void)
 {
-	digest_len = mhash_get_block_size(HASH_FUNC);
-	if (!digest_len)
-		return 1;
-
-	abort_on(digest_len == 0 || digest_len > DIGEST_LEN_MAX);
-
+	strncpy(hash_type, HASH_TYPE, 8);
 	return 0;
 }
 
@@ -52,33 +38,37 @@ void debug_print_digest(FILE *stream, unsigned char *digest)
 {
 	uint32_t i;
 
-	for (i = 0; i < digest_len; i++)
+	for (i = 0; i < DIGEST_LEN_MAX; i++)
 		fprintf(stream, "%.2x", digest[i]);
 }
 
+void checksum_block(char *buf, int len, unsigned char *digest) {
+	unsigned long long *hash = (unsigned long long*)digest;
+
+	*hash = XXH64(buf, len, 0);
+}
+
 struct running_checksum {
-	MHASH	td;
-	unsigned char	digest[DIGEST_LEN_MAX];
+	XXH64_state_t	td64;
 };
 
 struct running_checksum *start_running_checksum(void)
 {
 	struct running_checksum *c = calloc(1, sizeof(struct running_checksum));
-
-	if (c)
-		c->td = mhash_init(HASH_FUNC);
-
+	memset(c, 0, sizeof(struct running_checksum));
+	XXH64_reset(&c->td64, 0);
 	return c;
 }
 
-void add_to_running_checksum(struct running_checksum *c,
-			     unsigned int len, unsigned char *buf)
+void add_to_running_checksum(struct running_checksum *c, unsigned int len, unsigned char *buf)
 {
-	mhash(c->td, buf, len);
+	XXH64_update(&c->td64, buf, len);
 }
 
 void finish_running_checksum(struct running_checksum *c, unsigned char *digest)
 {
-	mhash_deinit(c->td, digest);
+	unsigned long long *hash = (unsigned long long*)digest;
+
+	*hash = XXH64_digest(&c->td64);
 	free(c);
 }

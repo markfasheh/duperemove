@@ -19,6 +19,7 @@
 #include "rbtree.h"
 #include "list.h"
 #include "debug.h"
+#include "memstats.h"
 
 #include "filerec.h"
 
@@ -281,17 +282,17 @@ int filerec_open(struct filerec *file, int write)
 	if (write)
 		flags = O_RDWR;
 
-	if (file->fd == -1) {
-		fd = open(file->filename, flags);
-		if (fd == -1) {
-			fprintf(stderr, "Error %d: %s while opening \"%s\" "
-				"(write=%d)\n",
-				errno, strerror(errno), file->filename, write);
-			return errno;
-		}
+	abort_on(file->fd != -1);
 
-		file->fd = fd;
+	fd = open(file->filename, flags);
+	if (fd == -1) {
+		fprintf(stderr, "Error %d: %s while opening \"%s\" "
+			"(write=%d)\n",
+			errno, strerror(errno), file->filename, write);
+		return errno;
 	}
+
+	file->fd = fd;
 
 	return 0;
 }
@@ -302,6 +303,20 @@ void filerec_close(struct filerec *file)
 		close(file->fd);
 		file->fd = -1;
 	}
+}
+
+int filerec_open_once(struct filerec *file, int write,
+		      struct list_head *open_files)
+{
+	int ret;
+
+	if (list_empty(&file->tmp_list)) {
+		ret = filerec_open(file, write);
+		if (ret)
+			return ret;
+		list_add(&file->tmp_list, open_files);
+	}
+	return 0;
 }
 
 void filerec_close_files_list(struct list_head *open_files)
@@ -437,6 +452,10 @@ out_last_map:
 	return err;
 }
 
+#ifdef FILEREC_TEST
+static char *fiemap_flags_str(unsigned long long flags);
+#endif
+
 /*
  * Skeleton for this function taken from e2fsprogs.git/misc/filefrag.c
  * which is Copyright 2003 by Theodore Ts'o and released under the GPL.
@@ -483,7 +502,7 @@ int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
 		for (i = 0; i < fiemap->fm_mapped_extents; i++) {
 			if (fm_ext[i].fe_flags & FIEMAP_EXTENT_LAST)
 				last = 1;
-
+#ifndef FILEREC_TEST
 			dprintf("(fiemap) [%d] fe_logical: %llu, "
 				"fe_length: %llu, fe_physical: %llu, "
 				"fe_flags: 0x%x\n",
@@ -491,6 +510,16 @@ int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
 				(unsigned long long)fm_ext[i].fe_length,
 				(unsigned long long)fm_ext[i].fe_physical,
 				fm_ext[i].fe_flags);
+#else
+			dprintf("(fiemap) [%d] fe_logical: %llu, "
+				"fe_length: %llu, fe_physical: %llu, "
+				"fe_flags: 0x%x %s\n",
+				i, (unsigned long long)fm_ext[i].fe_logical,
+				(unsigned long long)fm_ext[i].fe_length,
+				(unsigned long long)fm_ext[i].fe_physical,
+				fm_ext[i].fe_flags,
+				fiemap_flags_str(fm_ext[i].fe_flags));
+#endif
 
 			loff = fm_ext[i].fe_logical;
 			ext_len = fm_ext[i].fe_length;
@@ -540,6 +569,83 @@ int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
 }
 
 #ifdef FILEREC_TEST
+#define	FLAG_STR_LEN	4096
+static char flagstr[FLAG_STR_LEN];
+/* This function is not thread-safe */
+static char *fiemap_flags_str(unsigned long long flags)
+{
+	int size = FLAG_STR_LEN;
+	int written = 0;
+	char *str = flagstr;
+
+	if (flags) {
+		written = snprintf(str, size, "(");
+		str += written;
+		size -= written;
+	}
+
+	if (flags & FIEMAP_EXTENT_LAST) {
+		written = snprintf(str, size, "last ");
+		str += written;
+		size -= written;
+	}
+
+	if (flags & FIEMAP_EXTENT_UNKNOWN) {
+		written = snprintf(str, size, "unknown ");
+		str += written;
+		size -= written;
+	}
+	if (flags & FIEMAP_EXTENT_DELALLOC) {
+		written = snprintf(str, size, "delalloc ");
+		str += written;
+		size -= written;
+	}
+	if (flags & FIEMAP_EXTENT_ENCODED) {
+		written = snprintf(str, size, "encoded ");
+		str += written;
+		size -= written;
+	}
+	if (flags & FIEMAP_EXTENT_DATA_ENCRYPTED) {
+		written = snprintf(str, size, "data_encrypted ");
+		str += written;
+		size -= written;
+	}
+	if (flags & FIEMAP_EXTENT_NOT_ALIGNED) {
+		written = snprintf(str, size, "not_aligned ");
+		str += written;
+		size -= written;
+	}
+	if (flags & FIEMAP_EXTENT_DATA_INLINE) {
+		written = snprintf(str, size, "data_inline ");
+		str += written;
+		size -= written;
+	}
+	if (flags & FIEMAP_EXTENT_DATA_TAIL) {
+		written = snprintf(str, size, "data_tail ");
+		str += written;
+		size -= written;
+	}
+	if (flags & FIEMAP_EXTENT_UNWRITTEN) {
+		written = snprintf(str, size, "unwritten ");
+		str += written;
+		size -= written;
+	}
+	if (flags & FIEMAP_EXTENT_MERGED) {
+		written = snprintf(str, size, "merged ");
+		str += written;
+		size -= written;
+	}
+	if (flags & FIEMAP_EXTENT_SHARED) {
+		written = snprintf(str, size, "shared ");
+		str += written;
+		size -= written;
+	}
+
+	if (flags)
+		snprintf(str, size, ")");
+
+	return flagstr;
+}
 
 int debug = 1;	/* Want prints from filerec_count_shared */
 

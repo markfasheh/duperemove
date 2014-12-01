@@ -1,23 +1,47 @@
-RELEASE=v0.09.beta2
+RELEASE=v0.09.beta4
 
 CC = gcc
 CFLAGS = -Wall -ggdb -O3
 
 MANPAGES=duperemove.8 btrfs-extent-same.8
 
-DIST_SOURCES=csum-gcrypt.c csum-mhash.c csum.h duperemove.c hash-tree.c hash-tree.h results-tree.c results-tree.h kernel.h LICENSE list.h Makefile rbtree.c rbtree.h rbtree.txt README TODO dedupe.c dedupe.h btrfs-ioctl.h filerec.c filerec.h btrfs-util.c btrfs-util.h $(MANPAGES) btrfs-extent-same.c debug.h util.c util.h serialize.c serialize.h hashstats.c
+CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
+	btrfs-util.c util.c serialize.c memstats.c file_scan.c find_dupes.c \
+	run_dedupe.c
+hash_impl_CFILES=csum-gcrypt.c csum-xxhash.c xxhash.c
+hashstats_CFILES=hashstats.c
+btrfs_extent_same_CFILES=btrfs-extent-same.c
+csum_test_CFILES=csum-test.c
+DIST_CFILES:=$(CFILES) $(hashstats_CFILES) $(btrfs_extent_same_CFILES) \
+	$(csum_test_CFILES) $(hash_impl_CFILES)
+HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
+	btrfs-ioctl.h filerec.h btrfs-util.h debug.h util.h serialize.h \
+	memstats.h file_scan.h find_dupes.h run_dedupe.h xxhash.h
+DIST_SOURCES:=$(DIST_CFILES) $(HEADERS) LICENSE LICENSE.xxhash Makefile \
+	rbtree.txt README.md TODO $(MANPAGES) SubmittingPatches FAQ.md
 DIST=duperemove-$(RELEASE)
 DIST_TARBALL=$(DIST).tar.gz
 TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
 
-hash_obj=csum-gcrypt.o
+crypt_CFILES=csum-gcrypt.c
 crypt_CFLAGS=$(shell libgcrypt-config --cflags)
 crypt_LIBS=$(shell libgcrypt-config --libs)
-ifdef USE_MHASH
-	hash_obj=csum-mhash.o
-	crypt_CFLAGS=
-	crypt_LIBS=-lmhash
+ifdef USE_XXHASH
+	crypt_CFILES=csum-xxhash.c xxhash.c
+	crypt_CFLAGS=-DUSE_XXHASH
+	crypt_LIBS=
 endif
+crypt_obj=$(crypt_CFILES:.c=.o)
+
+CFILES += $(crypt_CFILES)
+objects = $(CFILES:.c=.o)
+
+hashstats_obj = $(crypt_obj) rbtree.o hash-tree.o filerec.o util.o serialize.o \
+	 results-tree.o
+show_shared_obj = rbtree.o util.o
+csum_test_obj = $(crypt_obj) util.o
+
+progs = duperemove hashstats btrfs-extent-same show-shared-extents csum-test
 
 ifdef USE_MURMUR3
 	hash_obj=csum-murmur3.o
@@ -29,11 +53,8 @@ glib_CFLAGS=$(shell pkg-config --cflags glib-2.0)
 glib_LIBS=$(shell pkg-config --libs glib-2.0)
 
 override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\" \
-	$(crypt_CFLAGS) $(glib_CFLAGS)
+	$(crypt_CFLAGS) $(glib_CFLAGS) -rdynamic
 LIBRARY_FLAGS += $(crypt_LIBS) $(glib_LIBS)
-
-objects = duperemove.o rbtree.o hash-tree.o results-tree.o dedupe.o filerec.o util.o serialize.o btrfs-util.o $(hash_obj)
-progs = duperemove
 
 DESTDIR = /
 PREFIX = /usr/local
@@ -41,9 +62,13 @@ SHAREDIR = $(PREFIX)/share
 SBINDIR = $(PREFIX)/sbin
 MANDIR = $(SHAREDIR)/man
 
-all: $(progs) kernel.h list.h btrfs-ioctl.h debug.h
+.c.o:
+	$(CC) $(CFLAGS) -c $< -o $@ $(LIBRARY_FLAGS)
 
-duperemove: $(objects) kernel.h duperemove.c
+all: $(progs)
+#TODO: Replace this with an auto-dependency
+$(objects): $(HEADERS)
+duperemove: $(objects)
 	$(CC) $(CFLAGS) $(objects) -o duperemove $(LIBRARY_FLAGS)
 
 tarball: clean
@@ -65,15 +90,14 @@ install: $(progs) $(MANPAGES)
 		install -m 0644 $$man $(DESTDIR)$(MANDIR)/man8; \
 	done
 
-csum-test: $(hash_obj) csum-test.c
-	$(CC) $(CFLAGS) $(hash_obj) -o csum-test csum-test.c  $(LIBRARY_FLAGS)
+csum-test: $(csum_test_obj) csum-test.c
+	$(CC) $(CFLAGS) $(csum_test_obj) -o csum-test csum-test.c  $(LIBRARY_FLAGS)
 
-filerec-test: filerec.c filerec.h rbtree.o
-	$(CC) $(CFLAGS) -DFILEREC_TEST filerec.c rbtree.o -o filerec-test $(LIBRARY_FLAGS)
+show-shared-extents: $(show_shared_obj) filerec.c
+	$(CC) $(CFLAGS) -DFILEREC_TEST filerec.c $(show_shared_obj) -o show-shared-extents $(LIBRARY_FLAGS)
 
-hashstats_obj = $(hash_obj) rbtree.o hash-tree.o filerec.o util.o serialize.o results-tree.o
 hashstats: $(hashstats_obj) hashstats.c
 	$(CC) $(CFLAGS) $(hashstats_obj) hashstats.c -o hashstats $(LIBRARY_FLAGS)
 
 clean:
-	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same filerec-test hashstats csum-*.o *~
+	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same filerec-test show-shared-extents hashstats csum-*.o *~
