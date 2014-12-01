@@ -177,7 +177,8 @@ void add_to_running_checksum(struct running_checksum *c,
 	/* We will concat instead of just copy
 	 * we can update multiple too-low blocks in a row
 	 */
-	strncat(c->rem_buffer, data, len);
+	abort_on((c->rem_len + len) >= 32);
+	memcpy(&c->rem_buffer[c->rem_len], data, len);
 	c->rem_len += len;
 	c->rem_buffer[c->rem_len] = '\0';
 
