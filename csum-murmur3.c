@@ -26,6 +26,7 @@
 #include <string.h>
 
 #include "csum.h"
+#include "util.h"
 #include "debug.h"
 
 #define		HASH_TYPE       "Murmur3 "
@@ -136,6 +137,7 @@ void add_to_running_checksum(struct running_checksum *c,
 
 	/* Process pending data first */
 	if(c->rem_len + len >= 16 && c->rem_len != 0){
+		abort_on(c->rem_len > ARRAY_SIZE(block));
 		memcpy(block, c->rem_buffer, c->rem_len);
 		for(i = 0; i < (16 - c->rem_len); i++)
 			block[c->rem_len + i] = data[i];
@@ -144,6 +146,8 @@ void add_to_running_checksum(struct running_checksum *c,
 		c->rem_len = 0;
 		add_to_running_checksum(c, 16, block);
 	}
+
+	abort_on(c->rem_len >= 16);
 
 	/* We will now process 16-bytes blocks, as much as possible */
 	while(len >= 16){
