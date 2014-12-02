@@ -180,12 +180,10 @@ void add_to_running_checksum(struct running_checksum *c,
 	abort_on((c->rem_len + len) >= 32);
 	memcpy(&c->rem_buffer[c->rem_len], data, len);
 	c->rem_len += len;
-	c->rem_buffer[c->rem_len] = '\0';
 
 	if(c->rem_len >= 16){
 		c->rem_len -= 16;
 		add_to_running_checksum(c, 16, c->rem_buffer);
-		c->rem_buffer[c->rem_len] = '\0';
 	}
 }
 
