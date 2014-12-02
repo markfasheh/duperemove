@@ -105,7 +105,7 @@ struct running_checksum {
 	uint64_t	h1;
 	uint64_t	h2;
 	uint64_t	len;
-	unsigned char rem_buffer[32]; /* Won't be bigger than 16 * 2*/
+	unsigned char rem_buffer[15]; /* Holds partial block between calls */
 	unsigned int rem_len;
 };
 
@@ -135,6 +135,8 @@ void add_to_running_checksum(struct running_checksum *c,
 	uint64_t c1 = BIG_CONSTANT(0x87c37b91114253d5);
 	uint64_t c2 = BIG_CONSTANT(0x4cf5ad432745937f);
 
+	abort_on(c->rem_len >= 16);
+
 	/* Process pending data first */
 	if(c->rem_len + len >= 16 && c->rem_len != 0){
 		abort_on(c->rem_len > ARRAY_SIZE(block));
@@ -146,8 +148,6 @@ void add_to_running_checksum(struct running_checksum *c,
 		c->rem_len = 0;
 		add_to_running_checksum(c, 16, block);
 	}
-
-	abort_on(c->rem_len >= 16);
 
 	/* We will now process 16-bytes blocks, as much as possible */
 	while(len >= 16){
@@ -181,7 +181,7 @@ void add_to_running_checksum(struct running_checksum *c,
 	/* We will concat instead of just copy
 	 * we can update multiple too-low blocks in a row
 	 */
-	abort_on((c->rem_len + len) >= 32);
+	abort_on((c->rem_len + len) >= 16);
 	memcpy(&c->rem_buffer[c->rem_len], data, len);
 	c->rem_len += len;
 }
