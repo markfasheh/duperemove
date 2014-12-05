@@ -477,8 +477,10 @@ int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
 	memset(fiemap, 0, sizeof(struct fiemap));
 
 	do {
+#ifndef	FILEREC_TEST
 		dprintf("(fiemap) %s: start: %"PRIu64", len: %"PRIu64"\n",
 			file->filename, start, len);
+#endif
 
 		/*
 		 * Do search from 0 to EOF. btrfs was doing some weird
@@ -651,42 +653,40 @@ int debug = 1;	/* Want prints from filerec_count_shared */
 
 int main(int argc, char **argv)
 {
-	int ret;
+	int ret, i;
 	struct filerec *file;
-	uint64_t loff, len;
 	uint64_t shared = 0;
 
 	init_filerec();
 
-	/* test_filerec filename loff len */
-	if (argc < 4) {
-		printf("Usage: filerec_test filename loff len\n");
+	if (argc < 2) {
+		printf("Usage: show_shared_extents filename1 filename2 ...\n");
 		return 1;
 	}
 
-	file = filerec_new(argv[1], 500, 1); /* Use made up ino */
-	if (!file) {
-		fprintf(stderr, "filerec_new(): malloc error\n");
-		return 1;
+	for (i = 1; i < argc; i++) {
+		file = filerec_new(argv[i], 500 + i, 1); /* Use made up ino */
+		if (!file) {
+			fprintf(stderr, "filerec_new(): malloc error\n");
+			return 1;
+		}
+
+		ret = filerec_open(file, 0);
+		if (ret)
+			goto out;
+
+		ret = filerec_count_shared(file, 0, -1ULL, &shared);
+		filerec_close(file);
+		if (ret) {
+			fprintf(stderr, "fiemap error %d: %s\n", ret, strerror(ret));
+			goto out;
+		}
+
+		printf("%s: %"PRIu64" shared bytes\n", file->filename, shared);
+		filerec_free(file);
+		file = NULL;
 	}
 
-	ret = filerec_open(file, 0);
-	if (ret)
-		goto out;
-
-	loff = atoll(argv[2]);
-	len = atoll(argv[3]);
-
-	ret = filerec_count_shared(file, loff, len, &shared);
-	if (ret) {
-		fprintf(stderr, "fiemap error %d: %s\n", ret, strerror(ret));
-		goto out_close;
-	}
-
-	printf("%s: %"PRIu64" shared bytes\n", file->filename, shared);
-
-out_close:
-	filerec_close(file);
 out:
 	filerec_free(file);
 	return ret;
