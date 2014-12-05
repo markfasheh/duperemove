@@ -24,25 +24,15 @@
 #include "debug.h"
 #include "xxhash.h"
 
-#define		HASH_TYPE	"XXHASH  "
-char hash_type[8];
-uint32_t digest_len = DIGEST_LEN_MAX;
+#define		HASH_TYPE_XXHASH	"XXHASH  "
 
-int init_hash(void)
+static int xxhash_init_hash(unsigned int *ret_digest_len)
 {
-	strncpy(hash_type, HASH_TYPE, 8);
+	*ret_digest_len = DIGEST_LEN_MAX;
 	return 0;
 }
 
-void debug_print_digest(FILE *stream, unsigned char *digest)
-{
-	uint32_t i;
-
-	for (i = 0; i < DIGEST_LEN_MAX; i++)
-		fprintf(stream, "%.2x", digest[i]);
-}
-
-void checksum_block(char *buf, int len, unsigned char *digest) {
+static void xxhash_checksum_block(char *buf, int len, unsigned char *digest) {
 	unsigned long long *hash = (unsigned long long*)digest;
 	/*
 	 * For xxhash one use only first 64 bit from 256 bit hash field
@@ -52,26 +42,46 @@ void checksum_block(char *buf, int len, unsigned char *digest) {
 	*hash = XXH64(buf, len, 0);
 }
 
-struct running_checksum {
+struct xxhash_running_checksum {
 	XXH64_state_t	td64;
 };
+DECLARE_RUNNING_CSUM_CAST_FUNCS(xxhash_running_checksum);
 
-struct running_checksum *start_running_checksum(void)
+static struct running_checksum *xxhash_start_running_checksum(void)
 {
-	struct running_checksum *c = calloc(1, sizeof(struct running_checksum));
+	struct xxhash_running_checksum *c =
+		calloc(1, sizeof(struct xxhash_running_checksum));
 	XXH64_reset(&c->td64, 0);
-	return c;
+	return priv_to_rc(c);
 }
 
-void add_to_running_checksum(struct running_checksum *c, unsigned int len, unsigned char *buf)
+static void xxhash_add_to_running_checksum(struct running_checksum *_c,
+					   unsigned int len, unsigned char *buf)
 {
+	struct xxhash_running_checksum *c = rc_to_priv(_c);
 	XXH64_update(&c->td64, buf, len);
 }
 
-void finish_running_checksum(struct running_checksum *c, unsigned char *digest)
+static void xxhash_finish_running_checksum(struct running_checksum *_c,
+					   unsigned char *digest)
 {
+	struct xxhash_running_checksum *c = rc_to_priv(_c);
 	unsigned long long *hash = (unsigned long long*)digest;
 
 	*hash = XXH64_digest(&c->td64);
 	free(c);
 }
+
+struct csum_module_ops ops_xxhash = {
+	.init			= xxhash_init_hash,
+	.checksum_block		= xxhash_checksum_block,
+	.start_running_checksum	= xxhash_start_running_checksum,
+	.add_to_running_checksum	= xxhash_add_to_running_checksum,
+	.finish_running_checksum	= xxhash_finish_running_checksum,
+};
+
+struct csum_module csum_module_xxhash =	{
+	.name = "xxhash",
+	.hash_type = HASH_TYPE_XXHASH,
+	.ops = &ops_xxhash,
+};

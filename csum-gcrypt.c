@@ -28,16 +28,15 @@
 
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
 
-unsigned int digest_len = 0;
-#define	HASH_TYPE	"SHA256  "
-char hash_type[8];
+#define	HASH_TYPE_SHA256	"SHA256  "
 
-void checksum_block(char *buf, int len, unsigned char *digest)
+
+static void sha256_checksum_block(char *buf, int len, unsigned char *digest)
 {
 	gcry_md_hash_buffer(HASH_FUNC, digest, buf, len);
 }
 
-int init_hash(void)
+static int sha256_init_hash(unsigned int *ret_digest_len)
 {
 	gcry_control (GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
 
@@ -57,33 +56,23 @@ int init_hash(void)
 	if (gcry_md_test_algo(HASH_FUNC))
 		return 1;
 
-	digest_len = gcry_md_get_algo_dlen(HASH_FUNC);
-	if (!digest_len)
+	*ret_digest_len = gcry_md_get_algo_dlen(HASH_FUNC);
+	if (!(*ret_digest_len))
 		return 1;
-
-	strncpy(hash_type, HASH_TYPE, 8);
-
-	abort_on(digest_len == 0 || digest_len > DIGEST_LEN_MAX);
 
 	return 0;
 }
 
-void debug_print_digest(FILE *stream, unsigned char *digest)
-{
-	uint32_t i;
-
-	for (i = 0; i < digest_len; i++)
-		fprintf(stream, "%.2x", digest[i]);
-}
-
-struct running_checksum {
+struct sha256_running_checksum {
 	gcry_md_hd_t	hd;
 	unsigned char	digest[DIGEST_LEN_MAX];
 };
+DECLARE_RUNNING_CSUM_CAST_FUNCS(sha256_running_checksum);
 
-struct running_checksum *start_running_checksum(void)
+static struct running_checksum *sha256_start_running_checksum(void)
 {
-	struct running_checksum *c = calloc(1, sizeof(struct running_checksum));
+	struct sha256_running_checksum *c =
+		calloc(1, sizeof(struct sha256_running_checksum));
 
 	if (c) {
 		if (gcry_md_open(&c->hd, HASH_FUNC, 0) != GPG_ERR_NO_ERROR) {
@@ -92,17 +81,20 @@ struct running_checksum *start_running_checksum(void)
 		}
 	}
 
-	return c;
+	return priv_to_rc(c);
 }
 
-void add_to_running_checksum(struct running_checksum *c,
-			     unsigned int len, unsigned char *buf)
+static void sha256_add_to_running_checksum(struct running_checksum *_c,
+					   unsigned int len, unsigned char *buf)
 {
+	struct sha256_running_checksum *c = rc_to_priv(_c);
 	gcry_md_write(c->hd, buf, len);
 }
 
-void finish_running_checksum(struct running_checksum *c, unsigned char *digest)
+static void sha256_finish_running_checksum(struct running_checksum *_c,
+					   unsigned char *digest)
 {
+	struct sha256_running_checksum *c = rc_to_priv(_c);
 	unsigned char *gcry_digest;
 
 	/* gcry_md_read() does this implicitly */
@@ -114,3 +106,17 @@ void finish_running_checksum(struct running_checksum *c, unsigned char *digest)
 
 	free(c);
 }
+
+struct csum_module_ops ops_sha256 = {
+	.init			= sha256_init_hash,
+	.checksum_block		= sha256_checksum_block,
+	.start_running_checksum	= sha256_start_running_checksum,
+	.add_to_running_checksum	= sha256_add_to_running_checksum,
+	.finish_running_checksum	= sha256_finish_running_checksum,
+};
+
+struct csum_module csum_module_sha256 =	{
+	.name = "SHA256",
+	.hash_type = HASH_TYPE_SHA256,
+	.ops = &ops_sha256,
+};

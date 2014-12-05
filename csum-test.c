@@ -36,7 +36,9 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <getopt.h>
 #include <errno.h>
+#include <limits.h>
 
 #include <stdio.h>
 
@@ -47,20 +49,31 @@ static unsigned int buf_len = 4096;
 static unsigned char *buf = NULL;
 
 static unsigned char digest[DIGEST_LEN_MAX] = { 0, };
+static char *user_hash = DEFAULT_HASH_STR;
+enum {
+	HASH_OPTION = CHAR_MAX + 1,
+};
 
 static int parse_opts(int argc, char **argv, char **fname)
 {
 	int c;
+	static struct option long_ops[] = {
+		{ "hash", 1, 0, HASH_OPTION },
+		{ 0, 0, 0, 0}
+	};
 
 	if (argc < 2)
 		return 1;
 
-	while ((c = getopt(argc, argv, "b:"))
+	while ((c = getopt_long(argc, argv, "b:", long_ops, NULL))
 	       != -1) {
 		switch (c) {
 		case 'b':
 			buf_len = atoi(optarg);
 			printf("User provided buffer len: %u\n", buf_len);
+			break;
+		case HASH_OPTION:
+			user_hash = optarg;
 			break;
 		default:
 			return 1;
@@ -80,13 +93,15 @@ int main(int argc, char **argv)
 	struct stat s;
 	struct running_checksum *csum;
 
-	init_hash();
-
 	ret = parse_opts(argc, argv, &fname);
 	if (ret) {
-		fprintf(stderr, "Usage: %s [-b buflen] filename\n", argv[0]);
+		fprintf(stderr, "Usage: %s [-b buflen] [--hash=hash_type] filename\n", argv[0]);
 		return 1;
 	}
+
+	ret = init_csum_module(user_hash);
+	if (ret)
+		return ret;
 
 	buf = malloc(buf_len);
 	if (buf == NULL)

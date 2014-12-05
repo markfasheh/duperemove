@@ -5,46 +5,36 @@ CFLAGS = -Wall -ggdb
 
 MANPAGES=duperemove.8 btrfs-extent-same.8 hashstats.8 show-shared-extents.8
 
-CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
-	btrfs-util.c util.c serialize.c memstats.c file_scan.c find_dupes.c \
-	run_dedupe.c
-hash_impl_CFILES=csum-gcrypt.c csum-xxhash.c xxhash.c csum-murmur3.c
-hashstats_CFILES=hashstats.c
-btrfs_extent_same_CFILES=btrfs-extent-same.c
-csum_test_CFILES=csum-test.c
-DIST_CFILES:=$(CFILES) $(hashstats_CFILES) $(btrfs_extent_same_CFILES) \
-	$(csum_test_CFILES) $(hash_impl_CFILES)
 HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
 	btrfs-ioctl.h filerec.h btrfs-util.h debug.h util.h serialize.h \
 	memstats.h file_scan.h find_dupes.h run_dedupe.h xxhash.h
+CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
+	btrfs-util.c util.c serialize.c memstats.c file_scan.c find_dupes.c \
+	run_dedupe.c csum.c
+hash_CFILES=csum-gcrypt.c csum-xxhash.c xxhash.c csum-murmur3.c
+hash_CFLAGS=$(shell libgcrypt-config --cflags)
+hash_LIBS=$(shell libgcrypt-config --libs)
+CFILES += $(hash_CFILES)
+
+hashstats_CFILES=hashstats.c
+btrfs_extent_same_CFILES=btrfs-extent-same.c
+csum_test_CFILES=csum-test.c
+
+DIST_CFILES:=$(CFILES) $(hashstats_CFILES) $(btrfs_extent_same_CFILES) \
+	$(csum_test_CFILES) $(hash_CFILES)
 DIST_SOURCES:=$(DIST_CFILES) $(HEADERS) LICENSE LICENSE.xxhash Makefile \
 	rbtree.txt README.md TODO $(MANPAGES) SubmittingPatches FAQ.md
 DIST=duperemove-$(RELEASE)
 DIST_TARBALL=$(DIST).tar.gz
 TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
 
-crypt_CFILES=csum-gcrypt.c
-crypt_CFLAGS=$(shell libgcrypt-config --cflags)
-crypt_LIBS=$(shell libgcrypt-config --libs)
-ifdef USE_XXHASH
-	crypt_CFILES=csum-xxhash.c xxhash.c
-	crypt_CFLAGS=-DUSE_XXHASH
-	crypt_LIBS=
-endif
-ifdef USE_MURMUR3
-	crypt_CFILES=csum-murmur3.o
-	crypt_CFLAGS=-DUSE_MURMUR3
-	crypt_LIBS=
-endif
-crypt_obj=$(crypt_CFILES:.c=.o)
-
-CFILES += $(crypt_CFILES)
 objects = $(CFILES:.c=.o)
 
-hashstats_obj = $(crypt_obj) rbtree.o hash-tree.o filerec.o util.o serialize.o \
-	 results-tree.o
+hash_obj=$(hash_CFILES:.c=.o)
+hashstats_obj = $(hash_obj) rbtree.o hash-tree.o filerec.o util.o serialize.o \
+	 results-tree.o csum.o
 show_shared_obj = rbtree.o util.o
-csum_test_obj = $(crypt_obj) util.o
+csum_test_obj = $(hash_obj) util.o csum.o
 
 progs = duperemove hashstats btrfs-extent-same show-shared-extents csum-test
 
@@ -52,8 +42,8 @@ glib_CFLAGS=$(shell pkg-config --cflags glib-2.0)
 glib_LIBS=$(shell pkg-config --libs glib-2.0)
 
 override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\" \
-	$(crypt_CFLAGS) $(glib_CFLAGS) -rdynamic
-LIBRARY_FLAGS += $(crypt_LIBS) $(glib_LIBS)
+	$(hash_CFLAGS) $(glib_CFLAGS) -rdynamic
+LIBRARY_FLAGS += $(hash_LIBS) $(glib_LIBS)
 
 DESTDIR = /
 PREFIX = /usr/local

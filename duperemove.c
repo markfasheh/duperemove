@@ -70,6 +70,8 @@ int do_lookup_extents = 1;
 
 int fancy_status = 0;
 
+static char *user_hash = DEFAULT_HASH_STR;
+
 static void usage(const char *prog)
 {
 	printf("duperemove %s\n", VERSTRING);
@@ -114,6 +116,7 @@ enum {
 	HASH_THREADS_OPTION,
 	LOOKUP_EXTENTS_OPTION,
 	ONE_FILESYSTEM_OPTION,
+	HASH_OPTION,
 };
 
 /*
@@ -131,6 +134,7 @@ static int parse_options(int argc, char **argv)
 		{ "hash-threads", 1, 0, HASH_THREADS_OPTION },
 		{ "lookup-extents", 1, 0, LOOKUP_EXTENTS_OPTION },
 		{ "one-file-system", 0, 0, ONE_FILESYSTEM_OPTION },
+		{ "hash", 1, 0, HASH_OPTION },
 		{ 0, 0, 0, 0}
 	};
 
@@ -187,6 +191,9 @@ static int parse_options(int argc, char **argv)
 		case ONE_FILESYSTEM_OPTION:
 		case 'x':
 			one_file_system = 1;
+			break;
+		case HASH_OPTION:
+			user_hash = optarg;
 			break;
 		case HELP_OPTION:
 		case '?':
@@ -248,9 +255,6 @@ int main(int argc, char **argv)
 	struct results_tree res;
 	struct filerec *file;
 
-	if (init_hash())
-		return ENOMEM;
-
 	init_filerec();
 	init_hash_tree(&tree);
 	init_results_tree(&res);
@@ -260,12 +264,14 @@ int main(int argc, char **argv)
 		return EINVAL;
 	}
 
-#ifdef USE_XXHASH
-	printf("Warning: xxhash support is experimental and might change!\n");
-#endif
-#ifdef USE_MURMUR3
-	printf("Warning: murmur3 support is experimental and might change!\n");
-#endif
+	ret = init_csum_module(user_hash);
+	if (ret) {
+		if (ret == EINVAL)
+			fprintf(stderr,
+				"Could not initialize hash module \"%s\"\n",
+				user_hash);
+		return ret;
+	}
 
 	if (isatty(STDOUT_FILENO))
 		fancy_status = 1;
@@ -301,7 +307,7 @@ int main(int argc, char **argv)
 	}
 
 	printf("Using %uK blocks\n", blocksize/1024);
-	printf("Using hash: %.*s\n", 8, hash_type);
+	printf("Using hash: %s\n", csum_mod->name);
 
 	if (!read_hashes) {
 		ret = populate_hash_tree(&tree);

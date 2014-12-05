@@ -199,6 +199,7 @@ static void usage(const char *prog)
 enum {
 	HELP_OPTION = CHAR_MAX + 1,
 	VERSION_OPTION,
+	HASH_OPTION,
 };
 
 static int parse_options(int argc, char **argv)
@@ -253,9 +254,6 @@ int main(int argc, char **argv)
 	struct hash_tree tree;
 	struct hash_file_header h;
 
-	if (init_hash())
-		return ENOMEM;
-
 	init_filerec();
 	init_hash_tree(&tree);
 
@@ -263,6 +261,9 @@ int main(int argc, char **argv)
 		usage(argv[0]);
 		return EINVAL;
 	}
+
+	if (init_csum_module(DEFAULT_HASH_STR))
+		return ENOMEM;
 
 	ret = read_hash_tree(serialize_fname, &tree, &blocksize, &h, 0);
 	if (ret == FILE_VERSION_ERROR) {

@@ -29,9 +29,7 @@
 #include "util.h"
 #include "debug.h"
 
-#define		HASH_TYPE       "Murmur3 "
-char		hash_type[8];
-unsigned int	digest_len = 0;
+#define		HASH_TYPE_MURMUR3       "Murmur3 "
 
 #ifdef __GNUC__
 #define FORCE_INLINE __attribute__((always_inline)) inline
@@ -78,41 +76,27 @@ static FORCE_INLINE uint64_t fmix64(uint64_t k)
 	return k;
 }
 
-int init_hash(void)
+static int murmur3_init_hash(unsigned int *ret_digest_len)
 {
-	strncpy(hash_type, HASH_TYPE, 8);
-	digest_len = 16;
-	abort_on(digest_len == 0 || digest_len > DIGEST_LEN_MAX);
+	*ret_digest_len = 16;
 	return 0;
 }
 
-void debug_print_digest(FILE *stream, unsigned char *digest)
-{
-	uint32_t i;
-
-	for (i = 0; i < digest_len; i++)
-		fprintf(stream, "%.2x", digest[i]);
-}
-
-void checksum_block(char *buf, int len, unsigned char *digest)
-{
-	struct running_checksum *csum = start_running_checksum();
-	add_to_running_checksum(csum, len, (unsigned char*)buf);
-	finish_running_checksum(csum, digest);
-}
 #define	REM_BUFFER_LEN	15
 
-struct running_checksum {
+struct murmur3_running_checksum {
 	uint64_t	h1;
 	uint64_t	h2;
 	uint64_t	len;
 	unsigned char rem_buffer[REM_BUFFER_LEN]; /* Holds partial block between calls */
 	unsigned int rem_len;
 };
+DECLARE_RUNNING_CSUM_CAST_FUNCS(murmur3_running_checksum);
 
-struct running_checksum *start_running_checksum(void)
+struct running_checksum *murmur3_start_running_checksum(void)
 {
-	struct running_checksum *c = calloc(1, sizeof(struct running_checksum));
+	struct murmur3_running_checksum *c =
+		calloc(1, sizeof(struct murmur3_running_checksum));
 
 	if (c) {
 		/* Init h1 & h2 with the same seed */
@@ -122,12 +106,14 @@ struct running_checksum *start_running_checksum(void)
 		c->rem_len = 0;
 	}
 
-	return c;
+	return priv_to_rc(c);
 }
 
-void add_to_running_checksum(struct running_checksum *c,
-			     unsigned int len, unsigned char *buf)
+static void murmur3_add_to_running_checksum(struct running_checksum *_c,
+					    unsigned int len,
+					    unsigned char *buf)
 {
+	struct murmur3_running_checksum *c = rc_to_priv(_c);
 	unsigned char block[16];
 	const uint8_t * data = (const uint8_t*)buf;
 	int i;
@@ -145,7 +131,7 @@ void add_to_running_checksum(struct running_checksum *c,
 		data = data + (16 - c->rem_len);
 		len -= (16 - c->rem_len);
 		c->rem_len = 0;
-		add_to_running_checksum(c, 16, block);
+		add_to_running_checksum(_c, 16, block);
 	}
 
 	/* We will now process 16-bytes blocks, as much as possible */
@@ -185,7 +171,7 @@ void add_to_running_checksum(struct running_checksum *c,
 	c->rem_len += len;
 }
 
-void checksum_tailing_data(struct running_checksum *c)
+static void checksum_tailing_data(struct murmur3_running_checksum *c)
 {
 	uint64_t c1 = BIG_CONSTANT(0x87c37b91114253d5);
 	uint64_t c2 = BIG_CONSTANT(0x4cf5ad432745937f);
@@ -240,8 +226,11 @@ void checksum_tailing_data(struct running_checksum *c)
 }
 
 
-void finish_running_checksum(struct running_checksum *c, unsigned char *digest)
+static void murmur3_finish_running_checksum(struct running_checksum *_c,
+					    unsigned char *digest)
 {
+	struct murmur3_running_checksum *c = rc_to_priv(_c);
+
 	checksum_tailing_data(c);
 
 	uint64_t h1 = c->h1;
@@ -267,3 +256,25 @@ void finish_running_checksum(struct running_checksum *c, unsigned char *digest)
 
 	free(c);
 }
+
+static void murmur3_checksum_block(char *buf, int len, unsigned char *digest)
+{
+	struct running_checksum *csum = murmur3_start_running_checksum();
+	murmur3_add_to_running_checksum(csum, len, (unsigned char*)buf);
+	murmur3_finish_running_checksum(csum, digest);
+}
+
+
+struct csum_module_ops ops_murmur3 = {
+	.init			= murmur3_init_hash,
+	.checksum_block		= murmur3_checksum_block,
+	.start_running_checksum	= murmur3_start_running_checksum,
+	.add_to_running_checksum	= murmur3_add_to_running_checksum,
+	.finish_running_checksum	= murmur3_finish_running_checksum,
+};
+
+struct csum_module csum_module_murmur3 =	{
+	.name = "murmur3",
+	.hash_type = HASH_TYPE_MURMUR3,
+	.ops = &ops_murmur3,
+};
