@@ -100,12 +100,13 @@ void checksum_block(char *buf, int len, unsigned char *digest)
 	add_to_running_checksum(csum, len, (unsigned char*)buf);
 	finish_running_checksum(csum, digest);
 }
+#define	REM_BUFFER_LEN	15
 
 struct running_checksum {
 	uint64_t	h1;
 	uint64_t	h2;
 	uint64_t	len;
-	unsigned char rem_buffer[15]; /* Holds partial block between calls */
+	unsigned char rem_buffer[REM_BUFFER_LEN]; /* Holds partial block between calls */
 	unsigned int rem_len;
 };
 
@@ -119,7 +120,6 @@ struct running_checksum *start_running_checksum(void)
 		c->h2 = 42;
 		c->len = 0;
 		c->rem_len = 0;
-		memset(c->rem_buffer, 0, 32);
 	}
 
 	return c;
@@ -135,11 +135,10 @@ void add_to_running_checksum(struct running_checksum *c,
 	uint64_t c1 = BIG_CONSTANT(0x87c37b91114253d5);
 	uint64_t c2 = BIG_CONSTANT(0x4cf5ad432745937f);
 
-	abort_on(c->rem_len >= 16);
+	abort_on(c->rem_len > REM_BUFFER_LEN);
 
 	/* Process pending data first */
 	if(c->rem_len + len >= 16 && c->rem_len != 0){
-		abort_on(c->rem_len > ARRAY_SIZE(block));
 		memcpy(block, c->rem_buffer, c->rem_len);
 		for(i = 0; i < (16 - c->rem_len); i++)
 			block[c->rem_len + i] = data[i];
@@ -181,7 +180,7 @@ void add_to_running_checksum(struct running_checksum *c,
 	/* We will concat instead of just copy
 	 * we can update multiple too-low blocks in a row
 	 */
-	abort_on((c->rem_len + len) >= 16);
+	abort_on((c->rem_len + len) > REM_BUFFER_LEN);
 	memcpy(&c->rem_buffer[c->rem_len], data, len);
 	c->rem_len += len;
 }
