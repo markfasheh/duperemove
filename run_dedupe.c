@@ -26,6 +26,8 @@
 #include <string.h>
 #include <inttypes.h>
 
+#include <glib.h>
+
 #include "rbtree.h"
 #include "list.h"
 #include "csum.h"
@@ -235,8 +237,9 @@ run_dedupe:
 		 * extent.
 		 */
 		if (ctxt->num_queued) {
-			printf("Dedupe %d extents with target: (%s, %s), "
+			printf("[%p] Dedupe %d extents with target: (%s, %s), "
 			       "\"%s\"\n",
+			       g_thread_self(),
 			       ctxt->num_queued,
 			       pretty_size(ctxt->orig_file_off),
 			       pretty_size(ctxt->orig_len),
@@ -290,14 +293,43 @@ out:
 	return ret;
 }
 
-void dedupe_results(struct results_tree *res)
+static GMutex dedupe_counts_mutex;
+struct dedupe_counts {
+	uint64_t	kern_bytes;
+	uint64_t	fiemap_bytes;
+};
+
+static int dedupe_worker(struct dupe_extents *dext,
+			 struct dedupe_counts *counts)
 {
 	int ret;
+	uint64_t fiemap_bytes = 0ULL;
+	uint64_t kern_bytes = 0ULL;
+
+	ret = dedupe_extent_list(dext, &fiemap_bytes, &kern_bytes);
+	if (ret) {
+		/* dedupe_extent_list already printed to stderr for us */
+		return ret;
+	}
+
+	g_mutex_lock(&dedupe_counts_mutex);
+	counts->fiemap_bytes += fiemap_bytes;
+	counts->kern_bytes += kern_bytes;
+	g_mutex_unlock(&dedupe_counts_mutex);
+
+	return 0;
+}
+
+static GThreadPool *dedupe_pool = NULL;
+
+void dedupe_results(struct results_tree *res)
+{
 	struct rb_root *root = &res->root;
 	struct rb_node *node = rb_first(root);
 	struct dupe_extents *dext;
-	uint64_t fiemap_bytes = 0;
-	uint64_t kern_bytes = 0;
+	unsigned int dedupe_threads = g_get_num_processors();
+	struct dedupe_counts counts = { 0ULL, };
+	GError *err = NULL;
 
 	print_dupes_table(res);
 
@@ -306,17 +338,32 @@ void dedupe_results(struct results_tree *res)
 		return;
 	}
 
+	dedupe_pool = g_thread_pool_new((GFunc) dedupe_worker, &counts,
+					dedupe_threads, TRUE, &err);
+	if (err) {
+		fprintf(stderr, "Unable to create dedupe thread pool: %s\n",
+			err->message);
+		g_error_free(err);
+		return;
+	}
+
 	while (node) {
 		dext = rb_entry(node, struct dupe_extents, de_node);
 
-		ret = dedupe_extent_list(dext, &fiemap_bytes, &kern_bytes);
-		if (ret)
+		g_thread_pool_push(dedupe_pool, dext, &err);
+		if (err) {
+			fprintf(stderr, "Fatal error while deduping: %s\n",
+				err->message);
+			g_error_free(err);
 			break;
+		}
 
 		node = rb_next(node);
 	}
 
+	g_thread_pool_free(dedupe_pool, FALSE, TRUE);
+
 	printf("Kernel processed data (excludes target files): %s\nComparison "
 	       "of extent info shows a net change in shared extents of: %s\n",
-	       pretty_size(kern_bytes), pretty_size(fiemap_bytes));
+	       pretty_size(counts.kern_bytes), pretty_size(counts.fiemap_bytes));
 }
