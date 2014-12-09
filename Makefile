@@ -3,7 +3,7 @@ RELEASE=v0.09.beta4
 CC = gcc
 CFLAGS = -Wall -ggdb
 
-MANPAGES=duperemove.8 btrfs-extent-same.8
+MANPAGES=duperemove.8 btrfs-extent-same.8 hashstats.8 show-shared-extents.8
 
 CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
 	btrfs-util.c util.c serialize.c memstats.c

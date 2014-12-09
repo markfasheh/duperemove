@@ -1,0 +1,15 @@
+.TH "show-shared-extents" "8" "December 2014" "Version 0.09"
+.SH "NAME"
+show-shared-extents \- Show extents that are shared.
+.SH "SYNOPSIS"
+\fBshow-shared-extents\fR \fIfiles...\fI
+.SH "DESCRIPTION"
+.PP
+Print all the extents in \fIfiles\fR that are shared. A sum of shared
+extents is also printed.
+
+On btrfs, an extent is reported as shared if it has more than one reference.
+
+.SH "SEE ALSO"
+.BR duperemove(8)
+.BR btrfs(8)
