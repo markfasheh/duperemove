@@ -142,7 +142,7 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 	struct extent *extent;
 	struct dedupe_ctxt *ctxt = NULL;
 	uint64_t len = dext->de_len;
-	LIST_HEAD(open_files);
+	OPEN_ONCE(open_files);
 	struct filerec *file;
 	struct extent *prev = NULL;
 	struct extent *to_add;
@@ -253,13 +253,13 @@ run_dedupe:
 			process_dedupe_results(ctxt, kern_bytes);
 		}
 
-		filerec_close_files_list(&open_files);
+		filerec_close_open_list(&open_files);
 		free_dedupe_ctxt(ctxt);
 		ctxt = NULL;
 	}
 
 	abort_on(ctxt != NULL);
-	abort_on(!list_empty(&open_files));
+	abort_on(!RB_EMPTY_ROOT(&open_files.root));
 
 	add_shared_extents(dext, &shared_post);
 	/*
@@ -277,7 +277,7 @@ out:
 	 * ENOMEM error during context allocation may have caused open
 	 * files to stay in our list.
 	 */
-	filerec_close_files_list(&open_files);
+	filerec_close_open_list(&open_files);
 	/*
 	 * We might have allocated a context above but not
 	 * filled it with any extents, make sure to free it
@@ -285,7 +285,7 @@ out:
 	 */
 	free_dedupe_ctxt(ctxt);
 
-	abort_on(!list_empty(&open_files));
+	abort_on(!RB_EMPTY_ROOT(&open_files.root));
 
 	return ret;
 }

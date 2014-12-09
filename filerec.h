@@ -10,6 +10,7 @@ extern unsigned long long num_filerecs;
 
 struct filerec {
 	int		fd;			/* file descriptor */
+	unsigned int	fd_refs;			/* fd refcount */
 	char	*filename;		/* path to file */
 	uint64_t subvolid;
 
@@ -36,9 +37,15 @@ void filerec_free(struct filerec *file);
 int filerec_open(struct filerec *file, int write);
 void filerec_close(struct filerec *file);
 
+struct open_once {
+	struct rb_root	root;
+};
+#define	OPEN_ONCE_INIT	(struct open_once) { RB_ROOT, }
+#define OPEN_ONCE(name)	struct open_once name = OPEN_ONCE_INIT
+
 int filerec_open_once(struct filerec *file, int write,
-		      struct list_head *open_files);
-void filerec_close_files_list(struct list_head *open_files);
+		      struct open_once *open_files);
+void filerec_close_open_list(struct open_once *open_files);
 
 int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
 			 uint64_t *shared_bytes);
