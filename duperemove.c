@@ -355,6 +355,7 @@ int main(int argc, char **argv)
 	else
 		print_dupes_table(&res);
 
+	free_all_filerecs();
 out:
 	if (ret == ENOMEM || debug)
 		print_mem_stats();
