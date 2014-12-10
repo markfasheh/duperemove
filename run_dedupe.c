@@ -327,7 +327,6 @@ void dedupe_results(struct results_tree *res)
 	struct rb_root *root = &res->root;
 	struct rb_node *node = rb_first(root);
 	struct dupe_extents *dext;
-	unsigned int dedupe_threads = g_get_num_processors();
 	struct dedupe_counts counts = { 0ULL, };
 	GError *err = NULL;
 
@@ -338,8 +337,10 @@ void dedupe_results(struct results_tree *res)
 		return;
 	}
 
+	printf("Using %u threads for dedupe phase\n", io_threads);
+
 	dedupe_pool = g_thread_pool_new((GFunc) dedupe_worker, &counts,
-					dedupe_threads, TRUE, &err);
+					io_threads, TRUE, &err);
 	if (err) {
 		fprintf(stderr, "Unable to create dedupe thread pool: %s\n",
 			err->message);

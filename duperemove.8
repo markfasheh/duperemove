@@ -75,9 +75,10 @@ Print numbers in human-readable format.
 Be verbose.
 
 .TP
-\fB\--hash-threads=N\fR
-Use N threads for hashing phase. Default is automatically detected
-based on number of host cpus.
+\fB\--io-threads=N\fR
+Use N threads for I/O. This is used by the file hashing and dedupe
+stages. Default is automatically detected based on number of host
+cpus.
 
 .TP
 \fB\--read-hashes=hashfile\fR
@@ -117,6 +118,10 @@ us to default this option to on.
 .TP
 \fB\-?, --help\fR
 Prints help text.
+
+.TP
+\fB\--hash-threads=N\fR
+Deprecated, see \fB--io-threads\fR above.
 
 .SH "FAQ"
 

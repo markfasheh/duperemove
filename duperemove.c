@@ -65,7 +65,7 @@ static int version_only = 0;
 static int write_hashes = 0;
 static int read_hashes = 0;
 static char *serialize_fname = NULL;
-unsigned int hash_threads = 0;
+unsigned int io_threads;
 int do_lookup_extents = 1;
 
 int fancy_status = 0;
@@ -113,7 +113,7 @@ enum {
 	VERSION_OPTION,
 	WRITE_HASHES_OPTION,
 	READ_HASHES_OPTION,
-	HASH_THREADS_OPTION,
+	IO_THREADS_OPTION,
 	LOOKUP_EXTENTS_OPTION,
 	ONE_FILESYSTEM_OPTION,
 	HASH_OPTION,
@@ -131,7 +131,8 @@ static int parse_options(int argc, char **argv)
 		{ "version", 0, 0, VERSION_OPTION },
 		{ "write-hashes", 1, 0, WRITE_HASHES_OPTION },
 		{ "read-hashes", 1, 0, READ_HASHES_OPTION },
-		{ "hash-threads", 1, 0, HASH_THREADS_OPTION },
+		{ "io-threads", 1, 0, IO_THREADS_OPTION },
+		{ "hash-threads", 1, 0, IO_THREADS_OPTION },
 		{ "lookup-extents", 1, 0, LOOKUP_EXTENTS_OPTION },
 		{ "one-file-system", 0, 0, ONE_FILESYSTEM_OPTION },
 		{ "hash", 1, 0, HASH_OPTION },
@@ -180,9 +181,9 @@ static int parse_options(int argc, char **argv)
 			read_hashes = 1;
 			serialize_fname = strdup(optarg);
 			break;
-		case HASH_THREADS_OPTION:
-			hash_threads = strtoul(optarg, NULL, 10);
-			if (!hash_threads)
+		case IO_THREADS_OPTION:
+			io_threads = strtoul(optarg, NULL, 10);
+			if (!io_threads)
 				return EINVAL;
 			break;
 		case LOOKUP_EXTENTS_OPTION:
@@ -258,6 +259,9 @@ int main(int argc, char **argv)
 	init_filerec();
 	init_hash_tree(&tree);
 	init_results_tree(&res);
+
+	/* Parse options might change this so set a default here */
+	io_threads = g_get_num_processors();
 
 	if (parse_options(argc, argv)) {
 		usage(argv[0]);
