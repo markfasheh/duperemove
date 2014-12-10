@@ -276,6 +276,16 @@ void filerec_free(struct filerec *file)
 	}
 }
 
+void free_all_filerecs(void)
+{
+	struct filerec *file, *tmp;
+
+	list_for_each_entry_safe(file, tmp, &filerec_list, rec_list) {
+		filerec_free(file);
+	}
+
+}
+
 int filerec_open(struct filerec *file, int write)
 {
 	int ret = 0;

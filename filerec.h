@@ -30,6 +30,7 @@ struct filerec {
 };
 
 void init_filerec(void);
+void free_all_filerecs(void);
 
 struct filerec *filerec_new(const char *filename, uint64_t inum,
 			    uint64_t subvolid);
