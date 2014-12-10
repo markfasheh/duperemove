@@ -150,7 +150,7 @@ int mark_filerecs_compared(struct filerec *file1, struct filerec *file2)
 
 static void free_compared_tree(struct filerec *file)
 {
-	struct rb_node *n = file->comparisons.rb_node;
+	struct rb_node *n = rb_first(&file->comparisons);
 	struct filerec_token *t;
 
 	while (n) {
@@ -159,6 +159,8 @@ static void free_compared_tree(struct filerec *file)
 		rb_erase(&t->t_node, &file->comparisons);
 		filerec_token_free(t);
 	}
+
+	abort_on(!RB_EMPTY_ROOT(&file->comparisons));
 }
 
 static int cmp_filerecs(struct filerec *file1, uint64_t file2_inum,
