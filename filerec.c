@@ -261,8 +261,6 @@ struct filerec *filerec_new(const char *filename, uint64_t inum,
 void filerec_free(struct filerec *file)
 {
 	if (file) {
-		filerec_close(file);
-
 		free(file->filename);
 
 		list_del(&file->block_list);
