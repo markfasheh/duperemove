@@ -342,10 +342,7 @@ int populate_hash_tree(struct hash_tree *tree)
 	g_dataset_set_data_full(tree, "mutex", &tree_mutex,
 				(GDestroyNotify) g_mutex_clear);
 
-	if (!hash_threads)
-		hash_threads = g_get_num_processors();
-
-	pool = g_thread_pool_new((GFunc) csum_whole_file, tree, hash_threads,
+	pool = g_thread_pool_new((GFunc) csum_whole_file, tree, io_threads,
 				 FALSE, &err);
 	if (err != NULL) {
 		fprintf(
@@ -358,7 +355,7 @@ int populate_hash_tree(struct hash_tree *tree)
 		goto out;
 	}
 
-	printf("Using %d threads for file hashing phase\n", hash_threads);
+	printf("Using %u threads for file hashing phase\n", io_threads);
 
 	list_for_each_entry_safe(file, tmp, &filerec_list, rec_list) {
 		g_thread_pool_push(pool, file, &err);

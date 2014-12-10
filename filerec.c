@@ -15,6 +15,8 @@
 #include <linux/fs.h>
 #include <linux/fiemap.h>
 
+#include <glib.h>
+
 #include "kernel.h"
 #include "rbtree.h"
 #include "list.h"
@@ -23,6 +25,7 @@
 
 #include "filerec.h"
 
+static GMutex filerec_fd_mutex;
 struct list_head filerec_list;
 struct rb_root filerec_by_inum = RB_ROOT;
 unsigned long long num_filerecs = 0ULL;
@@ -277,55 +280,87 @@ void filerec_free(struct filerec *file)
 
 int filerec_open(struct filerec *file, int write)
 {
-	int fd, flags = O_RDONLY;
+	int ret = 0;
+	int flags = O_RDONLY;
+	int fd;
 
 	if (write)
 		flags = O_RDWR;
 
-	abort_on(file->fd != -1);
+	g_mutex_lock(&filerec_fd_mutex);
+	if (file->fd_refs == 0) {
+		abort_on(file->fd != -1);
 
-	fd = open(file->filename, flags);
-	if (fd == -1) {
-		fprintf(stderr, "Error %d: %s while opening \"%s\" "
-			"(write=%d)\n",
-			errno, strerror(errno), file->filename, write);
-		return errno;
+		fd = open(file->filename, flags);
+		if (fd == -1) {
+			ret = errno;
+			fprintf(stderr, "Error %d: %s while opening \"%s\" "
+				"(write=%d)\n",
+				ret, strerror(ret), file->filename, write);
+			goto out_unlock;
+		}
+
+		file->fd = fd;
 	}
+	file->fd_refs++;
+out_unlock:
+	g_mutex_unlock(&filerec_fd_mutex);
 
-	file->fd = fd;
-
-	return 0;
+	return ret;
 }
 
 void filerec_close(struct filerec *file)
 {
-	if (file->fd != -1) {
+	g_mutex_lock(&filerec_fd_mutex);
+	abort_on(file->fd == -1);
+	abort_on(file->fd_refs == 0);
+
+	file->fd_refs--;
+
+	if (file->fd_refs == 0) {
 		close(file->fd);
 		file->fd = -1;
 	}
+	g_mutex_unlock(&filerec_fd_mutex);
 }
 
 int filerec_open_once(struct filerec *file, int write,
-		      struct list_head *open_files)
+		      struct open_once *open_files)
 {
 	int ret;
+	struct filerec_token *token;
 
-	if (list_empty(&file->tmp_list)) {
-		ret = filerec_open(file, write);
-		if (ret)
-			return ret;
-		list_add(&file->tmp_list, open_files);
+	if (find_filerec_token_rb(&open_files->root, file))
+		return 0;
+
+	token = filerec_token_new(file);
+	if (!token)
+		return ENOMEM;
+
+	ret = filerec_open(file, write);
+	if (ret) {
+		filerec_token_free(token);
+		return ret;
 	}
+
+	insert_filerec_token_rb(&open_files->root, token);
+
 	return 0;
 }
 
-void filerec_close_files_list(struct list_head *open_files)
+void filerec_close_open_list(struct open_once *open_files)
 {
-	struct filerec *file, *tmp;
+	struct filerec_token *t;
+	struct rb_node *n = rb_first(&open_files->root);
 
-	list_for_each_entry_safe(file, tmp, open_files, tmp_list) {
-		list_del_init(&file->tmp_list);
-		filerec_close(file);
+	while (n) {
+		t = rb_entry(n, struct filerec_token, t_node);
+
+		filerec_close(t->t_file);
+		rb_erase(&t->t_node, &open_files->root);
+		filerec_token_free(t);
+
+		n = rb_first(&open_files->root);
 	}
 }
 
