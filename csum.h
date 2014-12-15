@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 #define	DIGEST_LEN_MAX	32
-#define DEFAULT_HASH_STR	"sha256"
+#define DEFAULT_HASH_STR	"murmur3"
 
 extern unsigned int digest_len;
 extern char hash_type[8];
