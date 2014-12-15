@@ -7,13 +7,23 @@ MANPAGES=duperemove.8 btrfs-extent-same.8 hashstats.8 show-shared-extents.8
 
 HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
 	btrfs-ioctl.h filerec.h btrfs-util.h debug.h util.h serialize.h \
-	memstats.h file_scan.h find_dupes.h run_dedupe.h xxhash.h
+	memstats.h file_scan.h find_dupes.h run_dedupe.h xxhash.h \
+	sha256.h sha256-config.h
 CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
 	btrfs-util.c util.c serialize.c memstats.c file_scan.c find_dupes.c \
 	run_dedupe.c csum.c
-hash_CFILES=csum-gcrypt.c csum-xxhash.c xxhash.c csum-murmur3.c
+hash_CFILES=csum-xxhash.c xxhash.c csum-murmur3.c
+
+ifdef USE_GCRYPT
+hash_CFILES += csum-gcrypt.c
 hash_CFLAGS=$(shell libgcrypt-config --cflags)
 hash_LIBS=$(shell libgcrypt-config --libs)
+extra_hash_DIST = csum-sha256.c sha256.c
+else
+hash_CFILES += csum-sha256.c sha256.c
+extra_hash_DIST = csum-gcrypt.c
+endif
+
 CFILES += $(hash_CFILES)
 
 hashstats_CFILES=hashstats.c
@@ -21,7 +31,7 @@ btrfs_extent_same_CFILES=btrfs-extent-same.c
 csum_test_CFILES=csum-test.c
 
 DIST_CFILES:=$(CFILES) $(hashstats_CFILES) $(btrfs_extent_same_CFILES) \
-	$(csum_test_CFILES)
+	$(csum_test_CFILES) $(extra_hash_DIST)
 DIST_SOURCES:=$(DIST_CFILES) $(HEADERS) LICENSE LICENSE.xxhash Makefile \
 	rbtree.txt README.md $(MANPAGES) SubmittingPatches FAQ.md
 DIST=duperemove-$(RELEASE)

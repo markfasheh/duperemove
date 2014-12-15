@@ -27,6 +27,7 @@
 #ifndef POLARSSL_SHA256_H
 #define POLARSSL_SHA256_H
 
+#define	POLARSSL_CONFIG_FILE	"sha256-config.h"
 #if !defined(POLARSSL_CONFIG_FILE)
 #include "config.h"
 #else

@@ -28,6 +28,9 @@
  *  http://csrc.nist.gov/publications/fips/fips180-2/fips180-2.pdf
  */
 
+#define	POLARSSL_CONFIG_FILE	"sha256-config.h"
+#define	POLARSSL_SHA256_C
+
 #if !defined(POLARSSL_CONFIG_FILE)
 #include "polarssl/config.h"
 #else
@@ -36,18 +39,21 @@
 
 #if defined(POLARSSL_SHA256_C)
 
-#include "polarssl/sha256.h"
+#include "sha256.h"
 
 #if defined(POLARSSL_FS_IO) || defined(POLARSSL_SELF_TEST)
 #include <stdio.h>
 #endif
 
+/*
 #if defined(POLARSSL_PLATFORM_C)
 #include "polarssl/platform.h"
 #else
+*/
 #define polarssl_printf printf
+/*
 #endif
-
+*/
 /* Implementation that should never be optimized out by the compiler */
 static void polarssl_zeroize( void *v, size_t n ) {
     volatile unsigned char *p = v; while( n-- ) *p++ = 0;
