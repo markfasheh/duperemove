@@ -66,7 +66,7 @@ static int write_hashes = 0;
 static int read_hashes = 0;
 static char *serialize_fname = NULL;
 unsigned int io_threads;
-int do_lookup_extents = 1;
+int do_lookup_extents = 0;
 
 int fancy_status = 0;
 
@@ -187,7 +187,7 @@ static int parse_options(int argc, char **argv)
 				return EINVAL;
 			break;
 		case LOOKUP_EXTENTS_OPTION:
-			do_lookup_extents = parse_yesno_option(optarg, 1);
+			do_lookup_extents = parse_yesno_option(optarg, 0);
 			break;
 		case ONE_FILESYSTEM_OPTION:
 		case 'x':
