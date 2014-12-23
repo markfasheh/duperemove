@@ -50,7 +50,7 @@ The latest stable code can be found in [v0.09-branch](https://github.com/markfas
 
 Kernel: Duperemove needs a kernel version equal to or greater than 3.13
 
-Libraries: Duperemove uses glib2 and optionally libgcrypt for hashing.
+Libraries: Duperemove uses glib2.
 
 
 # FAQ

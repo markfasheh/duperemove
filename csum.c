@@ -16,7 +16,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <gcrypt.h>
 #include <errno.h>
 #include <pthread.h>
 
