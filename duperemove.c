@@ -232,11 +232,38 @@ static int parse_options(int argc, char **argv)
 		goto out_nofiles;
 	}
 
-	for (i = 0; i < numfiles; i++) {
-		const char *name = argv[i + optind];
+	if (numfiles == 1 && strcmp(argv[optind], "-") == 0) {
+		char *path = NULL;
+		size_t pathlen = 0;
+		ssize_t readlen;
 
-		if (add_file(name, AT_FDCWD))
-			return 1;
+		numfiles = 0;
+		while ((readlen = getline(&path, &pathlen, stdin)) != -1) {
+			if (readlen > 0 && path[readlen - 1] == '\n') {
+				path[--readlen] = '\0';
+			}
+
+			if (readlen == 0)
+				continue;
+
+			if (readlen > PATH_MAX - 1) {
+				fprintf(stderr, "Path max exceeded: %s\n", path);
+				continue;
+			}
+
+			if (add_file(path, AT_FDCWD))
+				return 1;
+		}
+
+		if (path != NULL)
+			free(path);
+	} else {
+		for (i = 0; i < numfiles; i++) {
+			const char *name = argv[i + optind];
+
+			if (add_file(name, AT_FDCWD))
+				return 1;
+		}
 	}
 
 	/* This can happen if for example, all files passed in on

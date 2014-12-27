@@ -45,8 +45,9 @@ estimate is calculated by comparing the total amount of shared bytes
 in each file before and after the dedupe.
 
 .SH "OPTIONS"
-\fIfiles\fR can refer to a list of regular files and directories. If a
-directory is specified, all regular files within it will also be
+\fIfiles\fR can refer to a list of regular files and directories or be
+a hyphen (-) to read them from standard input.
+If a directory is specified, all regular files within it will also be
 scanned.
 
 .TP
