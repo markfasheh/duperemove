@@ -17,7 +17,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <pthread.h>
+#include <string.h>
+#include <strings.h>
 
 #include "csum.h"
 #include "debug.h"
