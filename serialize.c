@@ -96,7 +96,7 @@ static int write_header(int fd, uint64_t num_files, uint64_t num_hashes,
 		goto out;
 	}
 
-	written = write(fd, &disk, sizeof(struct hash_file_header));
+	written = write(fd, disk, sizeof(struct hash_file_header));
 	if (written == -1) {
 		ret = errno;
 		goto out;
