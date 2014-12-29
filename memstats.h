@@ -10,7 +10,7 @@
  * update.
  */
 #define declare_alloc_tracking(_type)					\
-extern long long num_##_type;						\
+long long num_##_type;							\
 static inline struct _type *malloc_##_type(void)			\
 {									\
 	struct _type *t = malloc(sizeof(struct _type));			\
@@ -41,7 +41,7 @@ void show_allocs_##_type(void)						\
 }
 
 #define declare_alloc_tracking_header(_type)				\
-long long num_##_type;							\
+extern long long num_##_type;						\
 void show_allocs_##_type(void);
 
 declare_alloc_tracking_header(file_block);
