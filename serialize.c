@@ -44,18 +44,6 @@
 char unknown_hash_type[8];
 #define	hash_type_v1_0	"\0\0\0\0\0\0\0\0"
 
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-#define swap16(_x)	((uint16_t)_x)
-#define swap32(_x)	((uint32_t)_x)
-#define swap64(_x)	((uint64_t)_x)
-#elif __BYTE_ORDER == __BIG_ENDIAN
-#define swap16(_x)	((uint16_t)bswap_16(_x))
-#define swap32(_x)	((uint32_t)bswap_32(_x))
-#define swap64(_x)	((uint64_t)bswap_64(_x))
-#else
-#error Invalid byte order __BYTE_ORDER
-#endif
-
 static void debug_print_header(struct hash_file_header *h)
 {
 	dprintf("Disk Header Info: [ ");
