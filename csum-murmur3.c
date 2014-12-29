@@ -93,7 +93,7 @@ struct murmur3_running_checksum {
 };
 DECLARE_RUNNING_CSUM_CAST_FUNCS(murmur3_running_checksum);
 
-struct running_checksum *murmur3_start_running_checksum(void)
+static struct running_checksum *murmur3_start_running_checksum(void)
 {
 	struct murmur3_running_checksum *c =
 		calloc(1, sizeof(struct murmur3_running_checksum));
@@ -265,7 +265,7 @@ static void murmur3_checksum_block(char *buf, int len, unsigned char *digest)
 }
 
 
-struct csum_module_ops ops_murmur3 = {
+static struct csum_module_ops ops_murmur3 = {
 	.init			= murmur3_init_hash,
 	.checksum_block		= murmur3_checksum_block,
 	.start_running_checksum	= murmur3_start_running_checksum,

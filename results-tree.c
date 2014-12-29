@@ -134,8 +134,8 @@ static void insert_dupe_extents(struct results_tree *res,
 	rb_insert_color(&dext->de_node, &res->root);
 }
 
-struct dupe_extents *find_dupe_extents(struct results_tree *res,
-				     unsigned char *digest, uint64_t len)
+static struct dupe_extents *find_dupe_extents(struct results_tree *res,
+				      unsigned char *digest, uint64_t len)
 {
 	struct rb_node *n = res->root.rb_node;
 	struct dupe_extents *dext;

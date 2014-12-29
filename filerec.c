@@ -27,7 +27,7 @@
 
 static GMutex filerec_fd_mutex;
 struct list_head filerec_list;
-struct rb_root filerec_by_inum = RB_ROOT;
+static struct rb_root filerec_by_inum = RB_ROOT;
 unsigned long long num_filerecs = 0ULL;
 
 declare_alloc_tracking(filerec);

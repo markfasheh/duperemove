@@ -75,7 +75,7 @@ static void sha256_finish_running_checksum(struct running_checksum *_c,
 	free(c);
 }
 
-struct csum_module_ops ops_sha256 = {
+static struct csum_module_ops ops_sha256 = {
 	.init			= sha256_init_hash,
 	.checksum_block		= sha256_checksum_block,
 	.start_running_checksum	= sha256_start_running_checksum,

@@ -72,7 +72,7 @@ static void xxhash_finish_running_checksum(struct running_checksum *_c,
 	free(c);
 }
 
-struct csum_module_ops ops_xxhash = {
+static struct csum_module_ops ops_xxhash = {
 	.init			= xxhash_init_hash,
 	.checksum_block		= xxhash_checksum_block,
 	.start_running_checksum	= xxhash_start_running_checksum,
