@@ -44,14 +44,14 @@ struct block_hash {
 };
 
 struct file_info {
-/*00*/	uint64_t	ino;
-	uint64_t	file_size;
-	uint64_t	num_blocks;
-	uint16_t	rec_len;
-	uint16_t	name_len;
-	uint32_t	pad0;
-	uint64_t	subvolid;
-/*20*/	uint64_t	pad1[2];
+/*00*/	__le64		ino;
+	__le64		file_size;
+	__le64		num_blocks;
+	__le16		rec_len;
+	__le16		name_len;
+	__le32		pad0;
+	__le64		subvolid;
+/*20*/	__le64		pad1[2];
 	char		name[0];
 };
 

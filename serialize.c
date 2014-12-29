@@ -71,13 +71,13 @@ static void debug_print_header(struct hash_file_header *h)
 
 static void debug_print_file_info(struct file_info *f)
 {
-	unsigned int name_len = swap16(f->name_len);
+	unsigned int name_len = le16_to_cpu(f->name_len);
 
 	dprintf("Disk File Info: [ ");
-	dprintf("ino: %"PRIu64"\t", swap64(f->ino));
-	dprintf("file_size: %"PRIu64"\t", swap64(f->file_size));
-	dprintf("num_blocks: %"PRIu64"\t", swap64(f->num_blocks));
-	dprintf("rec_len: %u\t", swap16(f->rec_len));
+	dprintf("ino: %"PRIu64"\t", le64_to_cpu(f->ino));
+	dprintf("file_size: %"PRIu64"\t", le64_to_cpu(f->file_size));
+	dprintf("num_blocks: %"PRIu64"\t", le64_to_cpu(f->num_blocks));
+	dprintf("rec_len: %u\t", le16_to_cpu(f->rec_len));
 	dprintf("name_len: %u\t", name_len);
 	dprintf("name: \"%.*s\"\t", name_len, f->name);
 	dprintf(" ]\n");
@@ -129,14 +129,14 @@ static int write_file_info(int fd, struct filerec *file)
 	struct file_info finfo = { 0, };
 	char *n;
 
-	finfo.ino = swap64(file->inum);
+	finfo.ino = cpu_to_le64(file->inum);
 	finfo.file_size = 0ULL; /* We don't store this yet */
-	finfo.num_blocks = swap64(file->num_blocks);
-	finfo.subvolid = swap64(file->subvolid);
+	finfo.num_blocks = cpu_to_le64(file->num_blocks);
+	finfo.subvolid = cpu_to_le64(file->subvolid);
 
 	name_len = strlen(file->filename);
-	finfo.name_len = swap16(name_len);
-	finfo.rec_len = swap16(name_len + sizeof(struct file_info));
+	finfo.name_len = cpu_to_le16(name_len);
+	finfo.rec_len = cpu_to_le16(name_len + sizeof(struct file_info));
 
 	written = write(fd, &finfo, sizeof(struct file_info));
 	if (written == -1)
@@ -223,9 +223,8 @@ out:
 static int read_file(int fd, struct file_info *f, char *fname)
 {
 	int ret, name_len;
-	struct file_info disk;
 
-	ret = read(fd, &disk, sizeof(struct file_info));
+	ret = read(fd, f, sizeof(struct file_info));
 	if (ret == -1)
 		return errno;
 	if (ret < sizeof(struct file_info)) {
@@ -233,7 +232,7 @@ static int read_file(int fd, struct file_info *f, char *fname)
 		 * to read in */
 		return EIO;
 	}
-	name_len = swap16(disk.name_len);
+	name_len = le16_to_cpu(f->name_len);
 
 	ret = read(fd, fname, name_len);
 	if (ret == -1)
@@ -242,13 +241,6 @@ static int read_file(int fd, struct file_info *f, char *fname)
 		return EIO;
 
 	fname[name_len] = '\0';
-
-	f->ino = swap64(disk.ino);
-	f->file_size = swap64(disk.file_size);
-	f->num_blocks = swap64(disk.num_blocks);
-	f->subvolid = swap64(disk.subvolid);
-	f->rec_len = swap16(disk.rec_len);
-	f->name_len = swap16(disk.name_len);
 
 	return 0;
 }
@@ -270,7 +262,8 @@ static int read_one_file(int fd, struct hash_tree *tree)
 {
 	int ret;
 	uint32_t i;
-	struct file_info finfo;
+	uint64_t num_blocks;
+	struct file_info finfo = {0, };
 	struct block_hash bhash;
 	struct filerec *file;
 	char fname[PATH_MAX+1];
@@ -279,14 +272,16 @@ static int read_one_file(int fd, struct hash_tree *tree)
 	if (ret)
 		return ret;
 
-	dprintf("Load %"PRIu64" hashes for \"%s\"\n", finfo.num_blocks,
-		fname);
+	num_blocks = le64_to_cpu(finfo.num_blocks);
 
-	file = filerec_new(fname, finfo.ino, finfo.subvolid);
+	dprintf("Load %"PRIu64" hashes for \"%s\"\n", num_blocks, fname);
+
+	file = filerec_new(fname, le64_to_cpu(finfo.ino),
+			   le64_to_cpu(finfo.subvolid));
 	if (file == NULL)
 		return ENOMEM;
 
-	for (i = 0; i < finfo.num_blocks; i++) {
+	for (i = 0; i < num_blocks; i++) {
 		ret = read_hash(fd, &bhash);
 		if (ret)
 			return ret;
