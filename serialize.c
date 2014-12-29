@@ -39,6 +39,8 @@
 
 #include "serialize.h"
 
+#include "bswap.h"
+
 char unknown_hash_type[8];
 #define	hash_type_v1_0	"\0\0\0\0\0\0\0\0"
 
@@ -58,11 +60,11 @@ static void debug_print_header(struct hash_file_header *h)
 {
 	dprintf("Disk Header Info: [ ");
 	dprintf("magic: %.*s\t", 8, h->magic);
-	dprintf("major: %"PRIu64"\t", h->major);
-	dprintf("minor: %"PRIu64"\t", h->minor);
-	dprintf("num_files: %"PRIu64"\t", h->num_files);
-	dprintf("num_hashes: %"PRIu64"\t", h->num_hashes);
-	dprintf("block_size: %u\t", h->block_size);
+	dprintf("major: %"PRIu64"\t", le64_to_cpu(h->major));
+	dprintf("minor: %"PRIu64"\t", le64_to_cpu(h->minor));
+	dprintf("num_files: %"PRIu64"\t", le64_to_cpu(h->num_files));
+	dprintf("num_hashes: %"PRIu64"\t", le64_to_cpu(h->num_hashes));
+	dprintf("block_size: %u\t", le32_to_cpu(h->block_size));
 	dprintf("hash_type: %.*s\t", 8, h->hash_type);
 	dprintf(" ]\n");
 }
@@ -81,32 +83,44 @@ static void debug_print_file_info(struct file_info *f)
 	dprintf(" ]\n");
 }
 
-static int write_header(int fd, struct hash_file_header *h)
+static int write_header(int fd, uint64_t num_files, uint64_t num_hashes,
+			uint32_t block_size)
 {
 	int written;
-	loff_t ret;
-	struct hash_file_header disk;
+	int ret = 0;
+	loff_t err;
+	struct hash_file_header *disk = calloc(1, sizeof(*disk));
 
-	memset(&disk, 0, sizeof(struct hash_file_header));
+	if (!disk)
+		return ENOMEM;
 
-	memcpy(disk.magic, HASH_FILE_MAGIC, 8);
-	disk.major = swap64(HASH_FILE_MAJOR);
-	disk.minor = swap64(HASH_FILE_MINOR);
-	disk.num_files = swap64(h->num_files);
-	disk.num_hashes = swap64(h->num_hashes);
-	disk.block_size = swap32(h->block_size);
-	memcpy(&disk.hash_type, hash_type, 8);
+	memcpy(disk->magic, HASH_FILE_MAGIC, 8);
+	disk->major = cpu_to_le64(HASH_FILE_MAJOR);
+	disk->minor = cpu_to_le64(HASH_FILE_MINOR);
+	disk->num_files = cpu_to_le64(num_files);
+	disk->num_hashes = cpu_to_le64(num_hashes);
+	disk->block_size = cpu_to_le32(block_size);
+	memcpy(disk->hash_type, hash_type, 8);
 
-	ret = lseek(fd, 0, SEEK_SET);
-	if (ret == (loff_t)-1)
-		return errno;
+	err = lseek(fd, 0, SEEK_SET);
+	if (err == (loff_t)-1) {
+		ret = errno;
+		goto out;
+	}
+
 	written = write(fd, &disk, sizeof(struct hash_file_header));
-	if (written == -1)
-		return errno;
-	if (written != sizeof(struct hash_file_header))
-		return EIO;
+	if (written == -1) {
+		ret = errno;
+		goto out;
+	}
+	if (written != sizeof(struct hash_file_header)) {
+		ret = EIO;
+		goto out;
+	}
 
-	return 0;
+out:
+	free(disk);
+	return ret;
 }
 
 static int write_file_info(int fd, struct filerec *file)
@@ -164,24 +178,18 @@ int serialize_hash_tree(char *filename, struct hash_tree *tree,
 			unsigned int block_size)
 {
 	int ret, fd;
-	struct hash_file_header *h = calloc(1, sizeof(*h));
 	struct filerec *file;
 	struct file_block *block;
 	uint64_t tot_files, tot_hashes;
 
-	if (!h)
-		return ENOMEM;
-
 	fd = open(filename, O_WRONLY|O_CREAT|O_TRUNC, 0644);
-	if (fd == -1) {
-		ret = errno;
-		free(h);
-		return ret;
-	}
+	if (fd == -1)
+		return errno;
 
 	/* Write the header first with zero files */
-	h->block_size = block_size;
-	write_header(fd, h);
+	ret = write_header(fd, 0, 0, block_size);
+	if (ret)
+		goto out;
 
 	tot_files = tot_hashes = 0;
 	list_for_each_entry(file, &filerec_list, rec_list) {
@@ -203,12 +211,9 @@ int serialize_hash_tree(char *filename, struct hash_tree *tree,
 	}
 
 	/* When we're done, rewrite the header */
-	h->num_files = tot_files;
-	h->num_hashes = tot_hashes;
-	ret = write_header(fd, h);
+	ret = write_header(fd, tot_files, tot_hashes, block_size);
 
 out:
-	free(h);
 	close(fd);
 	return ret;
 }
@@ -300,21 +305,14 @@ static int read_one_file(int fd, struct hash_tree *tree)
 static int read_header(int fd, struct hash_file_header *h)
 {
 	int ret;
-	struct hash_file_header disk;
 
-	ret = read(fd, &disk, sizeof(struct hash_file_header));
+	ret = read(fd, h, sizeof(*h));
 	if (ret == -1)
 		return errno;
 	if (ret != sizeof(struct hash_file_header))
 		return EIO;
 
-	memcpy(h->magic, disk.magic, 8);
-	h->major = swap64(disk.major);
-	h->minor = swap64(disk.minor);
-	h->num_files = swap64(disk.num_files);
-	h->num_hashes = swap64(disk.num_hashes);
-	h->block_size = swap32(disk.block_size);
-	memcpy(&h->hash_type, &disk.hash_type, 8);
+	debug_print_header(h);
 
 	return 0;
 }
@@ -325,7 +323,10 @@ int read_hash_tree(char *filename, struct hash_tree *tree,
 {
 	int ret, fd;
 	uint32_t i;
+	uint64_t num_files;
 	struct hash_file_header h;
+
+	memset(&h, 0, sizeof(struct hash_file_header));
 
 	fd = open(filename, O_RDONLY);
 	if (fd == -1)
@@ -335,38 +336,39 @@ int read_hash_tree(char *filename, struct hash_tree *tree,
 	if (ret)
 		return ret;
 
-	debug_print_header(&h);
 	if (memcmp(h.magic, HASH_FILE_MAGIC, 8)) {
 		ret = FILE_MAGIC_ERROR;
 		goto out;
 	}
-	if (h.major > HASH_FILE_MAJOR) {
+	if (le64_to_cpu(h.major) > HASH_FILE_MAJOR) {
 		ret = FILE_VERSION_ERROR;
 		goto out;
 	}
 
 	if (!ignore_hash_type) {
+		uint64_t minor = le64_to_cpu(h.minor);
 		/*
 		 * v1.0 hash files were SHA256 but wrote out hash_type
 		 * as nulls
 		 */
-		if (h.minor == 0 && memcmp(hash_type_v1_0, h.hash_type, 8)) {
+		if (minor == 0 && memcmp(hash_type_v1_0, h.hash_type, 8)) {
 			ret = FILE_HASH_TYPE_ERROR;
 			memcpy(unknown_hash_type, hash_type_v1_0, 8);
 			goto out;
-		} else  if (h.minor > 0 && memcmp(h.hash_type, hash_type, 8)) {
+		} else  if (minor > 0 && memcmp(h.hash_type, hash_type, 8)) {
 			ret = FILE_HASH_TYPE_ERROR;
 			memcpy(unknown_hash_type, h.hash_type, 8);
 			goto out;
 		}
 	}
 
-	*block_size = h.block_size;
+	*block_size = le32_to_cpu(h.block_size);
+	num_files = le64_to_cpu(h.num_files);
 
 	dprintf("Load %"PRIu64" files from \"%s\"\n",
-		h.num_files, filename);
+		num_files, filename);
 
-	for (i = 0; i < h.num_files; i++) {
+	for (i = 0; i < num_files; i++) {
 		ret = read_one_file(fd, tree);
 		if (ret)
 			break;

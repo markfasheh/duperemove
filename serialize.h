@@ -16,20 +16,22 @@
 #ifndef __SERIALIZE__
 #define __SERIALIZE__
 
+#include <linux/types.h>
+
 #define HASH_FILE_MAJOR	1
 #define HASH_FILE_MINOR	1
 
 #define HASH_FILE_MAGIC		"dupehash"
 struct hash_file_header {
 /*00*/	char		magic[8];
-	uint64_t	major;
-	uint64_t	minor;
-	uint64_t	num_files;
-/*20*/	uint64_t	num_hashes;
-	uint32_t	block_size; /* In bytes */
-	uint32_t	pad0;
+	__le64		major;
+	__le64		minor;
+	__le64		num_files;
+/*20*/	__le64		num_hashes;
+	__le32		block_size; /* In bytes */
+	__le32		pad0;
 	char		hash_type[8];
-	uint64_t	pad1[9];
+	__le64		pad1[9];
 };
 
 #define DISK_DIGEST_LEN		32

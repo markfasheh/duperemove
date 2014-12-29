@@ -8,7 +8,7 @@ MANPAGES=duperemove.8 btrfs-extent-same.8 hashstats.8 show-shared-extents.8
 HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
 	btrfs-ioctl.h filerec.h btrfs-util.h debug.h util.h serialize.h \
 	memstats.h file_scan.h find_dupes.h run_dedupe.h xxhash.h \
-	sha256.h sha256-config.h
+	sha256.h sha256-config.h bswap.h
 CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
 	btrfs-util.c util.c serialize.c memstats.c file_scan.c find_dupes.c \
 	run_dedupe.c csum.c

@@ -31,6 +31,8 @@
 #include "util.h"
 #include "serialize.h"
 
+#include "bswap.h"
+
 int verbose = 0, debug = 0;
 unsigned int blocksize;
 static int version_only = 0;
@@ -167,10 +169,11 @@ static void print_file_info(struct hash_tree *tree,
 			    struct hash_file_header *h)
 {
 	printf("Raw header info for \"%s\":\n", serialize_fname);
-	printf("  version: %"PRIu64".%"PRIu64"\tblock_size: %u\n", h->major,
-	       h->minor, h->block_size);
-	printf("  num_files: %"PRIu64"\tnum_hashes: %"PRIu64"\n", h->num_files,
-		h->num_hashes);
+	printf("  version: %"PRIu64".%"PRIu64"\tblock_size: %u\n",
+	       le64_to_cpu(h->major), le64_to_cpu(h->minor),
+	       le32_to_cpu(h->block_size));
+	printf("  num_files: %"PRIu64"\tnum_hashes: %"PRIu64"\n",
+	       le64_to_cpu(h->num_files), le64_to_cpu(h->num_hashes));
 	printf("Loaded hashes from %"PRIu64" blocks into %"PRIu64" nodes\n",
 	       tree->num_blocks, tree->num_hashes);
 	printf("Loaded %llu file records\n", num_filerecs);
