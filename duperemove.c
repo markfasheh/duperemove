@@ -126,17 +126,17 @@ static int parse_options(int argc, char **argv)
 {
 	int i, c, numfiles;
 	static struct option long_ops[] = {
-		{ "debug", 0, 0, DEBUG_OPTION },
-		{ "help", 0, 0, HELP_OPTION },
-		{ "version", 0, 0, VERSION_OPTION },
-		{ "write-hashes", 1, 0, WRITE_HASHES_OPTION },
-		{ "read-hashes", 1, 0, READ_HASHES_OPTION },
-		{ "io-threads", 1, 0, IO_THREADS_OPTION },
-		{ "hash-threads", 1, 0, IO_THREADS_OPTION },
-		{ "lookup-extents", 1, 0, LOOKUP_EXTENTS_OPTION },
-		{ "one-file-system", 0, 0, ONE_FILESYSTEM_OPTION },
-		{ "hash", 1, 0, HASH_OPTION },
-		{ 0, 0, 0, 0}
+		{ "debug", 0, NULL, DEBUG_OPTION },
+		{ "help", 0, NULL, HELP_OPTION },
+		{ "version", 0, NULL, VERSION_OPTION },
+		{ "write-hashes", 1, NULL, WRITE_HASHES_OPTION },
+		{ "read-hashes", 1, NULL, READ_HASHES_OPTION },
+		{ "io-threads", 1, NULL, IO_THREADS_OPTION },
+		{ "hash-threads", 1, NULL, IO_THREADS_OPTION },
+		{ "lookup-extents", 1, NULL, LOOKUP_EXTENTS_OPTION },
+		{ "one-file-system", 0, NULL, ONE_FILESYSTEM_OPTION },
+		{ "hash", 1, NULL, HASH_OPTION },
+		{ NULL, 0, NULL, 0}
 	};
 
 	if (argc < 2)
