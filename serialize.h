@@ -37,9 +37,9 @@ struct hash_file_header {
 #define DISK_DIGEST_LEN		32
 
 struct block_hash {
-	uint64_t	loff;
-	uint32_t	flags;
-	uint32_t	pad[2];
+	__le64		loff;
+	__le32		flags;
+	__le32		pad[2];
 	char		digest[DISK_DIGEST_LEN];
 };
 

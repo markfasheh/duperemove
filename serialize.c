@@ -155,15 +155,16 @@ static int write_file_info(int fd, struct filerec *file)
 	return 0;
 }
 
-static int write_one_hash(int fd, struct file_block *block)
+static int write_one_hash(int fd, uint64_t loff, uint32_t flags,
+			  unsigned char *digest)
 {
 	int written;
 	struct block_hash disk_block = { 0, };
 
-	disk_block.loff = swap64(block->b_loff);
-	disk_block.flags = swap32(block->b_flags);
+	disk_block.loff = cpu_to_le64(loff);
+	disk_block.flags = cpu_to_le32(flags);
 	BUILD_BUG_ON(DISK_DIGEST_LEN < DIGEST_LEN_MAX);
-	memcpy(&disk_block.digest, block->b_parent->dl_hash, DISK_DIGEST_LEN);
+	memcpy(&disk_block.digest, digest, DISK_DIGEST_LEN);
 
 	written = write(fd, &disk_block, sizeof(struct block_hash));
 	if (written == -1)
@@ -204,7 +205,8 @@ int serialize_hash_tree(char *filename, struct hash_tree *tree,
 		/* Now write each one of this files hashes */
 		list_for_each_entry(block, &file->block_list, b_file_next) {
 			tot_hashes++;
-			ret = write_one_hash(fd, block);
+			ret = write_one_hash(fd, block->b_loff, block->b_flags,
+					     block->b_parent->dl_hash);
 			if (ret)
 				goto out;
 		}
@@ -254,17 +256,13 @@ static int read_file(int fd, struct file_info *f, char *fname)
 static int read_hash(int fd, struct block_hash *b)
 {
 	int ret;
-	struct block_hash disk;
 
-	ret = read(fd, &disk, sizeof(struct block_hash));
+	ret = read(fd, b, sizeof(struct block_hash));
 	if (ret == -1)
 		return errno;
 	if (ret != sizeof(struct block_hash))
 		return EIO;
 
-	b->loff = swap64(disk.loff);
-	b->flags = swap32(disk.flags);
-	memcpy(b->digest, disk.digest, DISK_DIGEST_LEN);
 	return 0;
 }
 
@@ -294,7 +292,8 @@ static int read_one_file(int fd, struct hash_tree *tree)
 			return ret;
 
 		ret = insert_hashed_block(tree, (unsigned char *)bhash.digest,
-					  file, bhash.loff, bhash.flags);
+					  file, le64_to_cpu(bhash.loff),
+					  le32_to_cpu(bhash.flags));
 		if (ret)
 			return ENOMEM;
 	}
