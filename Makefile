@@ -45,6 +45,14 @@ override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\" \
 	$(hash_CFLAGS) $(glib_CFLAGS) -rdynamic
 LIBRARY_FLAGS += $(hash_LIBS) $(glib_LIBS)
 
+# make C=1 to enable sparse
+ifdef C
+	check = sparse -D__CHECKER__ -D__CHECK_ENDIAN__ -Wbitwise \
+		-Wuninitialized -Wshadow -Wundef
+else
+	check = true
+endif
+
 DESTDIR = /
 PREFIX = /usr/local
 SHAREDIR = $(PREFIX)/share
@@ -52,6 +60,7 @@ SBINDIR = $(PREFIX)/sbin
 MANDIR = $(SHAREDIR)/man
 
 .c.o:
+	$(check) $(CFLAGS) -c $< -o $@ $(LIBRARY_FLAGS)
 	$(CC) $(CFLAGS) -c $< -o $@ $(LIBRARY_FLAGS)
 
 all: $(progs)
