@@ -237,7 +237,6 @@ static int parse_options(int argc, char **argv)
 		size_t pathlen = 0;
 		ssize_t readlen;
 
-		numfiles = 0;
 		while ((readlen = getline(&path, &pathlen, stdin)) != -1) {
 			if (readlen > 0 && path[readlen - 1] == '\n') {
 				path[--readlen] = '\0';
