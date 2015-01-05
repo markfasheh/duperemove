@@ -224,8 +224,10 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 
 	GMutex *tree_mutex = g_dataset_get_data(tree, "mutex");
 
-	printf("csum: %s \t[%llu/%llu]\n", file->filename,
-	       __sync_add_and_fetch(&cur_num_filerecs, 1), num_filerecs);
+	__sync_add_and_fetch(&cur_num_filerecs, 1);
+	printf("csum: %s \t[%llu/%llu] (%.2f%%)\n", file->filename,
+	       cur_num_filerecs, num_filerecs,
+		(double)cur_num_filerecs / (double)num_filerecs * 100);
 
 	if (do_lookup_extents) {
 		fc = alloc_fiemap_ctxt();
