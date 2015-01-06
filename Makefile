@@ -50,7 +50,7 @@ ifdef C
 	check = sparse -D__CHECKER__ -D__CHECK_ENDIAN__ -Wbitwise \
 		-Wuninitialized -Wshadow -Wundef
 else
-	check = true
+	check = @true
 endif
 
 DESTDIR = /
