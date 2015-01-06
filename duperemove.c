@@ -116,7 +116,7 @@ enum {
 	IO_THREADS_OPTION,
 	LOOKUP_EXTENTS_OPTION,
 	ONE_FILESYSTEM_OPTION,
-	HASH_OPTION,
+	HASH_OPTION
 };
 
 /*
@@ -278,12 +278,13 @@ out_nofiles:
 int main(int argc, char **argv)
 {
 	int ret;
-	struct hash_tree tree;
+	struct hash_tree scan_tree;
 	struct results_tree res;
 	struct filerec *file;
+	struct hash_tree dups_tree;
 
 	init_filerec();
-	init_hash_tree(&tree);
+	init_hash_tree(&scan_tree);
 	init_results_tree(&res);
 
 	/* Parse options might change this so set a default here */
@@ -306,61 +307,35 @@ int main(int argc, char **argv)
 	if (isatty(STDOUT_FILENO))
 		fancy_status = 1;
 
-	if (read_hashes) {
-		ret = read_hash_tree(serialize_fname, &tree, &blocksize, NULL,
-				     0);
-		if (ret == FILE_VERSION_ERROR) {
-			fprintf(stderr,
-				"Hash file \"%s\": "
-				"Version mismatch (mine: %d.%d).\n",
-				serialize_fname, HASH_FILE_MAJOR,
-				HASH_FILE_MINOR);
-			goto out;
-		} else if (ret == FILE_MAGIC_ERROR) {
-			fprintf(stderr,
-				"Hash file \"%s\": "
-				"Bad magic.\n",
-				serialize_fname);
-			goto out;
-		} else if (ret == FILE_HASH_TYPE_ERROR) {
-			fprintf(stderr,
-				"Hash file \"%s\": Unkown hash type \"%.*s\".\n"
-				"(we use \"%.*s\").\n", serialize_fname,
-				8, unknown_hash_type, 8, hash_type);
-			goto out;
-		} else if (ret) {
-			fprintf(stderr, "Hash file \"%s\": "
-				"Error %d while reading: %s.\n",
-				serialize_fname, ret, strerror(ret));
-			goto out;
-		}
-	}
+	/* TODO: read & filter using bloom, on the fly */
 
 	printf("Using %uK blocks\n", blocksize/1024);
 	printf("Using hash: %s\n", csum_mod->name);
 
 	if (!read_hashes) {
-		ret = populate_hash_tree(&tree);
+		ret = populate_hash_tree(&scan_tree, serialize_fname);
 		if (ret) {
 			fprintf(stderr, "Error while populating extent tree!\n");
 			goto out;
 		}
 	}
 
-	debug_print_hash_tree(&tree);
+	debug_print_hash_tree(&scan_tree);
 
-	if (write_hashes) {
-		ret = serialize_hash_tree(serialize_fname, &tree, blocksize);
-		if (ret)
-			fprintf(stderr, "Error %d while writing to hash file\n", ret);
-		goto out;
+
+	if (serialize_fname) {
+		/* We will now reread the serialized file, and create a new shiny tree
+		   with only 'almost-dups' hashes
+		*/
+		init_hash_tree(&dups_tree);
+		read_hash_tree(serialize_fname, &dups_tree, &blocksize,
+					NULL, 0, &scan_tree);
+
+		ret = find_all_dupes(&dups_tree, &res);
 	} else {
-		printf("Hashed %"PRIu64" blocks, resulting in %"PRIu64" unique "
-		       "hashes. Calculating duplicate extents - this may take "
-		       "some time.\n", tree.num_blocks, tree.num_hashes);
+		ret = find_all_dupes(&scan_tree, &res);
 	}
 
-	ret = find_all_dupes(&tree, &res);
 	if (ret) {
 		fprintf(stderr, "Error %d while finding duplicate extents: %s\n",
 			ret, strerror(ret));

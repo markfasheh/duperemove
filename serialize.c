@@ -71,7 +71,7 @@ static void debug_print_file_info(struct file_info *f)
 	dprintf(" ]\n");
 }
 
-static int write_header(int fd, uint64_t num_files, uint64_t num_hashes,
+int write_header(int fd, uint64_t num_files, uint64_t num_hashes,
 			uint32_t block_size)
 {
 	int written;
@@ -111,7 +111,7 @@ out:
 	return ret;
 }
 
-static int write_file_info(int fd, struct filerec *file)
+int write_file_info(int fd, struct filerec *file)
 {
 	int written, name_len;
 	struct file_info finfo = { 0, };
@@ -143,7 +143,7 @@ static int write_file_info(int fd, struct filerec *file)
 	return 0;
 }
 
-static int write_one_hash(int fd, uint64_t loff, uint32_t flags,
+int write_one_hash(int fd, uint64_t loff, uint32_t flags,
 			  unsigned char *digest)
 {
 	int written;
@@ -246,7 +246,8 @@ static int read_hash(int fd, struct block_hash *b)
 	return 0;
 }
 
-static int read_one_file(int fd, struct hash_tree *tree)
+static int read_one_file(int fd, struct hash_tree *tree,
+				struct hash_tree *scan_tree)
 {
 	int ret;
 	uint32_t i;
@@ -255,6 +256,7 @@ static int read_one_file(int fd, struct hash_tree *tree)
 	struct block_hash bhash;
 	struct filerec *file;
 	char fname[PATH_MAX+1];
+	struct dupe_blocks_list *tmp;
 
 	ret = read_file(fd, &finfo, fname);
 	if (ret)
@@ -273,6 +275,19 @@ static int read_one_file(int fd, struct hash_tree *tree)
 		ret = read_hash(fd, &bhash);
 		if (ret)
 			return ret;
+
+/* Filter the data with scan_tree
+ * If we made a first pass, scan_tree will store all "possibly dups" hashes.
+ * For each read hash, we will search for it in the tree, and only store it
+ * if needed.
+ * If scan_tree is NULL, we do not want to filter anyway, so bypass the search
+ */
+		if (scan_tree) {
+			tmp = find_block_list(scan_tree,
+				(unsigned char *)bhash.digest);
+			if (tmp == NULL)
+				continue;
+		}
 
 		ret = insert_hashed_block(tree, (unsigned char *)bhash.digest,
 					  file, le64_to_cpu(bhash.loff),
@@ -301,7 +316,7 @@ static int read_header(int fd, struct hash_file_header *h)
 
 int read_hash_tree(char *filename, struct hash_tree *tree,
 		   unsigned int *block_size, struct hash_file_header *ret_hdr,
-		   int ignore_hash_type)
+		   int ignore_hash_type, struct hash_tree *scan_tree)
 {
 	int ret, fd;
 	uint32_t i;
@@ -351,7 +366,7 @@ int read_hash_tree(char *filename, struct hash_tree *tree,
 		num_files, filename);
 
 	for (i = 0; i < num_files; i++) {
-		ret = read_one_file(fd, tree);
+		ret = read_one_file(fd, tree, scan_tree);
 		if (ret)
 			break;
 	}

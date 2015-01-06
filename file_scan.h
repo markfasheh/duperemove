@@ -13,6 +13,6 @@ extern unsigned int io_threads;
  * Returns nonzero on fatal errors only
  */
 int add_file(const char *name, int dirfd);
-int populate_hash_tree(struct hash_tree *tree);
+int populate_hash_tree(struct hash_tree *tree, char* serialize_fname);
 
 #endif	/* __FILE_SCAN_H__ */

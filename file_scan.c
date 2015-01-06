@@ -39,13 +39,25 @@
 #include "hash-tree.h"
 #include "btrfs-util.h"
 #include "debug.h"
-
+#include "serialize.h"
 #include "file_scan.h"
+#include "bloom.h"
 
 static char path[PATH_MAX] = { 0, };
 static char *pathp = path;
 static char *path_max = &path[PATH_MAX - 1];
 static dev_t one_fs_dev = 0;
+
+static uint64_t walked_size = 0;
+
+struct thread_params {
+	struct hash_tree *tree;
+	int num_files;
+	int num_hashes;
+	unsigned int bloom_match;
+	int hfile;
+	struct bloom bloom;
+};
 
 static int walk_dir(const char *name)
 {
@@ -196,6 +208,7 @@ int add_file(const char *name, int dirfd)
 
 	close(fd);
 
+	walked_size += st.st_size;
 	file = filerec_new(path, st.st_ino, subvolid);
 	if (file == NULL) {
 		fprintf(stderr, "Out of memory while allocating file record "
@@ -208,13 +221,25 @@ out:
 	return 0;
 }
 
-static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
+struct block {
+	uint64_t	loff;
+	unsigned int	flags;
+	unsigned char	digest[DIGEST_LEN_MAX];
+};
+
+static void csum_whole_file(struct filerec *file, struct thread_params *params)
 {
+	struct hash_tree *tree = params->tree;
 	uint64_t off = 0;
 	ssize_t bytes = 0, bytes_read = 0;
 	int ret = 0;
 	struct fiemap_ctxt *fc = NULL;
 	unsigned int flags, hole;
+
+	int i;
+	struct block *hashes = malloc(sizeof(struct block));
+	int nb_hash = 0;
+	int matched = 0;
 
 	char *buf = malloc(blocksize);
 	assert(buf != NULL);
@@ -222,7 +247,8 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 	assert(digest != NULL);
 	static long long unsigned cur_num_filerecs = 0;
 
-	GMutex *tree_mutex = g_dataset_get_data(tree, "mutex");
+	GMutex *tree_mutex = g_dataset_get_data(params, "tree_mutex");
+	GMutex *hfile_mutex = g_dataset_get_data(params, "hfile_mutex");
 
 	__sync_add_and_fetch(&cur_num_filerecs, 1);
 	printf("csum: %s \t[%llu/%llu] (%.2f%%)\n", file->filename,
@@ -286,14 +312,56 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 
 		checksum_block(buf, bytes, digest);
 
-		g_mutex_lock(tree_mutex);
-		ret = insert_hashed_block(tree, digest, file, off, flags);
-		g_mutex_unlock(tree_mutex);
-		if (ret)
-			break;
+		/* All-in-memory path */
+		if (params->hfile == -1) {
+			g_mutex_lock(tree_mutex);
+			ret = insert_hashed_block(tree, digest, file, off, flags);
+			g_mutex_unlock(tree_mutex);
+			if (ret)
+				break;
+		} else {
+			hashes = realloc(hashes, sizeof(struct block) * (nb_hash + 1));
+			hashes[nb_hash].loff = off;
+			hashes[nb_hash].flags = flags;
+			memcpy(hashes[nb_hash].digest, digest, DIGEST_LEN_MAX);
+			nb_hash++;
+		}
 
 		off += bytes;
 		bytes = 0;
+	}
+
+	if (params->hfile != -1) {
+		g_mutex_lock(hfile_mutex);
+		file->num_blocks = nb_hash;
+		ret = write_file_info(params->hfile, file);
+		if (ret)
+			goto err;
+
+		for (i = 0; i < nb_hash; i++) {
+			ret = bloom_add(&params->bloom,
+				hashes[i].digest, DIGEST_LEN_MAX);
+			if (ret == 1) {
+				ret = insert_hashed_block(tree, hashes[i].digest,
+						file, hashes[i].loff, hashes[i].flags);
+				if (ret)
+					goto err;
+				params->bloom_match++;
+				matched++;
+			}
+
+			ret = write_one_hash(params->hfile, hashes[i].loff,
+					hashes[i].flags, hashes[i].digest);
+			if (ret)
+				goto err;
+		}
+
+		file->num_blocks = matched;
+
+		params->num_files++;
+		params->num_hashes += nb_hash;
+
+		g_mutex_unlock(hfile_mutex);
 	}
 
 	filerec_close(file);
@@ -306,6 +374,7 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 
 err:
 	filerec_close(file);
+	free(hashes);
 err_noclose:
 	free(digest);
 	free(buf);
@@ -332,19 +401,43 @@ err_noclose:
 	return;
 }
 
-int populate_hash_tree(struct hash_tree *tree)
+int populate_hash_tree(struct hash_tree *tree, char* serialize_fname)
 {
 	int ret = 0;
 	struct filerec *file, *tmp;
+	//TODO: single mutex
 	GMutex tree_mutex;
 	GError *err = NULL;
 	GThreadPool *pool;
 
+	GMutex hfile_mutex;
+
+	struct thread_params params = { tree, 0, 0, 0, };
+
+	if (serialize_fname) {
+		params.hfile = open(serialize_fname, O_WRONLY|O_CREAT|O_TRUNC, 0644);
+
+		/* Write a dummy header */
+		ret = write_header(params.hfile, 0, 0, blocksize);
+		if (ret)
+			goto out;
+
+		ret = bloom_init(&params.bloom, walked_size / blocksize, 0.01);
+		if (ret)
+			goto out;
+
+		g_mutex_init(&hfile_mutex);
+		g_dataset_set_data_full(&params, "hfile_mutex", &hfile_mutex,
+					(GDestroyNotify) g_mutex_clear);
+	} else {
+		params.hfile = -1;
+	}
+
 	g_mutex_init(&tree_mutex);
-	g_dataset_set_data_full(tree, "mutex", &tree_mutex,
+	g_dataset_set_data_full(&params, "tree_mutex", &tree_mutex,
 				(GDestroyNotify) g_mutex_clear);
 
-	pool = g_thread_pool_new((GFunc) csum_whole_file, tree, io_threads,
+	pool = g_thread_pool_new((GFunc) csum_whole_file, &params, io_threads,
 				 FALSE, &err);
 	if (err != NULL) {
 		fprintf(
@@ -371,8 +464,24 @@ int populate_hash_tree(struct hash_tree *tree)
 	}
 
 	g_thread_pool_free(pool, FALSE, TRUE);
+
+	if (serialize_fname) {
+		/* Now, write the real header */
+		ret = write_header(params.hfile, params.num_files,
+				params.num_hashes, blocksize);
+		if (ret)
+			goto out;
+
+		printf("Bloom gave us %i hashes as 'almost duplicate'\n",
+			params.bloom_match);
+	}
+
 out:
-	g_dataset_remove_data(tree, "mutex");
+	if (serialize_fname) {
+		bloom_free(&params.bloom);
+		close(params.hfile);
+	}
+	g_dataset_destroy(&params);
 
 	return ret;
 }
