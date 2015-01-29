@@ -40,7 +40,8 @@ hashstats_obj = $(crypt_obj) rbtree.o hash-tree.o filerec.o util.o serialize.o \
 show_shared_obj = rbtree.o util.o
 csum_test_obj = $(crypt_obj) util.o
 
-progs = duperemove hashstats btrfs-extent-same show-shared-extents csum-test
+progs = duperemove hashstats btrfs-extent-same show-shared-extents
+test_progs = csum-test
 
 glib_CFLAGS=$(shell pkg-config --cflags glib-2.0)
 glib_LIBS=$(shell pkg-config --libs glib-2.0)
@@ -58,7 +59,7 @@ MANDIR = $(SHAREDIR)/man
 .c.o:
 	$(CC) $(CFLAGS) -c $< -o $@ $(LIBRARY_FLAGS)
 
-all: $(progs)
+all: $(progs) $(test_progs)
 #TODO: Replace this with an auto-dependency
 $(objects): $(HEADERS)
 duperemove: $(objects)
@@ -93,4 +94,4 @@ hashstats: $(hashstats_obj) hashstats.c
 	$(CC) $(CFLAGS) $(hashstats_obj) hashstats.c -o hashstats $(LIBRARY_FLAGS)
 
 clean:
-	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same filerec-test show-shared-extents hashstats csum-*.o *~
+	rm -fr $(objects) $(progs) $(test_progs) $(DIST_TARBALL) btrfs-extent-same filerec-test show-shared-extents hashstats csum-*.o *~
