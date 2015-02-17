@@ -287,8 +287,14 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 			 * most recent extent off the list and re-add
 			 * that. The old extent won't be deduped again
 			 * but this one will.
+			 *
+			 * This won't work if we haven't deduped
+			 * anything yet. If prev doesn't exist, we
+			 * skip this and let the dedupe code below
+			 * clean up for us.
 			 */
-			abort_on(!prev);
+			if (prev == NULL)
+				goto run_dedupe;
 			to_add = prev; /* The ole' extent switcharoo */
 		}
 		prev = extent; /* save previous extent for condition above */
@@ -311,9 +317,9 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 run_dedupe:
 
 		/*
-		 * We can get here with only the target extent (0 queued) if
-		 * filerec_open_list fails on the 2nd (and last)
-		 * extent.
+		 * We can get here with only the target extent (0
+		 * queued) for many reasons. Skip the dedupe in that
+		 * case but always do cleanup.
 		 */
 		if (ctxt->num_queued) {
 			printf("Dedupe %d extents with target: (%s, %s), "
