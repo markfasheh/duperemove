@@ -287,7 +287,11 @@ int main(int argc, char **argv)
 	init_results_tree(&res);
 
 	/* Parse options might change this so set a default here */
+#if GLIB_CHECK_VERSION(2,36,0)
 	io_threads = g_get_num_processors();
+#else
+        io_threads = 1;
+#endif
 
 	if (parse_options(argc, argv)) {
 		usage(argv[0]);
