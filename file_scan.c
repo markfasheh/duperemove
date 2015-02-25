@@ -51,12 +51,14 @@ static dev_t one_fs_dev = 0;
 static uint64_t walked_size = 0;
 
 struct thread_params {
-	struct hash_tree *tree;
-	int num_files;
-	int num_hashes;
-	unsigned int bloom_match;
-	int hfile;
-	struct bloom bloom;
+	struct hash_tree *tree; /* Contains all hashes (all-in-memory path)
+				 * or just the "dups" hashes (swap-file path
+				 */
+	int num_files;		/* Total number of files we hashe */
+	int num_hashes;		/* Total number of hashes we hashed */
+	unsigned int bloom_match; /* Total number of matched by bloom */
+	int hfile;		/* fd to the swap-file, or -1 if none */
+	struct bloom bloom;	/* the real bloom filter */
 };
 
 static int walk_dir(const char *name)
@@ -312,14 +314,15 @@ static void csum_whole_file(struct filerec *file, struct thread_params *params)
 
 		checksum_block(buf, bytes, digest);
 
-		/* All-in-memory path */
 		if (params->hfile == -1) {
+			/* All-in-memory path */
 			g_mutex_lock(tree_mutex);
 			ret = insert_hashed_block(tree, digest, file, off, flags);
 			g_mutex_unlock(tree_mutex);
 			if (ret)
 				break;
 		} else {
+			/* Swap-file path */
 			hashes = realloc(hashes, sizeof(struct block) * (nb_hash + 1));
 			hashes[nb_hash].loff = off;
 			hashes[nb_hash].flags = flags;
@@ -332,6 +335,10 @@ static void csum_whole_file(struct filerec *file, struct thread_params *params)
 	}
 
 	if (params->hfile != -1) {
+		/* swap-file path taken:
+		 * write down all hashes, add all hashes to the bloom filter,
+		 * and store possibly dups
+		 */
 		g_mutex_lock(hfile_mutex);
 		file->num_blocks = nb_hash;
 		ret = write_file_info(params->hfile, file);

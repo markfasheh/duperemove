@@ -281,7 +281,6 @@ int main(int argc, char **argv)
 	struct hash_tree scan_tree;
 	struct results_tree res;
 	struct filerec *file;
-	struct hash_tree dups_tree;
 
 	init_filerec();
 	init_hash_tree(&scan_tree);
@@ -327,6 +326,7 @@ int main(int argc, char **argv)
 		/* We will now reread the serialized file, and create a new shiny tree
 		   with only 'almost-dups' hashes
 		*/
+		struct hash_tree dups_tree;
 		init_hash_tree(&dups_tree);
 		read_hash_tree(serialize_fname, &dups_tree, &blocksize,
 					NULL, 0, &scan_tree);

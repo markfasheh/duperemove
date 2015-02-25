@@ -1,4 +1,4 @@
-The bloom implementation as well as the murmur2 code is based on the libbloom project, see https://github.com/jvirkki/libbloom
+The bloom implementation is based on the libbloom project, see https://github.com/jvirkki/libbloom
 
 Copyright (c) 2012, Jyri J. Virkki
 All rights reserved.
