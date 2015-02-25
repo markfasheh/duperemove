@@ -249,8 +249,7 @@ static void csum_whole_file(struct filerec *file, struct thread_params *params)
 	assert(digest != NULL);
 	static long long unsigned cur_num_filerecs = 0;
 
-	GMutex *tree_mutex = g_dataset_get_data(params, "tree_mutex");
-	GMutex *hfile_mutex = g_dataset_get_data(params, "hfile_mutex");
+	GMutex *mutex = g_dataset_get_data(params, "mutex");
 
 	__sync_add_and_fetch(&cur_num_filerecs, 1);
 	printf("csum: %s \t[%llu/%llu] (%.2f%%)\n", file->filename,
@@ -316,9 +315,9 @@ static void csum_whole_file(struct filerec *file, struct thread_params *params)
 
 		if (params->hfile == -1) {
 			/* All-in-memory path */
-			g_mutex_lock(tree_mutex);
+			g_mutex_lock(mutex);
 			ret = insert_hashed_block(tree, digest, file, off, flags);
-			g_mutex_unlock(tree_mutex);
+			g_mutex_unlock(mutex);
 			if (ret)
 				break;
 		} else {
@@ -339,7 +338,7 @@ static void csum_whole_file(struct filerec *file, struct thread_params *params)
 		 * write down all hashes, add all hashes to the bloom filter,
 		 * and store possibly dups
 		 */
-		g_mutex_lock(hfile_mutex);
+		g_mutex_lock(mutex);
 		file->num_blocks = nb_hash;
 		ret = write_file_info(params->hfile, file);
 		if (ret)
@@ -368,7 +367,7 @@ static void csum_whole_file(struct filerec *file, struct thread_params *params)
 		params->num_files++;
 		params->num_hashes += nb_hash;
 
-		g_mutex_unlock(hfile_mutex);
+		g_mutex_unlock(mutex);
 	}
 
 	filerec_close(file);
@@ -395,7 +394,7 @@ err_noclose:
 		strerror(ret),
 		file->filename);
 
-	g_mutex_lock(tree_mutex);
+	g_mutex_lock(mutex);
 	remove_hashed_blocks(tree, file);
 	/*
 	 * filerec_free will remove from the filerec tree keep it
@@ -403,7 +402,7 @@ err_noclose:
 	 * filerec.c
 	 */
 	filerec_free(file);
-	g_mutex_unlock(tree_mutex);
+	g_mutex_unlock(mutex);
 
 	return;
 }
@@ -412,12 +411,9 @@ int populate_hash_tree(struct hash_tree *tree, char* serialize_fname)
 {
 	int ret = 0;
 	struct filerec *file, *tmp;
-	//TODO: single mutex
-	GMutex tree_mutex;
+	GMutex mutex;
 	GError *err = NULL;
 	GThreadPool *pool;
-
-	GMutex hfile_mutex;
 
 	struct thread_params params = { tree, 0, 0, 0, };
 
@@ -432,16 +428,12 @@ int populate_hash_tree(struct hash_tree *tree, char* serialize_fname)
 		ret = bloom_init(&params.bloom, walked_size / blocksize, 0.01);
 		if (ret)
 			goto out;
-
-		g_mutex_init(&hfile_mutex);
-		g_dataset_set_data_full(&params, "hfile_mutex", &hfile_mutex,
-					(GDestroyNotify) g_mutex_clear);
 	} else {
 		params.hfile = -1;
 	}
 
-	g_mutex_init(&tree_mutex);
-	g_dataset_set_data_full(&params, "tree_mutex", &tree_mutex,
+	g_mutex_init(&mutex);
+	g_dataset_set_data_full(&params, "mutex", &mutex,
 				(GDestroyNotify) g_mutex_clear);
 
 	pool = g_thread_pool_new((GFunc) csum_whole_file, &params, io_threads,
