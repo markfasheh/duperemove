@@ -207,18 +207,11 @@ static int parse_options(int argc, char **argv)
 	numfiles = argc - optind;
 
 	/* Filter out option combinations that don't make sense. */
-	if (write_hashes &&
-	    (read_hashes || run_dedupe)) {
-		if (run_dedupe)
-			fprintf(stderr,
-				"Error: Can not dedupe with --write-hashes "
-				"option. Try writing hashes and then deduping "
-				"with --read-hashes instead.\n");
+	if (write_hashes && read_hashes) {
 		if (read_hashes)
 			fprintf(stderr,
 				"Error: Specify only one of --write-hashes or "
 				"--read-hashes.\n");
-
 		return 1;
 	}
 
@@ -308,7 +301,7 @@ int main(int argc, char **argv)
 
 	/* TODO: read & filter using bloom, on the fly */
 
-	printf("Using %uK blocks\n", blocksize/1024);
+	printf("Using %uK blocks\n", blocksize / 1024);
 	printf("Using hash: %s\n", csum_mod->name);
 
 	if (!read_hashes) {
