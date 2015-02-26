@@ -605,6 +605,46 @@ static void usage(const char *prog)
 	printf("\nPlease see the duperemove(8) manpage for more options.\n");
 }
 
+static int get_dirent_type(struct dirent *entry, int fd)
+{
+	int ret;
+	struct stat st;
+
+	if (entry->d_type != DT_UNKNOWN)
+		return entry->d_type;
+
+	/*
+	 * FS doesn't support file type in dirent, do this the old
+	 * fashioned way. We translate mode to DT_* for the
+	 * convenience of the caller.
+	 */
+	ret = fstatat(fd, entry->d_name, &st, 0);
+	if (ret) {
+		fprintf(stderr,
+			"Error %d: %s while getting type of file %s/%s. "
+			"Skipping.\n",
+			errno, strerror(errno), path, entry->d_name);
+		return DT_UNKNOWN;
+	}
+
+	if (S_ISREG(st.st_mode))
+		return DT_REG;
+	if (S_ISDIR(st.st_mode))
+		return DT_DIR;
+	if (S_ISBLK(st.st_mode))
+		return DT_BLK;
+	if (S_ISCHR(st.st_mode))
+		return DT_CHR;
+	if (S_ISFIFO(st.st_mode))
+		return DT_FIFO;
+	if (S_ISLNK(st.st_mode))
+		return DT_LNK;
+	if (S_ISSOCK(st.st_mode))
+		return DT_SOCK;
+
+	return DT_UNKNOWN;
+}
+
 static int add_file(const char *name, int dirfd);
 
 static int walk_dir(const char *name)
@@ -612,6 +652,7 @@ static int walk_dir(const char *name)
 	int ret = 0;
 	struct dirent *entry;
 	DIR *dirp;
+	int type;
 
 	dirp = opendir(path);
 	if (dirp == NULL) {
@@ -628,12 +669,14 @@ static int walk_dir(const char *name)
 			    || strcmp(entry->d_name, "..") == 0)
 				continue;
 
-			if (entry->d_type == DT_REG ||
-			    (recurse_dirs && entry->d_type == DT_DIR))
+			type = get_dirent_type(entry, dirfd(dirp));
+			if (type == DT_REG ||
+			    (recurse_dirs && type == DT_DIR)) {
 				if (add_file(entry->d_name, dirfd(dirp))) {
 					ret = 1;
 					goto out;
 				}
+			}
 		}
 	} while (entry != NULL);
 
