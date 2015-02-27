@@ -79,7 +79,4 @@ void init_hash_tree(struct hash_tree *tree);
 void debug_print_block(struct file_block *e);
 void debug_print_hash_tree(struct hash_tree *tree);
 
-struct dupe_blocks_list *find_block_list(struct hash_tree *tree,
-                                               unsigned char *digest);
-
 #endif /* __HASH_TREE__ */

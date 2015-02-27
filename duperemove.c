@@ -322,7 +322,6 @@ int main(int argc, char **argv)
 
 	debug_print_hash_tree(&scan_tree);
 
-
 	if (serialize_fname) {
 		/* We will now reread the serialized file, and create a new shiny tree
 		   with only 'almost-dups' hashes

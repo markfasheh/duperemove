@@ -190,7 +190,7 @@ static void insert_block_list(struct hash_tree *tree,
 	return;
 }
 
-struct dupe_blocks_list *find_block_list(struct hash_tree *tree,
+static struct dupe_blocks_list *find_block_list(struct hash_tree *tree,
 					       unsigned char *digest)
 {
 	struct rb_node *n = tree->root.rb_node;

@@ -56,7 +56,7 @@ struct thread_params {
 	int num_files;           /* Total number of files we hashed */
 	int num_hashes;          /* Total number of hashes we hashed */
 	unsigned int bloom_match;/* Total number of matched by bloom */
-	int hfile;               /* fd to the swap-file, or -1 if none */
+	int hfile;               /* fd to the swap-file */
 	struct bloom bloom;      /* the real bloom filter */
 };
 
@@ -492,7 +492,7 @@ static void csum_whole_file_swap(struct filerec *file, struct thread_params *par
 		bytes = 0;
 	}
 
-	/* swap-file path taken:
+	/*
 	 * write down all hashes, add all hashes to the bloom filter,
 	 * and store possibly dups
 	 */
