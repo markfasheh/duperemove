@@ -41,6 +41,7 @@
 #include "btrfs-util.h"
 #include "memstats.h"
 #include "debug.h"
+#include "d_tree.h"
 
 #include "file_scan.h"
 #include "find_dupes.h"
@@ -271,13 +272,17 @@ out_nofiles:
 int main(int argc, char **argv)
 {
 	int ret;
-	struct hash_tree scan_tree;
 	struct results_tree res;
 	struct filerec *file;
 
+	struct hash_tree scan_tree;
+	struct rb_root digest_tree;
+
 	init_filerec();
-	init_hash_tree(&scan_tree);
 	init_results_tree(&res);
+
+	init_hash_tree(&scan_tree);
+	digest_tree = RB_ROOT;
 
 	/* Parse options might change this so set a default here */
 	io_threads = g_get_num_processors();
@@ -305,7 +310,10 @@ int main(int argc, char **argv)
 	printf("Using hash: %s\n", csum_mod->name);
 
 	if (!read_hashes) {
-		ret = populate_hash_tree(&scan_tree, serialize_fname);
+		if (serialize_fname)
+			ret = populate_tree_swap(&digest_tree, serialize_fname);
+		else
+			ret = populate_tree_aim(&scan_tree);
 		if (ret) {
 			fprintf(stderr, "Error while populating extent tree!\n");
 			goto out;
@@ -322,7 +330,7 @@ int main(int argc, char **argv)
 		struct hash_tree dups_tree;
 		init_hash_tree(&dups_tree);
 		read_hash_tree(serialize_fname, &dups_tree, &blocksize,
-					NULL, 0, &scan_tree);
+					NULL, 0, &digest_tree);
 
 		ret = find_all_dupes(&dups_tree, &res);
 	} else {
