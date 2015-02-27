@@ -247,7 +247,7 @@ static int read_hash(int fd, struct block_hash *b)
 }
 
 static int read_one_file(int fd, struct hash_tree *tree,
-				struct hash_tree *scan_tree)
+				struct rb_root *scan_tree)
 {
 	int ret;
 	uint32_t i;
@@ -256,7 +256,6 @@ static int read_one_file(int fd, struct hash_tree *tree,
 	struct block_hash bhash;
 	struct filerec *file;
 	char fname[PATH_MAX+1];
-	struct dupe_blocks_list *tmp;
 
 	ret = read_file(fd, &finfo, fname);
 	if (ret)
@@ -282,12 +281,8 @@ static int read_one_file(int fd, struct hash_tree *tree,
  * if needed.
  * If scan_tree is NULL, we do not want to filter anyway, so bypass the search
  */
-		if (scan_tree) {
-			tmp = find_block_list(scan_tree,
-				(unsigned char *)bhash.digest);
-			if (tmp == NULL)
-				continue;
-		}
+		if (!digest_find(scan_tree, (unsigned char *)bhash.digest))
+			continue;
 
 		ret = insert_hashed_block(tree, (unsigned char *)bhash.digest,
 					  file, le64_to_cpu(bhash.loff),
@@ -316,7 +311,7 @@ static int read_header(int fd, struct hash_file_header *h)
 
 int read_hash_tree(char *filename, struct hash_tree *tree,
 		   unsigned int *block_size, struct hash_file_header *ret_hdr,
-		   int ignore_hash_type, struct hash_tree *scan_tree)
+		   int ignore_hash_type, struct rb_root *scan_tree)
 {
 	int ret, fd;
 	uint32_t i;
