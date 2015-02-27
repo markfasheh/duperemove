@@ -352,30 +352,34 @@ err_noclose:
 	return;
 }
 
-int populate_tree_aim(struct hash_tree *tree)
+static GThreadPool* setup_pool(void *location, GMutex *mutex,
+			void *function)
 {
-	int ret = 0;
-	struct filerec *file, *tmp;
-	GMutex mutex;
 	GError *err = NULL;
 	GThreadPool *pool;
-
-	g_mutex_init(&mutex);
-	g_dataset_set_data_full(tree, "mutex", &mutex,
+	g_mutex_init(mutex);
+	g_dataset_set_data_full(location, "mutex", mutex,
 				(GDestroyNotify) g_mutex_clear);
 
-	pool = g_thread_pool_new((GFunc) csum_whole_file, tree, io_threads,
+	pool = g_thread_pool_new((GFunc) function, location, io_threads,
 				 FALSE, &err);
 	if (err != NULL) {
 		fprintf(
 			stderr,
 			"Unable to create thread pool: %s\n",
 			err->message);
-		ret = -1;
 		g_error_free(err);
 		err = NULL;
-		goto out;
+		g_dataset_destroy(location);
+		return NULL;
 	}
+	return pool;
+}
+
+static void run_pool(GThreadPool *pool)
+{
+	GError *err = NULL;
+	struct filerec *file, *tmp;
 
 	printf("Using %u threads for file hashing phase\n", io_threads);
 
@@ -391,10 +395,6 @@ int populate_tree_aim(struct hash_tree *tree)
 	}
 
 	g_thread_pool_free(pool, FALSE, TRUE);
-out:
-	g_dataset_remove_data(tree, "mutex");
-
-	return ret;
 }
 
 static void csum_whole_file_swap(struct filerec *file, struct thread_params *params)
@@ -564,13 +564,30 @@ err_noclose:
 	return;
 }
 
+int populate_tree_aim(struct hash_tree *tree)
+{
+	int ret = 0;
+	GMutex mutex;
+	GThreadPool *pool;
+
+	pool = setup_pool(tree, &mutex, csum_whole_file);
+	if (!pool) {
+		ret = -1;
+		goto out;
+	}
+
+	run_pool(pool);
+
+out:
+	g_dataset_remove_data(tree, "mutex");
+
+	return ret;
+}
 
 int populate_tree_swap(struct rb_root *tree, char* serialize_fname)
 {
 	int ret = 0;
-	struct filerec *file, *tmp;
 	GMutex mutex;
-	GError *err = NULL;
 	GThreadPool *pool;
 
 	struct thread_params params = { tree, 0, 0, 0, };
@@ -586,37 +603,13 @@ int populate_tree_swap(struct rb_root *tree, char* serialize_fname)
 	if (ret)
 		goto out;
 
-	g_mutex_init(&mutex);
-	g_dataset_set_data_full(&params, "mutex", &mutex,
-				(GDestroyNotify) g_mutex_clear);
-
-	pool = g_thread_pool_new((GFunc) csum_whole_file_swap, &params, io_threads,
-				 FALSE, &err);
-	if (err != NULL) {
-		fprintf(
-			stderr,
-			"Unable to create thread pool: %s\n",
-			err->message);
+	pool = setup_pool(&params, &mutex, csum_whole_file_swap);
+	if (!pool) {
 		ret = -1;
-		g_error_free(err);
-		err = NULL;
 		goto out;
 	}
 
-	printf("Using %u threads for file hashing phase\n", io_threads);
-
-	list_for_each_entry_safe(file, tmp, &filerec_list, rec_list) {
-		g_thread_pool_push(pool, file, &err);
-		if (err != NULL) {
-			fprintf(stderr,
-					"g_thread_pool_push: %s\n",
-					err->message);
-			g_error_free(err);
-			err = NULL;
-		}
-	}
-
-	g_thread_pool_free(pool, FALSE, TRUE);
+	run_pool(pool);
 
 	/* Now, write the real header */
 	ret = write_header(params.hfile, params.num_files,
