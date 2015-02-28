@@ -222,136 +222,6 @@ out:
 	return 0;
 }
 
-struct block {
-	uint64_t	loff;
-	unsigned int	flags;
-	unsigned char	digest[DIGEST_LEN_MAX];
-};
-
-static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
-{
-	uint64_t off = 0;
-	ssize_t bytes = 0, bytes_read = 0;
-	int ret = 0;
-	struct fiemap_ctxt *fc = NULL;
-	unsigned int flags, hole;
-
-	char *buf = malloc(blocksize);
-	assert(buf != NULL);
-	unsigned char *digest = malloc(DIGEST_LEN_MAX);
-	assert(digest != NULL);
-	static long long unsigned cur_num_filerecs = 0;
-
-	GMutex *mutex = g_dataset_get_data(tree, "mutex");
-
-	__sync_add_and_fetch(&cur_num_filerecs, 1);
-	printf("csum: %s \t[%llu/%llu] (%.2f%%)\n", file->filename,
-	       cur_num_filerecs, num_filerecs,
-		(double)cur_num_filerecs / (double)num_filerecs * 100);
-
-	if (do_lookup_extents) {
-		fc = alloc_fiemap_ctxt();
-		if (fc == NULL) /* This should be non-fatal */
-			fprintf(stderr,
-				"Low memory allocating fiemap context for \"%s\"\n",
-				file->filename);
-	}
-
-	ret = filerec_open(file, 0);
-	if (ret)
-		goto err_noclose;
-
-	while (1) {
-		bytes_read = read(file->fd, buf+bytes, blocksize-bytes);
-		if (bytes_read < 0) {
-			ret = errno;
-			fprintf(stderr, "Unable to read file %s: %s\n",
-				file->filename, strerror(ret));
-			goto err;
-		}
-
-		/* Handle EOF */
-		if (bytes_read == 0)
-			break;
-
-		bytes += bytes_read;
-
-		/* Handle partial read */
-		if (bytes_read > 0 && bytes < blocksize)
-			continue;
-
-		flags = hole = 0;
-		if (fc) {
-			unsigned int fieflags = 0;
-
-			ret = fiemap_iter_get_flags(fc, file, off, &fieflags,
-						    &hole);
-			if (ret) {
-				fprintf(stderr,
-					"Fiemap error %d while scanning file "
-					"\"%s\": %s\n", ret, file->filename,
-					strerror(ret));
-
-				free(fc);
-				fc = NULL;
-			} else {
-				if (hole)
-					flags |= FILE_BLOCK_HOLE;
-				if (fieflags & FIEMAP_SKIP_FLAGS)
-					flags |= FILE_BLOCK_SKIP_COMPARE;
-				if (fieflags & FIEMAP_DEDUPED_FLAGS)
-					flags |= FILE_BLOCK_DEDUPED;
-			}
-		}
-
-		checksum_block(buf, bytes, digest);
-
-		g_mutex_lock(mutex);
-		ret = insert_hashed_block(tree, digest, file, off, flags);
-		g_mutex_unlock(mutex);
-		if (ret)
-			break;
-
-		off += bytes;
-		bytes = 0;
-	}
-
-	filerec_close(file);
-	free(digest);
-	free(buf);
-	if (fc)
-		free(fc);
-
-	return;
-
-err:
-	filerec_close(file);
-err_noclose:
-	free(digest);
-	free(buf);
-	if (fc)
-		free(fc);
-
-	fprintf(
-		stderr,
-		"Skipping file due to error %d (%s), %s\n",
-		ret,
-		strerror(ret),
-		file->filename);
-
-	g_mutex_lock(mutex);
-	remove_hashed_blocks(tree, file);
-	/*
-	 * filerec_free will remove from the filerec tree keep it
-	 * under tree_mutex until we have a need for real locking in
-	 * filerec.c
-	 */
-	filerec_free(file);
-	g_mutex_unlock(mutex);
-
-	return;
-}
-
 static GThreadPool* setup_pool(void *location, GMutex *mutex,
 			void *function)
 {
@@ -397,28 +267,79 @@ static void run_pool(GThreadPool *pool)
 	g_thread_pool_free(pool, FALSE, TRUE);
 }
 
-static void csum_whole_file_swap(struct filerec *file, struct thread_params *params)
+struct block {
+	uint64_t	loff;
+	unsigned int	flags;
+	unsigned char	digest[DIGEST_LEN_MAX];
+};
+
+struct csum_block {
+	ssize_t bytes;
+	unsigned int flags;
+	char *buf;
+	struct filerec *file;
+	unsigned char digest[DIGEST_LEN_MAX];
+};
+
+static inline int csum_next_block(struct csum_block *data, uint64_t *off)
 {
-	struct rb_root *tree = params->tree;
-	uint64_t off = 0;
-	ssize_t bytes = 0, bytes_read = 0;
+	ssize_t stored_bytes = data->bytes;
+	ssize_t bytes_read;
 	int ret = 0;
 	struct fiemap_ctxt *fc = NULL;
-	unsigned int flags, hole;
+	unsigned int hole;
 
-	int i;
-	struct block *hashes = malloc(sizeof(struct block));
-	int nb_hash = 0;
-	int matched = 0;
+	bytes_read = read(data->file->fd, data->buf + stored_bytes, blocksize - stored_bytes);
+	if (bytes_read < 0) {
+		ret = errno;
+		fprintf(stderr, "Unable to read file %s: %s\n",
+			data->file->filename, strerror(ret));
+		return -1;
+	}
 
-	char *buf = malloc(blocksize);
-	assert(buf != NULL);
-	unsigned char *digest = malloc(DIGEST_LEN_MAX);
-	assert(digest != NULL);
+	/* Handle EOF */
+	if (bytes_read == 0)
+		return 0;
+
+	data->bytes += bytes_read;
+
+	/* Handle partial read */
+	if (bytes_read > 0 && data->bytes < blocksize)
+		return 1;
+
+	data->flags = hole = 0;
+	if (fc) {
+		unsigned int fieflags = 0;
+
+		ret = fiemap_iter_get_flags(fc, data->file, *off, &fieflags,
+					    &hole);
+		if (ret) {
+			fprintf(stderr,
+				"Fiemap error %d while scanning file "
+				"\"%s\": %s\n", ret, data->file->filename,
+				strerror(ret));
+
+			free(fc);
+			fc = NULL;
+		} else {
+			if (hole)
+				data->flags |= FILE_BLOCK_HOLE;
+			if (fieflags & FIEMAP_SKIP_FLAGS)
+				data->flags |= FILE_BLOCK_SKIP_COMPARE;
+			if (fieflags & FIEMAP_DEDUPED_FLAGS)
+				data->flags |= FILE_BLOCK_DEDUPED;
+		}
+	}
+
+	checksum_block(data->buf, data->bytes, data->digest);
+	return 2;
+}
+
+static void csum_whole_file_init(GMutex **mutex, void *location,
+				struct filerec *file, struct fiemap_ctxt **fc)
+{
 	static long long unsigned cur_num_filerecs = 0;
-
-	struct d_tree *d_tree;
-	GMutex *mutex = g_dataset_get_data(params, "mutex");
+	*mutex = g_dataset_get_data(location, "mutex");
 
 	__sync_add_and_fetch(&cur_num_filerecs, 1);
 	printf("csum: %s \t[%llu/%llu] (%.2f%%)\n", file->filename,
@@ -426,70 +347,134 @@ static void csum_whole_file_swap(struct filerec *file, struct thread_params *par
 		(double)cur_num_filerecs / (double)num_filerecs * 100);
 
 	if (do_lookup_extents) {
-		fc = alloc_fiemap_ctxt();
-		if (fc == NULL) /* This should be non-fatal */
+		*fc = alloc_fiemap_ctxt();
+		if (*fc == NULL) /* This should be non-fatal */
 			fprintf(stderr,
 				"Low memory allocating fiemap context for \"%s\"\n",
 				file->filename);
 	}
+}
+
+static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
+{
+	uint64_t off = 0;
+	int ret = 0;
+	struct fiemap_ctxt *fc = NULL;
+
+	struct csum_block curr_block;
+	curr_block.buf = malloc(blocksize);
+	assert(curr_block.buf != NULL);
+	curr_block.file = file;
+	curr_block.bytes = 0;
+
+	GMutex *mutex;
+	csum_whole_file_init(&mutex, tree, file, &fc);
 
 	ret = filerec_open(file, 0);
 	if (ret)
 		goto err_noclose;
 
 	while (1) {
-		bytes_read = read(file->fd, buf+bytes, blocksize-bytes);
-		if (bytes_read < 0) {
-			ret = errno;
-			fprintf(stderr, "Unable to read file %s: %s\n",
-				file->filename, strerror(ret));
-			goto err;
-		}
-
-		/* Handle EOF */
-		if (bytes_read == 0)
+		ret = csum_next_block(&curr_block, &off);
+		if (ret == 0) /* EOF */
 			break;
 
-		bytes += bytes_read;
+		if (ret == -1) /* Err */
+			goto err;
 
-		/* Handle partial read */
-		if (bytes_read > 0 && bytes < blocksize)
+		if (ret == 1) /* Partial read */
 			continue;
 
-		flags = hole = 0;
-		if (fc) {
-			unsigned int fieflags = 0;
+		g_mutex_lock(mutex);
+		ret = insert_hashed_block(tree, curr_block.digest, file, off, curr_block.flags);
+		g_mutex_unlock(mutex);
+		if (ret)
+			break;
 
-			ret = fiemap_iter_get_flags(fc, file, off, &fieflags,
-						    &hole);
-			if (ret) {
-				fprintf(stderr,
-					"Fiemap error %d while scanning file "
-					"\"%s\": %s\n", ret, file->filename,
-					strerror(ret));
+		off += curr_block.bytes;
+		curr_block.bytes = 0;
+	}
 
-				free(fc);
-				fc = NULL;
-			} else {
-				if (hole)
-					flags |= FILE_BLOCK_HOLE;
-				if (fieflags & FIEMAP_SKIP_FLAGS)
-					flags |= FILE_BLOCK_SKIP_COMPARE;
-				if (fieflags & FIEMAP_DEDUPED_FLAGS)
-					flags |= FILE_BLOCK_DEDUPED;
-			}
-		}
+	filerec_close(file);
+	free(curr_block.buf);
+	if (fc)
+		free(fc);
 
-		checksum_block(buf, bytes, digest);
+	return;
+
+err:
+	filerec_close(file);
+err_noclose:
+	free(curr_block.buf);
+	if (fc)
+		free(fc);
+
+	fprintf(
+		stderr,
+		"Skipping file due to error %d (%s), %s\n",
+		ret,
+		strerror(ret),
+		file->filename);
+
+	g_mutex_lock(mutex);
+	remove_hashed_blocks(tree, file);
+	/*
+	 * filerec_free will remove from the filerec tree keep it
+	 * under tree_mutex until we have a need for real locking in
+	 * filerec.c
+	 */
+	filerec_free(file);
+	g_mutex_unlock(mutex);
+
+	return;
+}
+
+static void csum_whole_file_swap(struct filerec *file, struct thread_params *params)
+{
+	struct rb_root *tree = params->tree;
+	uint64_t off = 0;
+	int ret = 0;
+	struct fiemap_ctxt *fc = NULL;
+
+	struct csum_block curr_block;
+	curr_block.buf = malloc(blocksize);
+	assert(curr_block.buf != NULL);
+	curr_block.file = file;
+	curr_block.bytes = 0;
+
+	int i;
+	struct block *hashes = malloc(sizeof(struct block));
+	int nb_hash = 0;
+	int matched = 0;
+
+	struct d_tree *d_tree;
+
+	GMutex *mutex;
+	csum_whole_file_init(&mutex, params, file, &fc);
+
+	ret = filerec_open(file, 0);
+	if (ret)
+		goto err_noclose;
+
+	while (1) {
+		ret = csum_next_block(&curr_block, &off);
+		if (ret == 0) /* EOF */
+			break;
+
+		if (ret == -1) /* Err */
+			goto err;
+
+		if (ret == 1) /* Partial read */
+			continue;
 
 		hashes = realloc(hashes, sizeof(struct block) * (nb_hash + 1));
 		hashes[nb_hash].loff = off;
-		hashes[nb_hash].flags = flags;
-		memcpy(hashes[nb_hash].digest, digest, DIGEST_LEN_MAX);
+		hashes[nb_hash].flags = curr_block.flags;
+		memcpy(hashes[nb_hash].digest, curr_block.digest, DIGEST_LEN_MAX);
 		nb_hash++;
 
-		off += bytes;
-		bytes = 0;
+		off += curr_block.bytes;
+		curr_block.bytes = 0;
 	}
 
 	/*
@@ -529,19 +514,16 @@ static void csum_whole_file_swap(struct filerec *file, struct thread_params *par
 	g_mutex_unlock(mutex);
 
 	filerec_close(file);
-	free(digest);
-	free(buf);
 	if (fc)
 		free(fc);
 
+	free(hashes);
 	return;
 
 err:
 	filerec_close(file);
-	free(hashes);
 err_noclose:
-	free(digest);
-	free(buf);
+	free(hashes);
 	if (fc)
 		free(fc);
 
