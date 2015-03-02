@@ -333,10 +333,11 @@ int main(int argc, char **argv)
 			printf("First run completed\n");
 		}
 
-		/* We will now reread the serialized file, and create a new shiny tree
-		   with only 'almost-dups' hashes
-		*/
+		/* We will now reread the serialized file, and create a new
+		 * shiny tree with only 'almost-dups' hashes
+		 */
 		struct hash_tree dups_tree;
+
 		init_hash_tree(&dups_tree);
 		read_hash_tree(serialize_fname, &dups_tree, &blocksize,
 					NULL, 0, &digest_tree);

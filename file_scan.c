@@ -47,9 +47,9 @@
 static char path[PATH_MAX] = { 0, };
 static char *pathp = path;
 static char *path_max = &path[PATH_MAX - 1];
-static dev_t one_fs_dev = 0;
+static dev_t one_fs_dev;
 
-static uint64_t walked_size = 0;
+static uint64_t walked_size;
 
 struct thread_params {
 	struct rb_root *tree;    /* Unique hashes */
@@ -222,11 +222,12 @@ out:
 	return 0;
 }
 
-static GThreadPool* setup_pool(void *location, GMutex *mutex,
+static GThreadPool *setup_pool(void *location, GMutex *mutex,
 			void *function)
 {
 	GError *err = NULL;
 	GThreadPool *pool;
+
 	g_mutex_init(mutex);
 	g_dataset_set_data_full(location, "mutex", mutex,
 				(GDestroyNotify) g_mutex_clear);
@@ -289,7 +290,8 @@ static inline int csum_next_block(struct csum_block *data, uint64_t *off)
 	struct fiemap_ctxt *fc = NULL;
 	unsigned int hole;
 
-	bytes_read = read(data->file->fd, data->buf + stored_bytes, blocksize - stored_bytes);
+	bytes_read = read(data->file->fd, data->buf + stored_bytes,
+				blocksize - stored_bytes);
 	if (bytes_read < 0) {
 		ret = errno;
 		fprintf(stderr, "Unable to read file %s: %s\n",
@@ -338,7 +340,7 @@ static inline int csum_next_block(struct csum_block *data, uint64_t *off)
 static void csum_whole_file_init(GMutex **mutex, void *location,
 				struct filerec *file, struct fiemap_ctxt **fc)
 {
-	static long long unsigned cur_num_filerecs = 0;
+	static long long unsigned cur_num_filerecs;
 	*mutex = g_dataset_get_data(location, "mutex");
 
 	__sync_add_and_fetch(&cur_num_filerecs, 1);
@@ -360,14 +362,14 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 	uint64_t off = 0;
 	int ret = 0;
 	struct fiemap_ctxt *fc = NULL;
-
 	struct csum_block curr_block;
+	GMutex *mutex;
+
 	curr_block.buf = malloc(blocksize);
 	assert(curr_block.buf != NULL);
 	curr_block.file = file;
 	curr_block.bytes = 0;
 
-	GMutex *mutex;
 	csum_whole_file_init(&mutex, tree, file, &fc);
 
 	ret = filerec_open(file, 0);
@@ -386,7 +388,8 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 			continue;
 
 		g_mutex_lock(mutex);
-		ret = insert_hashed_block(tree, curr_block.digest, file, off, curr_block.flags);
+		ret = insert_hashed_block(tree, curr_block.digest, file,
+						off, curr_block.flags);
 		g_mutex_unlock(mutex);
 		if (ret)
 			break;
@@ -425,18 +428,17 @@ err_noclose:
 	 */
 	filerec_free(file);
 	g_mutex_unlock(mutex);
-
-	return;
 }
 
-static void csum_whole_file_swap(struct filerec *file, struct thread_params *params)
+static void csum_whole_file_swap(struct filerec *file,
+				struct thread_params *params)
 {
 	struct rb_root *tree = params->tree;
 	uint64_t off = 0;
 	int ret = 0;
 	struct fiemap_ctxt *fc = NULL;
-
 	struct csum_block curr_block;
+
 	curr_block.buf = malloc(blocksize);
 	assert(curr_block.buf != NULL);
 	curr_block.file = file;
@@ -448,8 +450,8 @@ static void csum_whole_file_swap(struct filerec *file, struct thread_params *par
 	int matched = 0;
 
 	struct d_tree *d_tree;
-
 	GMutex *mutex;
+
 	csum_whole_file_init(&mutex, params, file, &fc);
 
 	ret = filerec_open(file, 0);
@@ -470,7 +472,8 @@ static void csum_whole_file_swap(struct filerec *file, struct thread_params *par
 		hashes = realloc(hashes, sizeof(struct block) * (nb_hash + 1));
 		hashes[nb_hash].loff = off;
 		hashes[nb_hash].flags = curr_block.flags;
-		memcpy(hashes[nb_hash].digest, curr_block.digest, DIGEST_LEN_MAX);
+		memcpy(hashes[nb_hash].digest, curr_block.digest,
+					DIGEST_LEN_MAX);
 		nb_hash++;
 
 		off += curr_block.bytes;
@@ -566,7 +569,7 @@ out:
 	return ret;
 }
 
-int populate_tree_swap(struct rb_root *tree, char* serialize_fname)
+int populate_tree_swap(struct rb_root *tree, char *serialize_fname)
 {
 	int ret = 0;
 	GMutex mutex;
@@ -601,9 +604,7 @@ int populate_tree_swap(struct rb_root *tree, char* serialize_fname)
 
 	printf("Bloom gave us %i hashes as 'almost duplicate'\n",
 		params.bloom_match);
-	int count = digest_count(tree);
-	printf("We stored %i unique hashes\n", count);
-	printf("bloom error rate: %.2f%%\n", (1 - ((float)count / (float)params.bloom_match)) * 100);
+	printf("We stored %i unique hashes\n", digest_count(tree));
 
 out:
 	bloom_free(&params.bloom);

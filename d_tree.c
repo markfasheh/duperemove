@@ -39,10 +39,10 @@ int digest_insert(struct rb_root *root, struct d_tree *token)
 	struct d_tree *tmp;
 	int cmp;
 
- 	while (*p) {
- 		parent = *p;
+	while (*p) {
+		parent = *p;
 
- 		tmp = rb_entry(parent, struct d_tree, t_node);
+			tmp = rb_entry(parent, struct d_tree, t_node);
 
 		cmp = memcmp(token->digest, tmp->digest, digest_len);
 		if (cmp < 0)
@@ -62,7 +62,7 @@ int digest_insert(struct rb_root *root, struct d_tree *token)
 }
 
 struct d_tree *digest_find(struct rb_root *root,
-				unsigned char* digest)
+				unsigned char *digest)
 {
 	if (!root)
 		return NULL;
@@ -84,7 +84,7 @@ struct d_tree *digest_find(struct rb_root *root,
 	return NULL;
 }
 
-int digest_count(struct rb_root *root)
+uint64_t digest_count(struct rb_root *root)
 {
 	struct rb_node *n = rb_first(root);
 	int count;
@@ -93,7 +93,7 @@ int digest_count(struct rb_root *root)
 		count++;
 		n = rb_next(n);
 	}
-	return(count);
+	return count;
 }
 
 void digest_free(struct rb_root *root)

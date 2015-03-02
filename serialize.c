@@ -280,7 +280,8 @@ static int read_one_file(int fd, struct hash_tree *tree,
 			return ret;
 
 		if (!tree) { /* First pass */
-			ret = bloom_add(&bloom, (unsigned char *)bhash.digest, DIGEST_LEN_MAX);
+			ret = bloom_add(&bloom, (unsigned char *)bhash.digest,
+					DIGEST_LEN_MAX);
 			if (ret == 1) {
 				d_tree = digest_new((unsigned char *)bhash.digest);
 				digest_insert(scan_tree, d_tree);
