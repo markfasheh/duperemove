@@ -304,8 +304,6 @@ int main(int argc, char **argv)
 	if (isatty(STDOUT_FILENO))
 		fancy_status = 1;
 
-	/* TODO: read & filter using bloom, on the fly */
-
 	printf("Using %uK blocks\n", blocksize / 1024);
 	printf("Using hash: %s\n", csum_mod->name);
 
@@ -322,7 +320,19 @@ int main(int argc, char **argv)
 
 	debug_print_hash_tree(&scan_tree);
 
-	if (serialize_fname) {
+	printf("Hashing completed. Calculating duplicate extents - this may "
+		"take some time.\n");
+
+	if (!serialize_fname) {
+		ret = find_all_dupes(&scan_tree, &res);
+	} else {
+		if (read_hashes) {
+			/* First read, populate digest_tree using bloom */
+			read_hash_tree(serialize_fname, NULL, &blocksize,
+						NULL, 0, &digest_tree);
+			printf("First run completed\n");
+		}
+
 		/* We will now reread the serialized file, and create a new shiny tree
 		   with only 'almost-dups' hashes
 		*/
@@ -332,8 +342,6 @@ int main(int argc, char **argv)
 					NULL, 0, &digest_tree);
 
 		ret = find_all_dupes(&dups_tree, &res);
-	} else {
-		ret = find_all_dupes(&scan_tree, &res);
 	}
 
 	if (ret) {

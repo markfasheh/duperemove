@@ -33,7 +33,7 @@ objects = $(CFILES:.c=.o)
 
 hash_obj=$(hash_CFILES:.c=.o)
 hashstats_obj = $(hash_obj) rbtree.o hash-tree.o filerec.o util.o serialize.o \
-	 results-tree.o csum.o d_tree.o
+	 results-tree.o csum.o d_tree.o bloom.o
 show_shared_obj = rbtree.o util.o
 csum_test_obj = $(hash_obj) util.o csum.o
 

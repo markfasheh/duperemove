@@ -36,6 +36,7 @@
 #include "csum.h"
 #include "filerec.h"
 #include "hash-tree.h"
+#include "bloom.h"
 
 #include "serialize.h"
 
@@ -43,6 +44,8 @@
 
 char unknown_hash_type[8];
 #define	hash_type_v1_0	"\0\0\0\0\0\0\0\0"
+
+struct bloom bloom;
 
 static void debug_print_header(struct hash_file_header *h)
 {
@@ -256,6 +259,7 @@ static int read_one_file(int fd, struct hash_tree *tree,
 	struct block_hash bhash;
 	struct filerec *file;
 	char fname[PATH_MAX+1];
+	struct d_tree *d_tree;
 
 	ret = read_file(fd, &finfo, fname);
 	if (ret)
@@ -275,13 +279,17 @@ static int read_one_file(int fd, struct hash_tree *tree,
 		if (ret)
 			return ret;
 
-/* Filter the data with scan_tree
- * If we made a first pass, scan_tree will store all "possibly dups" hashes.
- * For each read hash, we will search for it in the tree, and only store it
- * if needed.
- * If scan_tree is NULL, we do not want to filter anyway, so bypass the search
- */
-		if (!digest_find(scan_tree, (unsigned char *)bhash.digest))
+		if (!tree) { /* First pass */
+			ret = bloom_add(&bloom, (unsigned char *)bhash.digest, DIGEST_LEN_MAX);
+			if (ret == 1) {
+				d_tree = digest_new((unsigned char *)bhash.digest);
+				digest_insert(scan_tree, d_tree);
+			}
+			continue;
+		}
+
+		/* 2nd pass */
+		if (scan_tree && !digest_find(scan_tree, (unsigned char *)bhash.digest))
 			continue;
 
 		ret = insert_hashed_block(tree, (unsigned char *)bhash.digest,
@@ -359,6 +367,13 @@ int read_hash_tree(char *filename, struct hash_tree *tree,
 
 	dprintf("Load %"PRIu64" files from \"%s\"\n",
 		num_files, filename);
+
+	if (tree == NULL && scan_tree != NULL) {
+		ret = bloom_init(&bloom, h.num_hashes, 0.01);
+		if (ret)
+			goto out;
+		printf("Bloom init completed\n");
+	}
 
 	for (i = 0; i < num_files; i++) {
 		ret = read_one_file(fd, tree, scan_tree);
