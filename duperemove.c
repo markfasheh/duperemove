@@ -285,7 +285,11 @@ int main(int argc, char **argv)
 	digest_tree = RB_ROOT;
 
 	/* Parse options might change this so set a default here */
+#if GLIB_CHECK_VERSION(2,36,0)
 	io_threads = g_get_num_processors();
+#else
+	io_threads = sysconf(_SC_NPROCESSORS_ONLN);
+#endif
 
 	if (parse_options(argc, argv)) {
 		usage(argv[0]);
