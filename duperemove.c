@@ -539,9 +539,13 @@ static int populate_hash_tree(struct hash_tree *tree)
 	g_dataset_set_data_full(tree, "mutex", &tree_mutex,
 				(GDestroyNotify) g_mutex_clear);
 
-	if (!hash_threads)
+	if (!hash_threads) {
+#if GLIB_CHECK_VERSION(2,36,0)
 		hash_threads = g_get_num_processors();
-
+#else
+		hash_threads = sysconf(_SC_NPROCESSORS_ONLN);
+#endif
+	}
 	pool = g_thread_pool_new((GFunc) csum_whole_file, tree, hash_threads,
 				 FALSE, &err);
 	if (err != NULL) {
