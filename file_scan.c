@@ -604,7 +604,7 @@ int populate_tree_swap(struct rb_root *tree, char *serialize_fname)
 
 	printf("Bloom gave us %i hashes as 'almost duplicate'\n",
 		params.bloom_match);
-	printf("We stored %i unique hashes\n", digest_count(tree));
+	printf("We stored %llu unique hashes\n", digest_count(tree));
 
 out:
 	bloom_free(&params.bloom);
