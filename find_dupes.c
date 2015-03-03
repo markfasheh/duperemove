@@ -90,6 +90,7 @@ static int walk_dupe_block(struct filerec *orig_file,
 	struct file_block *end[2];
 	struct running_checksum *csum;
 	unsigned char match_id[DIGEST_LEN_MAX] = {0, };
+	uint64_t orig_blkno, walk_blkno;
 
 	if (block_seen(block) || block_seen(orig))
 		goto out;
@@ -116,10 +117,22 @@ static int walk_dupe_block(struct filerec *orig_file,
 		    block->b_file_next.next == &walk_file->block_list)
 			break;
 
+		orig_blkno = orig->b_loff;
+		walk_blkno = block->b_loff;
+
 		orig =	list_entry(orig->b_file_next.next, struct file_block,
 				   b_file_next);
 		block =	list_entry(block->b_file_next.next, struct file_block,
 				   b_file_next);
+
+		/*
+		 * Check that our next blocks are contiguous wrt the
+		 * old ones. If they aren't, then this has to be the
+		 * end of our extents.
+		 */
+		if (orig->b_loff != (orig_blkno + blocksize) ||
+		    block->b_loff != (walk_blkno + blocksize))
+			break;
 	}
 
 	finish_running_checksum(csum, match_id);

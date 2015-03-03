@@ -17,6 +17,7 @@
 #define __SERIALIZE__
 
 #include <linux/types.h>
+#include "d_tree.h"
 
 #define HASH_FILE_MAJOR	1
 #define HASH_FILE_MINOR	1
@@ -64,6 +65,11 @@ int serialize_hash_tree(char *filename, struct hash_tree *tree,
 extern char unknown_hash_type[8];
 int read_hash_tree(char *filename, struct hash_tree *tree,
 		   unsigned int *block_size, struct hash_file_header *ret_hdr,
-		   int ignore_hash_type);
+		   int ignore_hash_type, struct rb_root *scan_tree);
+int write_header(int fd, uint64_t num_files, uint64_t num_hashes,
+			uint32_t block_size);
+int write_file_info(int fd, struct filerec *file);
+int write_one_hash(int fd, uint64_t loff, uint32_t flags,
+			  unsigned char *digest);
 
 #endif /* __SERIALIZE__ */

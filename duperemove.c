@@ -41,6 +41,7 @@
 #include "btrfs-util.h"
 #include "memstats.h"
 #include "debug.h"
+#include "d_tree.h"
 
 #include "file_scan.h"
 #include "find_dupes.h"
@@ -116,7 +117,7 @@ enum {
 	IO_THREADS_OPTION,
 	LOOKUP_EXTENTS_OPTION,
 	ONE_FILESYSTEM_OPTION,
-	HASH_OPTION,
+	HASH_OPTION
 };
 
 /*
@@ -207,18 +208,11 @@ static int parse_options(int argc, char **argv)
 	numfiles = argc - optind;
 
 	/* Filter out option combinations that don't make sense. */
-	if (write_hashes &&
-	    (read_hashes || run_dedupe)) {
-		if (run_dedupe)
-			fprintf(stderr,
-				"Error: Can not dedupe with --write-hashes "
-				"option. Try writing hashes and then deduping "
-				"with --read-hashes instead.\n");
+	if (write_hashes && read_hashes) {
 		if (read_hashes)
 			fprintf(stderr,
 				"Error: Specify only one of --write-hashes or "
 				"--read-hashes.\n");
-
 		return 1;
 	}
 
@@ -278,16 +272,24 @@ out_nofiles:
 int main(int argc, char **argv)
 {
 	int ret;
-	struct hash_tree tree;
 	struct results_tree res;
 	struct filerec *file;
 
+	struct hash_tree scan_tree;
+	struct rb_root digest_tree;
+
 	init_filerec();
-	init_hash_tree(&tree);
 	init_results_tree(&res);
 
+	init_hash_tree(&scan_tree);
+	digest_tree = RB_ROOT;
+
 	/* Parse options might change this so set a default here */
+#if GLIB_CHECK_VERSION(2,36,0)
 	io_threads = g_get_num_processors();
+#else
+	io_threads = sysconf(_SC_NPROCESSORS_ONLN);
+#endif
 
 	if (parse_options(argc, argv)) {
 		usage(argv[0]);
@@ -306,61 +308,47 @@ int main(int argc, char **argv)
 	if (isatty(STDOUT_FILENO))
 		fancy_status = 1;
 
-	if (read_hashes) {
-		ret = read_hash_tree(serialize_fname, &tree, &blocksize, NULL,
-				     0);
-		if (ret == FILE_VERSION_ERROR) {
-			fprintf(stderr,
-				"Hash file \"%s\": "
-				"Version mismatch (mine: %d.%d).\n",
-				serialize_fname, HASH_FILE_MAJOR,
-				HASH_FILE_MINOR);
-			goto out;
-		} else if (ret == FILE_MAGIC_ERROR) {
-			fprintf(stderr,
-				"Hash file \"%s\": "
-				"Bad magic.\n",
-				serialize_fname);
-			goto out;
-		} else if (ret == FILE_HASH_TYPE_ERROR) {
-			fprintf(stderr,
-				"Hash file \"%s\": Unkown hash type \"%.*s\".\n"
-				"(we use \"%.*s\").\n", serialize_fname,
-				8, unknown_hash_type, 8, hash_type);
-			goto out;
-		} else if (ret) {
-			fprintf(stderr, "Hash file \"%s\": "
-				"Error %d while reading: %s.\n",
-				serialize_fname, ret, strerror(ret));
-			goto out;
-		}
-	}
-
-	printf("Using %uK blocks\n", blocksize/1024);
+	printf("Using %uK blocks\n", blocksize / 1024);
 	printf("Using hash: %s\n", csum_mod->name);
 
 	if (!read_hashes) {
-		ret = populate_hash_tree(&tree);
+		if (serialize_fname)
+			ret = populate_tree_swap(&digest_tree, serialize_fname);
+		else
+			ret = populate_tree_aim(&scan_tree);
 		if (ret) {
 			fprintf(stderr, "Error while populating extent tree!\n");
 			goto out;
 		}
 	}
 
-	debug_print_hash_tree(&tree);
+	debug_print_hash_tree(&scan_tree);
 
-	if (write_hashes) {
-		ret = serialize_hash_tree(serialize_fname, &tree, blocksize);
-		if (ret)
-			fprintf(stderr, "Error %d while writing to hash file\n", ret);
-		goto out;
+	printf("Hashing completed. Calculating duplicate extents - this may "
+		"take some time.\n");
+
+	if (!serialize_fname) {
+		ret = find_all_dupes(&scan_tree, &res);
 	} else {
-		printf("Hashed %"PRIu64" blocks, resulting in %"PRIu64" unique "
-		       "hashes. Calculating duplicate extents - this may take "
-		       "some time.\n", tree.num_blocks, tree.num_hashes);
+		if (read_hashes) {
+			/* First read, populate digest_tree using bloom */
+			read_hash_tree(serialize_fname, NULL, &blocksize,
+						NULL, 0, &digest_tree);
+			printf("First run completed\n");
+		}
+
+		/* We will now reread the serialized file, and create a new
+		 * shiny tree with only 'almost-dups' hashes
+		 */
+		struct hash_tree dups_tree;
+
+		init_hash_tree(&dups_tree);
+		read_hash_tree(serialize_fname, &dups_tree, &blocksize,
+					NULL, 0, &digest_tree);
+
+		ret = find_all_dupes(&dups_tree, &res);
 	}
 
-	ret = find_all_dupes(&tree, &res);
 	if (ret) {
 		fprintf(stderr, "Error %d while finding duplicate extents: %s\n",
 			ret, strerror(ret));

@@ -268,7 +268,7 @@ int main(int argc, char **argv)
 	if (init_csum_module(DEFAULT_HASH_STR))
 		return ENOMEM;
 
-	ret = read_hash_tree(serialize_fname, &tree, &blocksize, &h, 0);
+	ret = read_hash_tree(serialize_fname, &tree, &blocksize, &h, 0, NULL);
 	if (ret == FILE_VERSION_ERROR) {
 		fprintf(stderr,
 			"Hash file \"%s\": "

@@ -36,6 +36,7 @@
 #include "csum.h"
 #include "filerec.h"
 #include "hash-tree.h"
+#include "bloom.h"
 
 #include "serialize.h"
 
@@ -43,6 +44,8 @@
 
 char unknown_hash_type[8];
 #define	hash_type_v1_0	"\0\0\0\0\0\0\0\0"
+
+struct bloom bloom;
 
 static void debug_print_header(struct hash_file_header *h)
 {
@@ -71,7 +74,7 @@ static void debug_print_file_info(struct file_info *f)
 	dprintf(" ]\n");
 }
 
-static int write_header(int fd, uint64_t num_files, uint64_t num_hashes,
+int write_header(int fd, uint64_t num_files, uint64_t num_hashes,
 			uint32_t block_size)
 {
 	int written;
@@ -111,7 +114,7 @@ out:
 	return ret;
 }
 
-static int write_file_info(int fd, struct filerec *file)
+int write_file_info(int fd, struct filerec *file)
 {
 	int written, name_len;
 	struct file_info finfo = { 0, };
@@ -143,7 +146,7 @@ static int write_file_info(int fd, struct filerec *file)
 	return 0;
 }
 
-static int write_one_hash(int fd, uint64_t loff, uint32_t flags,
+int write_one_hash(int fd, uint64_t loff, uint32_t flags,
 			  unsigned char *digest)
 {
 	int written;
@@ -246,7 +249,8 @@ static int read_hash(int fd, struct block_hash *b)
 	return 0;
 }
 
-static int read_one_file(int fd, struct hash_tree *tree)
+static int read_one_file(int fd, struct hash_tree *tree,
+				struct rb_root *scan_tree)
 {
 	int ret;
 	uint32_t i;
@@ -255,6 +259,7 @@ static int read_one_file(int fd, struct hash_tree *tree)
 	struct block_hash bhash;
 	struct filerec *file;
 	char fname[PATH_MAX+1];
+	struct d_tree *d_tree;
 
 	ret = read_file(fd, &finfo, fname);
 	if (ret)
@@ -273,6 +278,20 @@ static int read_one_file(int fd, struct hash_tree *tree)
 		ret = read_hash(fd, &bhash);
 		if (ret)
 			return ret;
+
+		if (!tree) { /* First pass */
+			ret = bloom_add(&bloom, (unsigned char *)bhash.digest,
+					DIGEST_LEN_MAX);
+			if (ret == 1) {
+				d_tree = digest_new((unsigned char *)bhash.digest);
+				digest_insert(scan_tree, d_tree);
+			}
+			continue;
+		}
+
+		/* 2nd pass */
+		if (scan_tree && !digest_find(scan_tree, (unsigned char *)bhash.digest))
+			continue;
 
 		ret = insert_hashed_block(tree, (unsigned char *)bhash.digest,
 					  file, le64_to_cpu(bhash.loff),
@@ -301,7 +320,7 @@ static int read_header(int fd, struct hash_file_header *h)
 
 int read_hash_tree(char *filename, struct hash_tree *tree,
 		   unsigned int *block_size, struct hash_file_header *ret_hdr,
-		   int ignore_hash_type)
+		   int ignore_hash_type, struct rb_root *scan_tree)
 {
 	int ret, fd;
 	uint32_t i;
@@ -350,8 +369,15 @@ int read_hash_tree(char *filename, struct hash_tree *tree,
 	dprintf("Load %"PRIu64" files from \"%s\"\n",
 		num_files, filename);
 
+	if (tree == NULL && scan_tree != NULL) {
+		ret = bloom_init(&bloom, h.num_hashes, 0.01);
+		if (ret)
+			goto out;
+		printf("Bloom init completed\n");
+	}
+
 	for (i = 0; i < num_files; i++) {
-		ret = read_one_file(fd, tree);
+		ret = read_one_file(fd, tree, scan_tree);
 		if (ret)
 			break;
 	}
