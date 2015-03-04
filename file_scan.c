@@ -517,6 +517,7 @@ static void csum_whole_file_swap(struct filerec *file,
 	g_mutex_unlock(mutex);
 
 	filerec_close(file);
+	free(curr_block.buf);
 	if (fc)
 		free(fc);
 
@@ -526,6 +527,7 @@ static void csum_whole_file_swap(struct filerec *file,
 err:
 	filerec_close(file);
 err_noclose:
+	free(curr_block.buf);
 	free(hashes);
 	if (fc)
 		free(fc);
