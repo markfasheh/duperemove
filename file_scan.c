@@ -30,6 +30,7 @@
 #include <string.h>
 #include <linux/limits.h>
 #include <linux/fiemap.h>
+#include <inttypes.h>
 
 #include <glib.h>
 
@@ -605,7 +606,7 @@ int populate_tree_swap(struct rb_root *tree, char *serialize_fname)
 
 	printf("Bloom gave us %i hashes as 'almost duplicate'\n",
 		params.bloom_match);
-	printf("We stored %llu unique hashes\n", digest_count(tree));
+	printf("We stored %" PRIu64 " unique hashes\n", digest_count(tree));
 
 out:
 	bloom_free(&params.bloom);
