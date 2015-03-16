@@ -454,6 +454,11 @@ static void csum_whole_file_swap(struct filerec *file,
 
 	csum_whole_file_init(&mutex, params, file, &fc);
 
+	if (hashes == NULL) {
+		ret = ENOMEM;
+		goto err_noclose;
+	}
+
 	ret = filerec_open(file, 0);
 	if (ret)
 		goto err_noclose;
@@ -470,6 +475,11 @@ static void csum_whole_file_swap(struct filerec *file,
 			continue;
 
 		hashes = realloc(hashes, sizeof(struct block) * (nb_hash + 1));
+		if (!hashes) {
+			ret = ENOMEM;
+			goto err;
+		}
+
 		hashes[nb_hash].loff = off;
 		hashes[nb_hash].flags = curr_block.flags;
 		memcpy(hashes[nb_hash].digest, curr_block.digest,
@@ -526,7 +536,8 @@ static void csum_whole_file_swap(struct filerec *file,
 err:
 	filerec_close(file);
 err_noclose:
-	free(hashes);
+	if (hashes)
+		free(hashes);
 	if (fc)
 		free(fc);
 
