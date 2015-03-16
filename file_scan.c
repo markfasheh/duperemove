@@ -504,9 +504,7 @@ static void csum_whole_file_swap(struct filerec *file,
 		ret = bloom_add(&params->bloom,
 			hashes[i].digest, DIGEST_LEN_MAX);
 		if (ret == 1) {
-			d_tree = digest_new(hashes[i].digest);
-			digest_insert(tree, d_tree);
-			ret = 0;
+			ret = digest_insert(tree, hashes[i].digest);
 			if (ret)
 				goto err;
 			params->bloom_match++;

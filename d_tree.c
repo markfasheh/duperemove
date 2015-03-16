@@ -15,25 +15,31 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
+#include <errno.h>
 
 #include "csum.h"
 #include "d_tree.h"
 #include "debug.h"
 
-struct d_tree *digest_new(unsigned char *digest)
+static struct d_tree *digest_new(unsigned char *digest)
 {
 	struct d_tree *token = malloc(sizeof(struct d_tree));
 
 	if (token) {
 		rb_init_node(&token->t_node);
 		token->digest = malloc(sizeof(unsigned char) * digest_len);
+		if (!token->digest) {
+			free(token);
+			return NULL;
+		}
 		memcpy(token->digest, digest, digest_len);
 	}
 	return token;
 }
 
-int digest_insert(struct rb_root *root, struct d_tree *token)
+int digest_insert(struct rb_root *root, unsigned char *digest)
 {
+	struct d_tree *token;
 	struct rb_node **p = &root->rb_node;
 	struct rb_node *parent = NULL;
 	struct d_tree *tmp;
@@ -42,19 +48,22 @@ int digest_insert(struct rb_root *root, struct d_tree *token)
 	while (*p) {
 		parent = *p;
 
-			tmp = rb_entry(parent, struct d_tree, t_node);
+		tmp = rb_entry(parent, struct d_tree, t_node);
 
-		cmp = memcmp(token->digest, tmp->digest, digest_len);
+		cmp = memcmp(digest, tmp->digest, digest_len);
 		if (cmp < 0)
 			p = &(*p)->rb_left;
 		else if (cmp > 0)
 			p = &(*p)->rb_right;
 		else {
-			free(token->digest);
-			free(token);
-			return -1;
+			/* Already exists in tree, nothing more to do */
+			return 0;
 		}
 	}
+
+	token = digest_new(digest);
+	if (!token)
+		return ENOMEM;
 
 	rb_link_node(&token->t_node, parent, p);
 	rb_insert_color(&token->t_node, root);

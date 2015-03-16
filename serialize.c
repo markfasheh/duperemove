@@ -259,7 +259,6 @@ static int read_one_file(int fd, struct hash_tree *tree,
 	struct block_hash bhash;
 	struct filerec *file;
 	char fname[PATH_MAX+1];
-	struct d_tree *d_tree;
 
 	ret = read_file(fd, &finfo, fname);
 	if (ret)
@@ -283,8 +282,10 @@ static int read_one_file(int fd, struct hash_tree *tree,
 			ret = bloom_add(&bloom, (unsigned char *)bhash.digest,
 					DIGEST_LEN_MAX);
 			if (ret == 1) {
-				d_tree = digest_new((unsigned char *)bhash.digest);
-				digest_insert(scan_tree, d_tree);
+				ret = digest_insert(scan_tree,
+					    ((unsigned char *)bhash.digest));
+				if (ret)
+					return ret;
 			}
 			continue;
 		}
