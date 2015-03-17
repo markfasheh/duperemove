@@ -66,6 +66,9 @@ extern char unknown_hash_type[8];
 int read_hash_tree(char *filename, struct hash_tree *tree,
 		   unsigned int *block_size, struct hash_file_header *ret_hdr,
 		   int ignore_hash_type, struct rb_root *scan_tree);
+/* Pretty-prints errors from read_hash_tree for us */
+void print_hash_tree_errcode(FILE *io, char *filename, int ret);
+
 int write_header(int fd, uint64_t num_files, uint64_t num_hashes,
 			uint32_t block_size);
 int write_file_info(int fd, struct filerec *file);

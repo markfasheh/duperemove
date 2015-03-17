@@ -269,23 +269,8 @@ int main(int argc, char **argv)
 		return ENOMEM;
 
 	ret = read_hash_tree(serialize_fname, &tree, &blocksize, &h, 0, NULL);
-	if (ret == FILE_VERSION_ERROR) {
-		fprintf(stderr,
-			"Hash file \"%s\": "
-			"Version mismatch (mine: %d.%d).\n",
-			serialize_fname, HASH_FILE_MAJOR,
-			HASH_FILE_MINOR);
-		return ret;
-	} else if (ret == FILE_MAGIC_ERROR) {
-		fprintf(stderr,
-			"Hash file \"%s\": "
-			"Bad magic.\n",
-			serialize_fname);
-		return ret;
-	} else if (ret) {
-		fprintf(stderr, "Hash file \"%s\": "
-			"Error %d while reading: %s.\n",
-			serialize_fname, ret, strerror(ret));
+	if (ret) {
+		print_hash_tree_errcode(stderr, serialize_fname, ret);
 		return ret;
 	}
 

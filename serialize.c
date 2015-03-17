@@ -387,3 +387,25 @@ out:
 		memcpy(ret_hdr, &h, sizeof(struct hash_file_header));
 	return ret;
 }
+
+void print_hash_tree_errcode(FILE *io, char *filename, int ret)
+{
+	switch (ret) {
+	case FILE_VERSION_ERROR:
+		fprintf(io,
+			"Hash file \"%s\": Version mismatch (mine: %d.%d).\n",
+			filename, HASH_FILE_MAJOR, HASH_FILE_MINOR);
+		break;
+	case FILE_MAGIC_ERROR:
+		fprintf(io, "Hash file \"%s\": Bad magic.\n", filename);
+		break;
+	case FILE_HASH_TYPE_ERROR:
+		fprintf(io, "Hash file \"%s\": Unkown hash type \"%.*s\".\n "
+			"(we use \"%.*s\").\n", filename, 8, unknown_hash_type,
+			8, hash_type);
+		break;
+	default:
+		fprintf(io, "Hash file \"%s\": Error %d while reading: %s.\n",
+			filename, ret, strerror(ret));
+	}
+}

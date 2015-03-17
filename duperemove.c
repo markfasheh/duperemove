@@ -332,8 +332,13 @@ int main(int argc, char **argv)
 	} else {
 		if (read_hashes) {
 			/* First read, populate digest_tree using bloom */
-			read_hash_tree(serialize_fname, NULL, &blocksize,
-						NULL, 0, &digest_tree);
+			ret = read_hash_tree(serialize_fname, NULL, &blocksize,
+					     NULL, 0, &digest_tree);
+			if (ret) {
+				print_hash_tree_errcode(stderr, serialize_fname,
+							ret);
+				goto out;
+			}
 			printf("First run completed\n");
 		}
 
@@ -343,8 +348,12 @@ int main(int argc, char **argv)
 		struct hash_tree dups_tree;
 
 		init_hash_tree(&dups_tree);
-		read_hash_tree(serialize_fname, &dups_tree, &blocksize,
-					NULL, 0, &digest_tree);
+		ret = read_hash_tree(serialize_fname, &dups_tree, &blocksize,
+				     NULL, 0, &digest_tree);
+		if (ret) {
+			print_hash_tree_errcode(stderr, serialize_fname, ret);
+			goto out;
+		}
 
 		ret = find_all_dupes(&dups_tree, &res);
 	}
