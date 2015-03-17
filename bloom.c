@@ -16,6 +16,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <inttypes.h>
 #include <unistd.h>
 
 #include "bloom.h"
@@ -89,7 +90,7 @@ int bloom_init(struct bloom *bloom, int entries, double error)
 
 	double dentries = (double)entries;
 
-	bloom->bits = (int)(dentries * bloom->bpe);
+	bloom->bits = (uint64_t)(dentries * bloom->bpe);
 
 	if (bloom->bits % 8)
 		bloom->bytes = (bloom->bits / 8) + 1;
@@ -124,9 +125,9 @@ void bloom_print(struct bloom *bloom)
 	printf("bloom at %p\n", (void *)bloom);
 	printf(" ->entries = %d\n", bloom->entries);
 	printf(" ->error = %f\n", bloom->error);
-	printf(" ->bits = %d\n", bloom->bits);
+	printf(" ->bits = %" PRIu64 "\n", bloom->bits);
 	printf(" ->bits per elem = %f\n", bloom->bpe);
-	printf(" ->bytes = %d\n", bloom->bytes);
+	printf(" ->bytes = %" PRIu64 "\n", bloom->bytes);
 	printf(" ->hash functions = %d\n", bloom->hashes);
 }
 
