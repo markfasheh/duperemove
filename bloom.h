@@ -8,6 +8,8 @@
 #ifndef _BLOOM_H
 #define _BLOOM_H
 
+#include <stdint.h>
+
 /** ***************************************************************************
  * Structure to keep track of one bloom filter.  Caller needs to
  * allocate this and pass it to the functions below. First call for
@@ -22,8 +24,8 @@ struct bloom {
 	 */
 	int entries;
 	double error;
-	int bits;
-	int bytes;
+	uint64_t bits;
+	uint64_t bytes;
 	int hashes;
 
 	/* Fields below are private to the implementation. These may go away or

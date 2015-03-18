@@ -30,6 +30,7 @@
 #include <string.h>
 #include <linux/limits.h>
 #include <linux/fiemap.h>
+#include <inttypes.h>
 
 #include <glib.h>
 
@@ -525,6 +526,7 @@ static void csum_whole_file_swap(struct filerec *file,
 	g_mutex_unlock(mutex);
 
 	filerec_close(file);
+	free(curr_block.buf);
 	if (fc)
 		free(fc);
 
@@ -534,6 +536,7 @@ static void csum_whole_file_swap(struct filerec *file,
 err:
 	filerec_close(file);
 err_noclose:
+	free(curr_block.buf);
 	if (hashes)
 		free(hashes);
 	if (fc)
@@ -613,7 +616,7 @@ int populate_tree_swap(struct rb_root *tree, char *serialize_fname)
 
 	printf("Bloom gave us %i hashes as 'almost duplicate'\n",
 		params.bloom_match);
-	printf("We stored %llu unique hashes\n", digest_count(tree));
+	printf("We stored %" PRIu64 " unique hashes\n", digest_count(tree));
 
 out:
 	bloom_free(&params.bloom);
