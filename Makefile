@@ -1,4 +1,4 @@
-RELEASE=v0.09
+RELEASE=v0.09.1
 
 CC = gcc
 CFLAGS = -Wall -ggdb
