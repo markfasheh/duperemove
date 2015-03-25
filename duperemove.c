@@ -49,6 +49,27 @@
 #include "memstats.h"
 #include "debug.h"
 
+#if GLIB_CHECK_VERSION(2,32,0)
+/* See below for why we do this */
+#define	glib2_mutex_lock	g_mutex_lock
+#define	glib2_mutex_unlock	g_mutex_lock
+#else
+/*
+ * SLE11 ships an old glib2 without gmutex. Mutex usage here is
+ * trivial and we can substitute g_static_mutex directly where g_mutex
+ * doesn't exist.
+ */
+#define USE_STATIC_MUTEX
+#include <glib/gthread.h>
+/*
+ * g_mutex_lock and g_mutex_unlock are defined (but not exported to
+ * user) and actually used in the g_static_mutex_* macros. Using our
+ * own prefix avoids linker errors.
+ */
+#define glib2_mutex_lock	g_static_mutex_lock
+#define glib2_mutex_unlock	g_static_mutex_unlock
+#endif
+
 /* exported via debug.h */
 int verbose = 0, debug = 0;
 
@@ -422,7 +443,11 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 	assert(digest != NULL);
 	static long long unsigned cur_num_filerecs = 0;
 
+#ifdef USE_STATIC_MUTEX
+	GStaticMutex *tree_mutex = g_dataset_get_data(tree, "mutex");
+#else
 	GMutex *tree_mutex = g_dataset_get_data(tree, "mutex");
+#endif
 
 	printf("csum: %s \t[%llu/%llu]\n", file->filename,
 	       __sync_add_and_fetch(&cur_num_filerecs, 1), num_filerecs);
@@ -487,9 +512,9 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 
 		checksum_block(buf, bytes, digest);
 
-		g_mutex_lock(tree_mutex);
+		glib2_mutex_lock(tree_mutex);
 		ret = insert_hashed_block(tree, digest, file, off, flags);
-		g_mutex_unlock(tree_mutex);
+		glib2_mutex_unlock(tree_mutex);
 		if (ret)
 			break;
 
@@ -520,7 +545,7 @@ err_noclose:
 		strerror(ret),
 		file->filename);
 
-	g_mutex_lock(tree_mutex);
+	glib2_mutex_lock(tree_mutex);
 	remove_hashed_blocks(tree, file);
 	/*
 	 * filerec_free will remove from the filerec tree keep it
@@ -528,7 +553,7 @@ err_noclose:
 	 * filerec.c
 	 */
 	filerec_free(file);
-	g_mutex_unlock(tree_mutex);
+	glib2_mutex_unlock(tree_mutex);
 
 	return;
 }
@@ -537,13 +562,21 @@ static int populate_hash_tree(struct hash_tree *tree)
 {
 	int ret = 0;
 	struct filerec *file, *tmp;
+#ifdef USE_STATIC_MUTEX
+	GStaticMutex tree_mutex = G_STATIC_MUTEX_INIT;
+#else
 	GMutex tree_mutex;
+#endif
 	GError *err = NULL;
 	GThreadPool *pool;
 
+#ifdef USE_STATIC_MUTEX
+	g_dataset_set_data(tree, "mutex", &tree_mutex);
+#else
 	g_mutex_init(&tree_mutex);
 	g_dataset_set_data_full(tree, "mutex", &tree_mutex,
 				(GDestroyNotify) g_mutex_clear);
+#endif
 
 	if (!hash_threads) {
 #if GLIB_CHECK_VERSION(2,36,0)
