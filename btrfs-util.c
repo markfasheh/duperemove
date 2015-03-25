@@ -24,10 +24,29 @@
 #include <errno.h>
 #include <string.h>
 #include <linux/magic.h>
+#ifndef	NO_BTRFS_HEADER
 #include <linux/btrfs.h>
+#endif
+#include <sys/ioctl.h>
 
 #include "btrfs-util.h"
 #include "debug.h"
+
+#ifdef	NO_BTRFS_HEADER
+#ifndef	__u64
+#define	__u64	uint64_t
+#endif
+#define BTRFS_IOCTL_MAGIC 0x94
+
+#define BTRFS_IOC_INO_LOOKUP _IOWR(BTRFS_IOCTL_MAGIC, 18, \
+				   struct btrfs_ioctl_ino_lookup_args)
+#define BTRFS_INO_LOOKUP_PATH_MAX 4080
+struct btrfs_ioctl_ino_lookup_args {
+	__u64 treeid;
+	__u64 objectid;
+	char name[BTRFS_INO_LOOKUP_PATH_MAX];
+};
+#endif
 
 /* For some reason linux/btrfs.h doesn't define this. */
 #define	BTRFS_FIRST_FREE_OBJECTID	256ULL
