@@ -43,8 +43,8 @@ csum_test_obj = $(crypt_obj) util.o
 progs = duperemove hashstats btrfs-extent-same show-shared-extents
 test_progs = csum-test
 
-glib_CFLAGS=$(shell pkg-config --cflags glib-2.0)
-glib_LIBS=$(shell pkg-config --libs glib-2.0)
+glib_CFLAGS=$(shell pkg-config --cflags glib-2.0 gthread-2.0)
+glib_LIBS=$(shell pkg-config --libs glib-2.0 gthread-2.0)
 
 override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\" \
 	$(crypt_CFLAGS) $(glib_CFLAGS) -rdynamic

@@ -55,6 +55,7 @@
 /* See below for why we do this */
 #define	glib2_mutex_lock	g_mutex_lock
 #define	glib2_mutex_unlock	g_mutex_lock
+#define	glib2_init_threads()
 #else
 /*
  * SLE11 ships an old glib2 without gmutex. Mutex usage here is
@@ -70,6 +71,7 @@
  */
 #define glib2_mutex_lock	g_static_mutex_lock
 #define glib2_mutex_unlock	g_static_mutex_unlock
+#define	glib2_init_threads()	g_thread_init(NULL)
 #endif
 
 /* exported via debug.h */
@@ -1295,6 +1297,8 @@ int main(int argc, char **argv)
 	struct hash_tree tree;
 	struct results_tree res;
 	struct filerec *file;
+
+	glib2_init_threads();
 
 	if (init_hash())
 		return ENOMEM;
