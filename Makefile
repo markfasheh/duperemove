@@ -1,4 +1,5 @@
-RELEASE=v0.10-dev
+VER=0.10-dev
+RELEASE=v$(VER)
 
 CC = gcc
 CFLAGS = -Wall -ggdb -lm
@@ -25,8 +26,8 @@ DIST_CFILES:=$(CFILES) $(hashstats_CFILES) $(btrfs_extent_same_CFILES) \
 DIST_SOURCES:=$(DIST_CFILES) $(HEADERS) LICENSE LICENSE.xxhash Makefile \
 	rbtree.txt README.md $(MANPAGES) SubmittingPatches FAQ.md \
 	LICENSE.libbloom
-DIST=duperemove-$(RELEASE)
-DIST_TARBALL=$(DIST).tar.gz
+DIST=duperemove-$(VER)
+DIST_TARBALL=$(RELEASE).tar.gz
 TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
 
 objects = $(CFILES:.c=.o)
