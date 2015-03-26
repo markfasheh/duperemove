@@ -1,4 +1,5 @@
-RELEASE=v0.09.1
+VER=0.09.1
+RELEASE=v$(VER)
 
 CC = gcc
 CFLAGS = -Wall -ggdb
@@ -18,8 +19,8 @@ HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
 	memstats.h fiemap-compat.h
 DIST_SOURCES:=$(DIST_CFILES) $(HEADERS) LICENSE Makefile rbtree.txt README.md \
 	TODO $(MANPAGES) SubmittingPatches FAQ.md
-DIST=duperemove-$(RELEASE)
-DIST_TARBALL=$(DIST).tar.gz
+DIST=duperemove-$(VER)
+DIST_TARBALL=$(RELEASE).tar.gz
 TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
 
 crypt_CFILES=csum-gcrypt.c
