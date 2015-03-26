@@ -36,6 +36,8 @@
 
 #include <glib.h>
 
+#include "fiemap-compat.h"
+
 #include "rbtree.h"
 #include "list.h"
 #include "csum.h"

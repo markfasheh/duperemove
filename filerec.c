@@ -15,6 +15,8 @@
 #include <linux/fs.h>
 #include <linux/fiemap.h>
 
+#include "fiemap-compat.h"
+
 #include "kernel.h"
 #include "rbtree.h"
 #include "list.h"
