@@ -318,6 +318,8 @@ static int dedupe_worker(struct dupe_extents *dext,
 		return ret;
 	}
 
+	dupe_extents_free(dext);
+
 	g_mutex_lock(&dedupe_counts_mutex);
 	counts->fiemap_bytes += fiemap_bytes;
 	counts->kern_bytes += kern_bytes;

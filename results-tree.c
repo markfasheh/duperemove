@@ -343,3 +343,12 @@ void init_results_tree(struct results_tree *res)
 	res->root = RB_ROOT;
 	res->num_dupes = 0;
 }
+
+void dupe_extents_free(struct dupe_extents *dext)
+{
+	struct extent *extent;
+	list_for_each_entry(extent, &dext->de_extents, e_list) {
+		free_extent(extent);
+	}
+	free_dupe_extents(dext);
+}
