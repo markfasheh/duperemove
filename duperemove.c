@@ -41,7 +41,6 @@
 #include "btrfs-util.h"
 #include "memstats.h"
 #include "debug.h"
-#include "d_tree.h"
 
 #include "file_scan.h"
 #include "find_dupes.h"
