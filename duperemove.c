@@ -26,6 +26,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <inttypes.h>
+#include <unistd.h>
 
 #include <glib.h>
 
@@ -63,8 +64,12 @@ int one_file_system = 0;
 int target_rw = 1;
 static int version_only = 0;
 
-static int write_hashes = 0;
-static int read_hashes = 0;
+static enum {
+	H_NONE = 0,
+	H_READ,
+	H_WRITE,
+	H_UPDATE,
+} use_hashfile = H_NONE;
 static char *serialize_fname = NULL;
 unsigned int io_threads;
 int do_lookup_extents = 0;
@@ -80,7 +85,7 @@ static void usage(const char *prog)
 		return;
 
 	printf("Find duplicate extents and print them to stdout\n\n");
-	printf("Usage: %s [-r] [-d] [-A] [-b blocksize] [-v] [--debug]"
+	printf("Usage: %s [-r] [-d] [-h] [--debug] [--hashfile=hashfile]"
 	       " OBJECTS\n", prog);
 	printf("Where \"OBJECTS\" is a list of files (or directories) which\n");
 	printf("we want to find duplicate extents in. If a directory is \n");
@@ -88,13 +93,8 @@ static void usage(const char *prog)
 	printf("\n\t<switches>\n");
 	printf("\t-r\t\tEnable recursive dir traversal.\n");
 	printf("\t-d\t\tDe-dupe the results - only works on btrfs.\n");
-	printf("\t-A\t\tOpens files readonly when deduping. Primarily for use by privileged users on readonly snapshots\n");
-	printf("\t-b bsize\tUse bsize blocks. Default is %dk.\n",
-	       DEFAULT_BLOCKSIZE / 1024);
 	printf("\t-h\t\tPrint numbers in human-readable format.\n");
-	printf("\t-x\t\tDon't cross filesystem boundaries.\n");
-	printf("\t-v\t\tBe verbose.\n");
-	printf("\t--debug\t\tPrint debug messages, forces -v if selected.\n");
+	printf("\t--hashfile\t\tUse a file instead of memory for storing hashes.\n");
 	printf("\t--help\t\tPrints this help text.\n");
 	printf("\nPlease see the duperemove(8) manpage for more options.\n");
 }
@@ -114,6 +114,7 @@ enum {
 	VERSION_OPTION,
 	WRITE_HASHES_OPTION,
 	READ_HASHES_OPTION,
+	HASHFILE_OPTION,
 	IO_THREADS_OPTION,
 	LOOKUP_EXTENTS_OPTION,
 	ONE_FILESYSTEM_OPTION,
@@ -126,12 +127,17 @@ enum {
 static int parse_options(int argc, char **argv)
 {
 	int i, c, numfiles;
+	int read_hashes = 0;
+	int write_hashes = 0;
+	int update_hashes = 0;
+
 	static struct option long_ops[] = {
 		{ "debug", 0, NULL, DEBUG_OPTION },
 		{ "help", 0, NULL, HELP_OPTION },
 		{ "version", 0, NULL, VERSION_OPTION },
 		{ "write-hashes", 1, NULL, WRITE_HASHES_OPTION },
 		{ "read-hashes", 1, NULL, READ_HASHES_OPTION },
+		{ "hashfile", 1, NULL, HASHFILE_OPTION },
 		{ "io-threads", 1, NULL, IO_THREADS_OPTION },
 		{ "hash-threads", 1, NULL, IO_THREADS_OPTION },
 		{ "lookup-extents", 1, NULL, LOOKUP_EXTENTS_OPTION },
@@ -182,6 +188,10 @@ static int parse_options(int argc, char **argv)
 			read_hashes = 1;
 			serialize_fname = strdup(optarg);
 			break;
+		case HASHFILE_OPTION:
+			update_hashes = 1;
+			serialize_fname = strdup(optarg);
+			break;
 		case IO_THREADS_OPTION:
 			io_threads = strtoul(optarg, NULL, 10);
 			if (!io_threads)
@@ -208,13 +218,17 @@ static int parse_options(int argc, char **argv)
 	numfiles = argc - optind;
 
 	/* Filter out option combinations that don't make sense. */
-	if (write_hashes && read_hashes) {
-		if (read_hashes)
-			fprintf(stderr,
-				"Error: Specify only one of --write-hashes or "
-				"--read-hashes.\n");
+	if ((write_hashes + read_hashes + update_hashes) > 1) {
+		fprintf(stderr, "Error: Specify only one hashfile option.\n");
 		return 1;
 	}
+
+	if (read_hashes)
+		use_hashfile = H_READ;
+	else if (write_hashes)
+		use_hashfile = H_WRITE;
+	else if (update_hashes)
+		use_hashfile = H_UPDATE;
 
 	if (read_hashes) {
 		if (numfiles) {
@@ -310,38 +324,53 @@ int main(int argc, char **argv)
 
 	printf("Using %uK blocks\n", blocksize / 1024);
 	printf("Using hash: %s\n", csum_mod->name);
+	printf("use_hashfile: %d\n", use_hashfile);
 
-	if (!read_hashes) {
-		if (serialize_fname)
-			ret = populate_tree_swap(&digest_tree, serialize_fname);
-		else
-			ret = populate_tree_aim(&scan_tree);
-		if (ret) {
-			fprintf(stderr, "Error while populating extent tree!\n");
-			goto out;
-		}
+	switch (use_hashfile) {
+	case H_WRITE:
+	case H_UPDATE:
+		ret = populate_tree_swap(&digest_tree, serialize_fname);
+		break;
+	case H_READ:
+		/*
+		 * Skips the file scan, used to isolate the
+		 * extent-find and dedupe stages
+		 */
+		ret = read_hash_tree(serialize_fname, NULL, &blocksize,
+				     NULL, 0, &digest_tree);
+		if (ret)
+			print_hash_tree_errcode(stderr, serialize_fname,
+						ret);
+		break;
+	case H_NONE:
+		ret = populate_tree_aim(&scan_tree);
+		debug_print_hash_tree(&scan_tree);
+		break;
+	default:
+		abort_lineno();
+		break;
 	}
 
-	debug_print_hash_tree(&scan_tree);
+	if (ret) {
+		fprintf(stderr, "Error while populating extent tree!\n");
+		goto out;
+	}
+
+	if (use_hashfile == H_WRITE) {
+		/*
+		 * This option is for isolating the file scan
+		 * stage. Exit the program now.
+		 */
+		printf("Hashfile \"%s\" written, exiting.\n", serialize_fname);
+		goto out;
+	}
 
 	printf("Hashing completed. Calculating duplicate extents - this may "
 		"take some time.\n");
 
-	if (!serialize_fname) {
+	if (use_hashfile == H_NONE) {
 		ret = find_all_dupes(&scan_tree, &res);
 	} else {
-		if (read_hashes) {
-			/* First read, populate digest_tree using bloom */
-			ret = read_hash_tree(serialize_fname, NULL, &blocksize,
-					     NULL, 0, &digest_tree);
-			if (ret) {
-				print_hash_tree_errcode(stderr, serialize_fname,
-							ret);
-				goto out;
-			}
-			printf("First run completed\n");
-		}
-
 		/* We will now reread the serialized file, and create a new
 		 * shiny tree with only 'almost-dups' hashes
 		 */

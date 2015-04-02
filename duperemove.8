@@ -57,19 +57,34 @@ Enable recursive dir traversal.
 .TP
 \fB\-d\fR
 De-dupe the results - only works on \fIbtrfs\fR.
-.TP
 
+.TP
 \fB\-A\fR
 Opens files readonly when deduping. Primarily for use by privileged
 users on readonly snapshots.
 
 .TP
-\fB\-b size\fR
-Use the specified block size. The default is \fB128K\fR.
-
-.TP
 \fB\-h\fR
 Print numbers in human-readable format.
+
+.TP
+\fB\--hashfile=hashfile\fR
+Use a file for temporary storage of hashes instead of memory. This
+option drastically reduces the memory footprint of duperemove and is
+recommended when your data set is more than a few files large. If the
+hashfile exists, it will be overwritten. The hashfile can be deleted
+when duperemove is complete.
+
+A future enhancement will allow duperemove to reuse the data inside
+hashfiles to optimize the file scan by skipping unchanged files.
+
+.TP
+\fB\-x\fR
+Don't cross filesystem boundaries.
+
+.TP
+\fB\-b size\fR
+Use the specified block size. The default is \fB128K\fR.
 
 .TP
 \fB\-v\fR
@@ -82,16 +97,8 @@ stages. Default is automatically detected based on number of host
 cpus.
 
 .TP
-\fB\--read-hashes=hashfile\fR
-Read hashes from a hashfile. A file list is not required with this
-option. Dedupe can be done if duperemove is run from the same base
-directory as is stored in the hash file (basically duperemove has to
-be able to find the files).
-
-.TP
-\fB\--write-hashes=hashfile\fR
-Write hashes to a hashfile. These can be read in at a later date and
-deduped from.
+\fB\-?, --help\fR
+Prints help text.
 
 .TP
 \fB\--lookup-extents=[yes|no]\fR
@@ -117,8 +124,24 @@ A future version of duperemove will remove this restriction, allowing
 us to default this option to on.
 
 .TP
-\fB\-?, --help\fR
-Prints help text.
+\fB\--read-hashes=hashfile\fR
+\fB\This option is primarily for testing.\fR See the \fB--hashfile\fR option if you want to use hashfiles.
+
+Read hashes from a hashfile. A file list is not required with this
+option. Dedupe can be done if duperemove is run from the same base
+directory as is stored in the hash file (basically duperemove has to
+be able to find the files).
+
+.TP
+\fB\--write-hashes=hashfile\fR
+\fB\This option is primarily for testing.\fR See the \fB--hashfile\fR option if you want to use hashfiles.
+
+Write hashes to a hashfile. These can be read in at a later date and
+deduped from.
+
+.TP
+\fB\--debug\fR
+Print debug messages, forces \fB-v\fR if selected.
 
 .TP
 \fB\--hash-threads=N\fR
