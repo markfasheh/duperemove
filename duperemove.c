@@ -344,7 +344,6 @@ int main(int argc, char **argv)
 		break;
 	case H_NONE:
 		ret = populate_tree_aim(&scan_tree);
-		debug_print_hash_tree(&scan_tree);
 		break;
 	default:
 		abort_lineno();
