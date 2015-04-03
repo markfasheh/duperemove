@@ -42,7 +42,6 @@
 #include "btrfs-util.h"
 #include "memstats.h"
 #include "debug.h"
-#include "d_tree.h"
 
 #include "file_scan.h"
 #include "find_dupes.h"
@@ -392,6 +391,7 @@ int main(int argc, char **argv)
 		goto out;
 	}
 
+	digest_free(&digest_tree);
 	if (debug) {
 		print_dupes_table(&res);
 		printf("\n\nRemoving overlapping extents\n\n");

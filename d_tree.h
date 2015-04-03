@@ -16,5 +16,6 @@ struct d_tree *digest_find(struct rb_root *root,
 			   unsigned char *digest);
 
 uint64_t digest_count(struct rb_root *root);
+void digest_free(struct rb_root *root);
 
 #endif /* __DTREE__ */

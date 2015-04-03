@@ -493,7 +493,6 @@ static void csum_whole_file_swap(struct filerec *file,
 	int nb_hash = 0;
 	int matched = 0;
 
-	struct d_tree *d_tree;
 	GMutex *mutex;
 
 	csum_whole_file_init(&mutex, params, file, &fc);
