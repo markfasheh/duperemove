@@ -242,14 +242,16 @@ static uint64_t extent_len(struct extent *extent)
 	return extent->e_parent->de_len;
 }
 
-static void remove_extent(struct results_tree *res, struct extent *extent)
+static unsigned int remove_extent(struct results_tree *res, struct extent *extent)
 {
 	struct dupe_extents *p = extent->e_parent;
 	struct rb_node *n;
+	unsigned int result;
 
 again:
 	p->de_score -= p->de_len;
 	p->de_num_dupes--;
+	result = p->de_num_dupes;
 
 	list_del_init(&extent->e_list);
 	list_del_init(&extent->e_file_extents);
@@ -271,6 +273,7 @@ again:
 		free_dupe_extents(p);
 		res->num_dupes--;
 	}
+	return result;
 }
 
 static int compare_extent(struct results_tree *res,
@@ -344,11 +347,19 @@ void init_results_tree(struct results_tree *res)
 	res->num_dupes = 0;
 }
 
-void dupe_extents_free(struct dupe_extents *dext)
+void dupe_extents_free(struct dupe_extents *dext, struct results_tree *res)
 {
 	struct extent *extent;
-	list_for_each_entry(extent, &dext->de_extents, e_list) {
-		free_extent(extent);
-	}
-	free_dupe_extents(dext);
+	struct rb_node *n;
+	int count;
+
+	/*
+	 * remove_extent will remove all stuff if there is less
+	 * than one extent remaining
+	 */
+	do {
+		n = rb_first(&dext->de_extents_root);
+		extent = rb_entry(n, struct extent, e_node);
+		count = remove_extent(res, extent);
+	} while (count > 1);
 }

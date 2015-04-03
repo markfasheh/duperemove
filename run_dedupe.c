@@ -305,6 +305,9 @@ struct dedupe_counts {
 	uint64_t	fiemap_bytes;
 };
 
+static GMutex mutex;
+static struct results_tree *results_tree;
+
 static int dedupe_worker(struct dupe_extents *dext,
 			 struct dedupe_counts *counts)
 {
@@ -318,7 +321,9 @@ static int dedupe_worker(struct dupe_extents *dext,
 		return ret;
 	}
 
-	dupe_extents_free(dext);
+	g_mutex_lock(&mutex);
+	dupe_extents_free(dext, results_tree);
+	g_mutex_unlock(&mutex);
 
 	g_mutex_lock(&dedupe_counts_mutex);
 	counts->fiemap_bytes += fiemap_bytes;
@@ -337,6 +342,8 @@ void dedupe_results(struct results_tree *res)
 	struct dupe_extents *dext;
 	struct dedupe_counts counts = { 0ULL, };
 	GError *err = NULL;
+
+	results_tree = res;
 
 	print_dupes_table(res);
 
