@@ -49,7 +49,7 @@ int filerec_open_once(struct filerec *file, int write,
 void filerec_close_open_list(struct open_once *open_files);
 
 int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
-			 uint64_t *shared_bytes);
+			 uint64_t *shared_bytes, uint64_t *poff);
 
 /*
  * Track unique filerecs in a tree. Two places in the code use this:

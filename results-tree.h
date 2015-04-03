@@ -31,6 +31,8 @@ struct extent	{
 	/* Each file keeps a list of it's own dupes. This makes it
 	 * easier to remove overlapping duplicates. */
 	struct list_head	e_file_extents; /* filerec->extent_list */
+
+	uint64_t		e_poff;
 };
 
 /* endoff is NOT inclusive! */

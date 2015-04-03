@@ -46,6 +46,7 @@ static struct extent *alloc_extent(struct filerec *file, uint64_t loff)
 		rb_init_node(&e->e_node);
 		e->e_file = file;
 		e->e_loff = loff;
+		e->e_poff = 0;
 	}
 	return e;
 }

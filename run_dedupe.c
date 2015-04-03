@@ -125,7 +125,7 @@ static void add_shared_extents(struct dupe_extents *dext, uint64_t *shared)
 			continue;
 
 		ret = filerec_count_shared(file, extent->e_loff, dext->de_len,
-					   shared);
+					   shared, &(extent->e_poff));
 		if (ret) {
 			fprintf(stderr, "%s: fiemap error %d: %s\n",
 				extent->e_file->filename, ret, strerror(ret));
