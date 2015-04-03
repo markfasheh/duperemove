@@ -323,7 +323,6 @@ int main(int argc, char **argv)
 
 	printf("Using %uK blocks\n", blocksize / 1024);
 	printf("Using hash: %s\n", csum_mod->name);
-	printf("use_hashfile: %d\n", use_hashfile);
 
 	switch (use_hashfile) {
 	case H_WRITE:
