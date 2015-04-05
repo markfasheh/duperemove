@@ -2,7 +2,7 @@ VER=0.10-dev
 RELEASE=v$(VER)
 
 CC = gcc
-CFLAGS = -Wall -ggdb -lm
+CFLAGS = -Wall -ggdb
 
 MANPAGES=duperemove.8 btrfs-extent-same.8 hashstats.8 show-shared-extents.8
 
@@ -45,7 +45,7 @@ glib_LIBS=$(shell pkg-config --libs glib-2.0)
 
 override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\" \
 	$(hash_CFLAGS) $(glib_CFLAGS) -rdynamic
-LIBRARY_FLAGS += $(hash_LIBS) $(glib_LIBS)
+LIBRARY_FLAGS += $(hash_LIBS) $(glib_LIBS) -lm
 
 # make C=1 to enable sparse
 ifdef C
