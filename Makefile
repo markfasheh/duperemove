@@ -1,4 +1,4 @@
-VER=0.09.2
+VER=0.09.3
 RELEASE=v$(VER)
 
 CC = gcc
