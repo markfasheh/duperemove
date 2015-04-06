@@ -54,7 +54,7 @@
 #if GLIB_CHECK_VERSION(2,32,0)
 /* See below for why we do this */
 #define	glib2_mutex_lock	g_mutex_lock
-#define	glib2_mutex_unlock	g_mutex_lock
+#define	glib2_mutex_unlock	g_mutex_unlock
 #define	glib2_init_threads()
 #else
 /*
