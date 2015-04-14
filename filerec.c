@@ -172,7 +172,7 @@ static int cmp_filerecs(struct filerec *file1, uint64_t file2_inum,
 	if (file1->subvolid < file2_subvolid)
 		return -1;
 	if (file1->subvolid > file2_subvolid)
-		return -1;
+		return 1;
 	return 0;
 }
 
