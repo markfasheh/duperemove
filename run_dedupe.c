@@ -41,6 +41,9 @@
 
 #include "run_dedupe.h"
 
+static GMutex mutex;
+static struct results_tree *results_tree;
+
 void print_dupes_table(struct results_tree *res)
 {
 	struct rb_root *root = &res->root;
@@ -134,6 +137,45 @@ static void add_shared_extents(struct dupe_extents *dext, uint64_t *shared)
 	}
 }
 
+/*
+ * Remove already deduped extents from list.
+ * Returns 0 upon completion
+ * If it returns 1, function might be called again
+ */
+static int clean_deduped(struct dupe_extents *dext)
+{
+	struct extent *outer_extent, *outer_tmp;
+	struct extent *inner_extent, *inner_tmp;
+	bool next_found = false;
+
+	if (!dext)
+		return 0;
+
+	list_for_each_entry_safe(outer_extent, outer_tmp,
+				 &dext->de_extents, e_list) {
+		if (next_found){
+			return 1;
+		}
+		next_found = false;
+		list_for_each_entry_safe(inner_extent, inner_tmp,
+					 &dext->de_extents, e_list) {
+			if (outer_extent == inner_extent)
+				continue;
+			if (outer_extent->e_poff == inner_extent->e_poff) {
+				/* Outer loop next item removed, rerun. */
+				if (inner_extent == outer_tmp)
+					next_found = true;
+
+				g_mutex_lock(&mutex);
+				remove_extent(results_tree, inner_extent);
+				g_mutex_unlock(&mutex);
+			}
+		}
+	}
+
+	return 0;
+}
+
 static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 			      uint64_t *kern_bytes)
 {
@@ -145,14 +187,32 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 	struct dedupe_ctxt *ctxt = NULL;
 	uint64_t len = dext->de_len;
 	OPEN_ONCE(open_files);
-	struct filerec *file;
 	struct extent *prev = NULL;
 	struct extent *to_add;
+	struct extent *tmp;
 
 	abort_on(dext->de_num_dupes < 2);
 
 	shared_prev = shared_post = 0ULL;
 	add_shared_extents(dext, &shared_prev);
+
+	/* First pass: try to open all files, remove missing */
+	list_for_each_entry_safe(extent, tmp, &dext->de_extents, e_list) {
+		ret = filerec_open_once(extent->e_file, target_rw, &open_files);
+		if (ret) {
+			fprintf(stderr, "%s: Skipping dedupe.\n",
+				extent->e_file->filename);
+			g_mutex_lock(&mutex);
+			remove_extent(results_tree, extent);
+			g_mutex_unlock(&mutex);
+		}
+	}
+
+	/* Second pass: remove already deduped extents. */
+	while(clean_deduped(dext));
+
+	if (list_empty(&dext->de_extents))
+		return 0;
 
 	list_for_each_entry(extent, &dext->de_extents, e_list) {
 		vprintf("%s\tstart block: %llu (%llu)\n",
@@ -164,21 +224,6 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 			last = 1;
 
 		to_add = extent;
-		file = extent->e_file;
-		ret = filerec_open_once(file, target_rw, &open_files);
-		if (ret) {
-			fprintf(stderr, "%s: Skipping dedupe.\n",
-				extent->e_file->filename);
-			/*
-			 * If this was our last duplicate extent in
-			 * the list, and we added dupes from a
-			 * previous iteration of the loop we need to
-			 * run dedupe before exiting.
-			 */
-			if (ctxt && last)
-				goto run_dedupe;
-			continue;
-		}
 
 		if (ctxt == NULL) {
 			ctxt = new_dedupe_ctxt(dext->de_num_dupes,
@@ -304,9 +349,6 @@ struct dedupe_counts {
 	uint64_t	kern_bytes;
 	uint64_t	fiemap_bytes;
 };
-
-static GMutex mutex;
-static struct results_tree *results_tree;
 
 static int dedupe_worker(struct dupe_extents *dext,
 			 struct dedupe_counts *counts)

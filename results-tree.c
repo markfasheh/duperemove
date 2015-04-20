@@ -243,7 +243,7 @@ static uint64_t extent_len(struct extent *extent)
 	return extent->e_parent->de_len;
 }
 
-static unsigned int remove_extent(struct results_tree *res, struct extent *extent)
+unsigned int remove_extent(struct results_tree *res, struct extent *extent)
 {
 	struct dupe_extents *p = extent->e_parent;
 	struct rb_node *n;

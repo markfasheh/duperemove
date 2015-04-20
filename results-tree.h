@@ -45,4 +45,5 @@ void remove_overlapping_extents(struct results_tree *res, struct filerec *file);
 void init_results_tree(struct results_tree *res);
 void dupe_extents_free(struct dupe_extents *dext, struct results_tree *res);
 
+unsigned int remove_extent(struct results_tree *res, struct extent *extent);
 #endif /* __RESULTS_TREE__ */
