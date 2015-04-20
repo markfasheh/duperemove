@@ -196,9 +196,7 @@ static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
 
 static int compare_files(struct results_tree *res, struct filerec *file1, struct filerec *file2)
 {
-	dprintf("comparing %s and %s\n", file1->filename, file2->filename);
 	find_file_dupes(file1, file2, res);
-
 	return mark_filerecs_compared(file1, file2);
 }
 

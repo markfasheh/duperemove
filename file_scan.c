@@ -183,7 +183,7 @@ int add_file(const char *name, int dirfd)
 		if (!one_fs_dev)
 			one_fs_dev = dev;
 		if (one_fs_dev != dev) {
-			dprintf("Skipping file %s because of -x\n", path);
+			vprintf("Skipping file %s because of -x\n", path);
 			goto out;
 		}
 	}
@@ -493,7 +493,6 @@ static void csum_whole_file_swap(struct filerec *file,
 	int nb_hash = 0;
 	int matched = 0;
 
-	struct d_tree *d_tree;
 	GMutex *mutex;
 
 	csum_whole_file_init(&mutex, params, file, &fc);

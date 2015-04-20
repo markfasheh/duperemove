@@ -1,7 +1,8 @@
-RELEASE=v0.10-dev
+VER=0.10-dev
+RELEASE=v$(VER)
 
 CC = gcc
-CFLAGS = -Wall -ggdb -lm
+CFLAGS = -Wall -ggdb
 
 MANPAGES=duperemove.8 btrfs-extent-same.8 hashstats.8 show-shared-extents.8
 
@@ -25,8 +26,8 @@ DIST_CFILES:=$(CFILES) $(hashstats_CFILES) $(btrfs_extent_same_CFILES) \
 DIST_SOURCES:=$(DIST_CFILES) $(HEADERS) LICENSE LICENSE.xxhash Makefile \
 	rbtree.txt README.md $(MANPAGES) SubmittingPatches FAQ.md \
 	LICENSE.libbloom
-DIST=duperemove-$(RELEASE)
-DIST_TARBALL=$(DIST).tar.gz
+DIST=duperemove-$(VER)
+DIST_TARBALL=$(RELEASE).tar.gz
 TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
 
 objects = $(CFILES:.c=.o)
@@ -44,7 +45,7 @@ glib_LIBS=$(shell pkg-config --libs glib-2.0)
 
 override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\" \
 	$(hash_CFLAGS) $(glib_CFLAGS) -rdynamic
-LIBRARY_FLAGS += $(hash_LIBS) $(glib_LIBS)
+LIBRARY_FLAGS += $(hash_LIBS) $(glib_LIBS) -lm
 
 # make C=1 to enable sparse
 ifdef C
