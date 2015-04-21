@@ -212,7 +212,7 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 	while(clean_deduped(dext));
 
 	if (list_empty(&dext->de_extents))
-		return 0;
+		goto out;
 
 	list_for_each_entry(extent, &dext->de_extents, e_list) {
 		vprintf("%s\tstart block: %llu (%llu)\n",
@@ -363,9 +363,11 @@ static int dedupe_worker(struct dupe_extents *dext,
 		return ret;
 	}
 
-	g_mutex_lock(&mutex);
-	dupe_extents_free(dext, results_tree);
-	g_mutex_unlock(&mutex);
+	if (!list_empty(&dext->de_extents)) {
+		g_mutex_lock(&mutex);
+		dupe_extents_free(dext, results_tree);
+		g_mutex_unlock(&mutex);
+	}
 
 	g_mutex_lock(&dedupe_counts_mutex);
 	counts->fiemap_bytes += fiemap_bytes;
