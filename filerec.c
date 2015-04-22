@@ -538,6 +538,7 @@ int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
 		 */
 		fiemap->fm_length = ~0ULL;
 		fiemap->fm_extent_count = count;
+		fiemap->fm_start = start;
 		rc = ioctl(file->fd, FS_IOC_FIEMAP, (unsigned long) fiemap);
 		if (rc < 0)
 			return errno;
@@ -607,7 +608,8 @@ int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
 //				" flags: 0x%x\n",
 //				loff, ext_len, fm_ext[i].fe_flags);
 
-			if (fm_ext[i].fe_flags & FIEMAP_EXTENT_SHARED)
+			if (!(fm_ext[i].fe_flags & FIEMAP_EXTENT_DELALLOC)
+				&& fm_ext[i].fe_flags & FIEMAP_EXTENT_SHARED)
 				*shared_bytes += ext_len;
 		}
 
