@@ -146,25 +146,29 @@ static int clean_deduped(struct dupe_extents *dext)
 {
 	struct extent *outer_extent, *outer_tmp;
 	struct extent *inner_extent, *inner_tmp;
-	bool next_found = false;
+	bool next_removed = false;
 
-	if (!dext)
+	if (!dext || list_empty(&dext->de_extents))
 		return 0;
 
 	list_for_each_entry_safe(outer_extent, outer_tmp,
 				 &dext->de_extents, e_list) {
-		if (next_found){
+		if (next_removed)
 			return 1;
-		}
-		next_found = false;
+		next_removed = false;
+
 		list_for_each_entry_safe(inner_extent, inner_tmp,
-					 &dext->de_extents, e_list) {
+					 &outer_extent->e_list, e_list) {
+			/* We checked data up to outer_extent already */
+			if (&inner_extent->e_list == &dext->de_extents)
+				break;
+
 			if (outer_extent == inner_extent)
 				continue;
 			if (outer_extent->e_poff == inner_extent->e_poff) {
 				/* Outer loop next item removed, rerun. */
 				if (inner_extent == outer_tmp)
-					next_found = true;
+					next_removed = true;
 
 				g_mutex_lock(&mutex);
 				remove_extent(results_tree, inner_extent);
