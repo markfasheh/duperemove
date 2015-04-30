@@ -236,7 +236,7 @@ static struct filerec *filerec_alloc_insert(const char *filename,
 		}
 
 		file->fd = -1;
-		INIT_LIST_HEAD(&file->block_list);
+		file->block_tree = RB_ROOT;
 		INIT_LIST_HEAD(&file->extent_list);
 		INIT_LIST_HEAD(&file->tmp_list);
 		rb_init_node(&file->inum_node);
@@ -265,7 +265,7 @@ void filerec_free(struct filerec *file)
 	if (file) {
 		free(file->filename);
 
-		list_del(&file->block_list);
+		abort_on(RB_EMPTY_ROOT(&file->block_tree));
 		list_del(&file->extent_list);
 		list_del(&file->rec_list);
 		list_del(&file->tmp_list);

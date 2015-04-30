@@ -91,6 +91,7 @@ static int walk_dupe_block(struct filerec *orig_file,
 	struct running_checksum *csum;
 	unsigned char match_id[DIGEST_LEN_MAX] = {0, };
 	uint64_t orig_blkno, walk_blkno;
+	struct rb_node *node;
 
 	if (block_seen(block) || block_seen(orig))
 		goto out;
@@ -110,20 +111,19 @@ static int walk_dupe_block(struct filerec *orig_file,
 					block->b_parent->dl_hash);
 
 		/*
-		 * This is kind of ugly, however it does correctly
-		 * signify the end of our list.
+		 * Check that we don't walk off either tree
 		 */
-		if (orig->b_file_next.next == &orig_file->block_list ||
-		    block->b_file_next.next == &walk_file->block_list)
+		if (rb_next(&orig->b_file_next) == NULL ||
+		    rb_next(&block->b_file_next) == NULL)
 			break;
 
 		orig_blkno = orig->b_loff;
 		walk_blkno = block->b_loff;
 
-		orig =	list_entry(orig->b_file_next.next, struct file_block,
-				   b_file_next);
-		block =	list_entry(block->b_file_next.next, struct file_block,
-				   b_file_next);
+		node = rb_next(&orig->b_file_next);
+		orig = rb_entry(node, struct file_block, b_file_next);
+		node = rb_next(&block->b_file_next);
+		block = rb_entry(node, struct file_block, b_file_next);
 
 		/*
 		 * Check that our next blocks are contiguous wrt the
@@ -176,8 +176,11 @@ static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
 			    struct results_tree *res)
 {
 	struct file_block *cur;
+	struct rb_node *node;
 
-	list_for_each_entry(cur, &file->block_list, b_file_next) {
+	for (node = rb_first(&file->block_tree); node; node = rb_next(node)) {
+		cur = rb_entry(node, struct file_block, b_file_next);
+
 		if (block_seen(cur))
 			continue;
 

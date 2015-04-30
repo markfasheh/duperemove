@@ -18,8 +18,8 @@ struct filerec {
 	struct rb_node		inum_node;
 
 	uint64_t		num_blocks;	/* blocks we've inserted */
-	struct list_head	block_list;	/* head for hash
-						 * blocks node list */
+
+	struct rb_root		block_tree;	/* root for hash blocks tree */
 	struct list_head	extent_list;	/* head for results node list */
 
 	struct list_head	rec_list;	/* all filerecs */

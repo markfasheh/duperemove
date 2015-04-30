@@ -39,8 +39,7 @@ struct file_block {
 	struct list_head	b_list;  /* For dl_list, all blocks
 					  * with this md5. */
 
-	struct list_head	b_file_next; /* filerec->block_list */
-
+	struct rb_node		b_file_next; /* filerec->block_tree */
 	struct list_head	b_head_list; /* file_hash_head->h_blocks */
 };
 

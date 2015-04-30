@@ -173,6 +173,7 @@ int serialize_hash_tree(char *filename, struct hash_tree *tree,
 	struct filerec *file;
 	struct file_block *block;
 	uint64_t tot_files, tot_hashes;
+	struct rb_node *node;
 
 	fd = open(filename, O_WRONLY|O_CREAT|O_TRUNC, 0644);
 	if (fd == -1)
@@ -185,7 +186,7 @@ int serialize_hash_tree(char *filename, struct hash_tree *tree,
 
 	tot_files = tot_hashes = 0;
 	list_for_each_entry(file, &filerec_list, rec_list) {
-		if (list_empty(&file->block_list))
+		if (RB_EMPTY_ROOT(&file->block_tree))
 			continue;
 
 		ret = write_file_info(fd, file);
@@ -194,7 +195,10 @@ int serialize_hash_tree(char *filename, struct hash_tree *tree,
 		tot_files++;
 
 		/* Now write each one of this files hashes */
-		list_for_each_entry(block, &file->block_list, b_file_next) {
+		for (node = rb_first(&file->block_tree); node;
+		     node = rb_next(node)) {
+			block = rb_entry(node, struct file_block, b_file_next);
+
 			tot_hashes++;
 			ret = write_one_hash(fd, block->b_loff, block->b_flags,
 					     block->b_parent->dl_hash);
