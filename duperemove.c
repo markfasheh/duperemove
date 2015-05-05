@@ -362,10 +362,8 @@ int main(int argc, char **argv)
 
 	if (use_hashfile == H_WRITE || use_hashfile == H_UPDATE) {
 		ret = dbfile_sync_config(serialize_fname, blocksize);
-		if (ret) {
-			fprintf(stderr, "Error %d while writing config to dbfile\n",
-				ret);
-		}
+		if (ret)
+			goto out;
 		if (use_hashfile == H_WRITE) {
 			/*
 			 * This option is for isolating the file scan
