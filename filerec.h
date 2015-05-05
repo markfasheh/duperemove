@@ -31,9 +31,11 @@ struct filerec {
 
 void init_filerec(void);
 void free_all_filerecs(void);
+void debug_print_filerecs(void);
 
 struct filerec *filerec_new(const char *filename, uint64_t inum,
 			    uint64_t subvolid);
+struct filerec *filerec_find(uint64_t inum, uint64_t subvolid);
 void filerec_free(struct filerec *file);
 int filerec_open(struct filerec *file, int write);
 void filerec_close(struct filerec *file);

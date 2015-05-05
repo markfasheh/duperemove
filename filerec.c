@@ -38,6 +38,17 @@ void init_filerec(void)
 	INIT_LIST_HEAD(&filerec_list);
 }
 
+void debug_print_filerecs(void)
+{
+	struct filerec *file;
+
+	list_for_each_entry(file, &filerec_list, rec_list) {
+		printf("ino: %"PRIu64" subvol: %"PRIu64" blocks: %"PRIu64
+		       " name: %s\n", file->inum, file->subvolid,
+		       file->num_blocks, file->filename);
+	}
+}
+
 struct filerec_token *find_filerec_token_rb(struct rb_root *root,
 					    struct filerec *val)
 {
@@ -203,7 +214,7 @@ static void insert_filerec(struct filerec *file)
 	return;
 }
 
-static struct filerec *find_filerec(uint64_t inum, uint64_t subvolid)
+struct filerec *filerec_find(uint64_t inum, uint64_t subvolid)
 {
 	int c;
 	struct rb_node *n = filerec_by_inum.rb_node;
@@ -254,7 +265,7 @@ static struct filerec *filerec_alloc_insert(const char *filename,
 struct filerec *filerec_new(const char *filename, uint64_t inum,
 			    uint64_t subvolid)
 {
-	struct filerec *file = find_filerec(inum, subvolid);
+	struct filerec *file = filerec_find(inum, subvolid);
 	if (!file)
 		file = filerec_alloc_insert(filename, inum, subvolid);
 	return file;

@@ -30,6 +30,7 @@
 #include "hash-tree.h"
 #include "util.h"
 #include "serialize.h"
+#include "dbfile.h"
 
 #include "bswap.h"
 
@@ -165,15 +166,18 @@ static void print_filerecs(void)
 	}
 }
 
+static unsigned int disk_blocksize;
+static int major, minor;
+static uint64_t disk_files, disk_hashes;
+
 static void print_file_info(struct hash_tree *tree,
 			    struct hash_file_header *h)
 {
 	printf("Raw header info for \"%s\":\n", serialize_fname);
-	printf("  version: %"PRIu64".%"PRIu64"\tblock_size: %u\n",
-	       le64_to_cpu(h->major), le64_to_cpu(h->minor),
-	       le32_to_cpu(h->block_size));
+	printf("  version: %u.%u\tblock_size: %u\n", major, minor,
+	       disk_blocksize);
 	printf("  num_files: %"PRIu64"\tnum_hashes: %"PRIu64"\n",
-	       le64_to_cpu(h->num_files), le64_to_cpu(h->num_hashes));
+	       disk_files, disk_hashes);
 	printf("Loaded hashes from %"PRIu64" blocks into %"PRIu64" nodes\n",
 	       tree->num_blocks, tree->num_hashes);
 	printf("Loaded %llu file records\n", num_filerecs);
@@ -268,11 +272,14 @@ int main(int argc, char **argv)
 	if (init_csum_module(DEFAULT_HASH_STR))
 		return ENOMEM;
 
-	ret = read_hash_tree(serialize_fname, &tree, &blocksize, &h, 0, NULL);
-	if (ret) {
-		print_hash_tree_errcode(stderr, serialize_fname, ret);
+	ret = dbfile_get_config(serialize_fname, &disk_blocksize, &disk_hashes,
+				&disk_files, &major, &minor);
+	if (ret)
 		return ret;
-	}
+
+	ret = dbfile_read_all_hashes(serialize_fname, &tree);
+	if (ret)
+		return ret;
 
 	print_file_info(&tree, &h);
 

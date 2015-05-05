@@ -40,8 +40,10 @@
 #include "util.h"
 #include "serialize.h"
 #include "btrfs-util.h"
+#include "dbfile.h"
 #include "memstats.h"
 #include "debug.h"
+#include "bloom.h"
 
 #include "file_scan.h"
 #include "find_dupes.h"
@@ -287,7 +289,6 @@ int main(int argc, char **argv)
 	int ret;
 	struct results_tree res;
 	struct filerec *file;
-
 	struct hash_tree scan_tree;
 	struct rb_root digest_tree;
 
@@ -325,8 +326,11 @@ int main(int argc, char **argv)
 	printf("Using hash: %s\n", csum_mod->name);
 
 	switch (use_hashfile) {
-	case H_WRITE:
 	case H_UPDATE:
+	case H_WRITE:
+		ret = dbfile_create(serialize_fname);
+		if (ret)
+			break;
 		ret = populate_tree_swap(&digest_tree, serialize_fname);
 		break;
 	case H_READ:
@@ -334,11 +338,14 @@ int main(int argc, char **argv)
 		 * Skips the file scan, used to isolate the
 		 * extent-find and dedupe stages
 		 */
-		ret = read_hash_tree(serialize_fname, NULL, &blocksize,
-				     NULL, 0, &digest_tree);
+		ret = dbfile_get_config(serialize_fname, &blocksize, NULL,
+					NULL, NULL, NULL);
 		if (ret)
-			print_hash_tree_errcode(stderr, serialize_fname,
-						ret);
+			break;
+
+		ret = dbfile_populate_hashes(serialize_fname, &digest_tree);
+		if (ret)
+			break;
 		break;
 	case H_NONE:
 		ret = populate_tree_aim(&scan_tree);
@@ -353,13 +360,22 @@ int main(int argc, char **argv)
 		goto out;
 	}
 
-	if (use_hashfile == H_WRITE) {
-		/*
-		 * This option is for isolating the file scan
-		 * stage. Exit the program now.
-		 */
-		printf("Hashfile \"%s\" written, exiting.\n", serialize_fname);
-		goto out;
+	if (use_hashfile == H_WRITE || use_hashfile == H_UPDATE) {
+		ret = dbfile_sync_config(serialize_fname, blocksize);
+		if (ret) {
+			fprintf(stderr, "Error %d while writing config to dbfile\n",
+				ret);
+		}
+		if (use_hashfile == H_WRITE) {
+			/*
+			 * This option is for isolating the file scan
+			 * stage. Exit the program now.
+			 */
+			printf("Hashfile \"%s\" written, exiting.\n",
+			       serialize_fname);
+			goto out;
+		}
+
 	}
 
 	printf("Hashing completed. Calculating duplicate extents - this may "
@@ -374,20 +390,13 @@ int main(int argc, char **argv)
 		struct hash_tree dups_tree;
 
 		init_hash_tree(&dups_tree);
-		ret = read_hash_tree(serialize_fname, &dups_tree, &blocksize,
-				     NULL, 0, &digest_tree);
-		if (ret) {
-			print_hash_tree_errcode(stderr, serialize_fname, ret);
+
+		ret = dbfile_load_hashes_bloom(serialize_fname, &dups_tree,
+					       &digest_tree);
+		if (ret)
 			goto out;
-		}
 
 		ret = find_all_dupes(&dups_tree, &res);
-	}
-
-	if (ret) {
-		fprintf(stderr, "Error %d while finding duplicate extents: %s\n",
-			ret, strerror(ret));
-		goto out;
 	}
 
 	digest_free(&digest_tree);
@@ -407,6 +416,7 @@ int main(int argc, char **argv)
 
 	free_all_filerecs();
 out:
+
 	if (ret == ENOMEM || debug)
 		print_mem_stats();
 

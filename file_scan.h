@@ -18,4 +18,11 @@ int add_file(const char *name, int dirfd);
 int populate_tree_aim(struct hash_tree *tree);
 int populate_tree_swap(struct rb_root *tree, char *swapfile);
 
+/* For dbfile.c */
+struct block {
+	uint64_t	loff;
+	unsigned int	flags;
+	unsigned char	digest[DIGEST_LEN_MAX];
+};
+
 #endif	/* __FILE_SCAN_H__ */

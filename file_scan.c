@@ -44,6 +44,7 @@
 #include "file_scan.h"
 #include "bloom.h"
 #include "d_tree.h"
+#include "dbfile.h"
 
 static char path[PATH_MAX] = { 0, };
 static char *pathp = path;
@@ -51,14 +52,15 @@ static char *path_max = &path[PATH_MAX - 1];
 static dev_t one_fs_dev;
 
 static uint64_t walked_size;
+static GMutex io_mutex; /* locks db writes */
 
 struct thread_params {
 	struct rb_root *tree;    /* Unique hashes */
 	int num_files;           /* Total number of files we hashed */
 	int num_hashes;          /* Total number of hashes we hashed */
 	unsigned int bloom_match;/* Total number of matched by bloom */
-	int hfile;               /* fd to the swap-file */
 	struct bloom bloom;      /* the real bloom filter */
+	char		*serialize_fname;
 };
 
 static int get_dirent_type(struct dirent *entry, int fd)
@@ -312,12 +314,6 @@ static void run_pool(GThreadPool *pool)
 	g_thread_pool_free(pool, FALSE, TRUE);
 }
 
-struct block {
-	uint64_t	loff;
-	unsigned int	flags;
-	unsigned char	digest[DIGEST_LEN_MAX];
-};
-
 struct csum_block {
 	ssize_t bytes;
 	unsigned int flags;
@@ -482,7 +478,7 @@ static void csum_whole_file_swap(struct filerec *file,
 	int ret = 0;
 	struct fiemap_ctxt *fc = NULL;
 	struct csum_block curr_block;
-
+	struct dbfile_write_ctxt wctxt = { 0, };
 	curr_block.buf = malloc(blocksize);
 	assert(curr_block.buf != NULL);
 	curr_block.file = file;
@@ -501,6 +497,10 @@ static void csum_whole_file_swap(struct filerec *file,
 		ret = ENOMEM;
 		goto err_noclose;
 	}
+
+	ret = dbfile_open_write(params->serialize_fname, &wctxt);
+	if (ret)
+		goto err_noclose;
 
 	ret = filerec_open(file, 0);
 	if (ret)
@@ -538,35 +538,44 @@ static void csum_whole_file_swap(struct filerec *file,
 	 * and store possibly dups
 	 */
 	g_mutex_lock(mutex);
-	file->num_blocks = nb_hash;
-	ret = write_file_info(params->hfile, file);
-	if (ret)
-		goto err;
-
 	for (i = 0; i < nb_hash; i++) {
 		ret = bloom_add(&params->bloom,
-			hashes[i].digest, DIGEST_LEN_MAX);
+			hashes[i].digest, digest_len);
 		if (ret == 1) {
 			ret = digest_insert(tree, hashes[i].digest);
-			if (ret)
+			if (ret) {
+				g_mutex_unlock(mutex);
 				goto err;
+			}
 			params->bloom_match++;
 			matched++;
 		}
-
-		ret = write_one_hash(params->hfile, hashes[i].loff,
-				hashes[i].flags, hashes[i].digest);
-		if (ret)
-			goto err;
 	}
+	g_mutex_unlock(mutex);
+
+	g_mutex_lock(&io_mutex);
+	file->num_blocks = nb_hash;
+	ret = dbfile_write_file_info(&wctxt, file);
+	if (ret) {
+		g_mutex_unlock(&io_mutex);
+		goto err;
+	}
+
+	ret = dbfile_write_hashes(&wctxt, file, nb_hash, hashes);
+	if (ret) {
+		g_mutex_unlock(&io_mutex);
+		goto err;
+	}
+	g_mutex_unlock(&io_mutex);
 
 	file->num_blocks = matched;
 
+	g_mutex_lock(mutex);
 	params->num_files++;
 	params->num_hashes += nb_hash;
-
 	g_mutex_unlock(mutex);
 
+	dbfile_close_write(&wctxt);
 	filerec_close(file);
 	free(curr_block.buf);
 	if (fc)
@@ -578,6 +587,7 @@ static void csum_whole_file_swap(struct filerec *file,
 err:
 	filerec_close(file);
 err_noclose:
+	dbfile_close_write(&wctxt);
 	free(curr_block.buf);
 	if (hashes)
 		free(hashes);
@@ -631,12 +641,7 @@ int populate_tree_swap(struct rb_root *tree, char *serialize_fname)
 
 	struct thread_params params = { tree, 0, 0, 0, };
 
-	params.hfile = open(serialize_fname, O_WRONLY|O_CREAT|O_TRUNC, 0644);
-
-	/* Write a dummy header */
-	ret = write_header(params.hfile, 0, 0, blocksize);
-	if (ret)
-		goto out;
+	params.serialize_fname = serialize_fname;
 
 	ret = bloom_init(&params.bloom, walked_size / blocksize, 0.01);
 	if (ret)
@@ -650,19 +655,14 @@ int populate_tree_swap(struct rb_root *tree, char *serialize_fname)
 
 	run_pool(pool);
 
-	/* Now, write the real header */
-	ret = write_header(params.hfile, params.num_files,
-			params.num_hashes, blocksize);
-	if (ret)
-		goto out;
 
 	printf("Bloom gave us %i hashes as 'almost duplicate'\n",
 		params.bloom_match);
 	printf("We stored %" PRIu64 " unique hashes\n", digest_count(tree));
 
+	printf("Total hashes: %d\n", params.num_hashes);
 out:
 	bloom_free(&params.bloom);
-	close(params.hfile);
 	g_dataset_destroy(&params);
 
 	return ret;
