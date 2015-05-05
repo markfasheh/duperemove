@@ -37,21 +37,12 @@ int dbfile_load_hashes_bloom(char *filename, struct hash_tree *scan_tree,
 
 /*
  * Following are used during file scan stage to get our hashes into
- * the database. The ctxt allows us to compile our sqlite statements
- * in open once instead of on every insert.
- *
- * TODO: We can do better by compiling before launching our file scan
- * threads thus removing the need to do it during open.
+ * the database.
  */
-struct dbfile_write_ctxt {
-	sqlite3		*db;
-	sqlite3_stmt	*file_stmt;
-	sqlite3_stmt	*hash_stmt;
-};
-int dbfile_open_write(char *filename, struct dbfile_write_ctxt *ctxt);
-void dbfile_close_write(struct dbfile_write_ctxt *ctxt);
-int dbfile_write_file_info(struct dbfile_write_ctxt *ctxt, struct filerec *file);
-int dbfile_write_hashes(struct dbfile_write_ctxt *ctxt, struct filerec *file,
+sqlite3 *dbfile_open(char *filename);
+void dbfile_close(sqlite3 *db);
+int dbfile_write_file_info(sqlite3 *db, struct filerec *file);
+int dbfile_write_hashes(sqlite3 *db, struct filerec *file,
 			uint64_t nb_hash, struct block *hashes);
 
 #endif	/* __DBFILE_H__ */

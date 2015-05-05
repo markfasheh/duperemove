@@ -478,7 +478,8 @@ static void csum_whole_file_swap(struct filerec *file,
 	int ret = 0;
 	struct fiemap_ctxt *fc = NULL;
 	struct csum_block curr_block;
-	struct dbfile_write_ctxt wctxt = { 0, };
+	struct sqlite3 *db = NULL;
+
 	curr_block.buf = malloc(blocksize);
 	assert(curr_block.buf != NULL);
 	curr_block.file = file;
@@ -498,8 +499,8 @@ static void csum_whole_file_swap(struct filerec *file,
 		goto err_noclose;
 	}
 
-	ret = dbfile_open_write(params->serialize_fname, &wctxt);
-	if (ret)
+	db = dbfile_open(params->serialize_fname);
+	if (!db)
 		goto err_noclose;
 
 	ret = filerec_open(file, 0);
@@ -555,13 +556,13 @@ static void csum_whole_file_swap(struct filerec *file,
 
 	g_mutex_lock(&io_mutex);
 	file->num_blocks = nb_hash;
-	ret = dbfile_write_file_info(&wctxt, file);
+	ret = dbfile_write_file_info(db, file);
 	if (ret) {
 		g_mutex_unlock(&io_mutex);
 		goto err;
 	}
 
-	ret = dbfile_write_hashes(&wctxt, file, nb_hash, hashes);
+	ret = dbfile_write_hashes(db, file, nb_hash, hashes);
 	if (ret) {
 		g_mutex_unlock(&io_mutex);
 		goto err;
@@ -575,7 +576,7 @@ static void csum_whole_file_swap(struct filerec *file,
 	params->num_hashes += nb_hash;
 	g_mutex_unlock(mutex);
 
-	dbfile_close_write(&wctxt);
+	dbfile_close(db);
 	filerec_close(file);
 	free(curr_block.buf);
 	if (fc)
@@ -587,7 +588,7 @@ static void csum_whole_file_swap(struct filerec *file,
 err:
 	filerec_close(file);
 err_noclose:
-	dbfile_close_write(&wctxt);
+	dbfile_close(db);
 	free(curr_block.buf);
 	if (hashes)
 		free(hashes);

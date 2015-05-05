@@ -110,7 +110,7 @@ int dbfile_create(char *filename)
 	return ret;
 }
 
-static sqlite3 *dbfile_open(char *filename)
+sqlite3 *dbfile_open(char *filename)
 {
 	int ret;
 	sqlite3 *db;
@@ -125,7 +125,7 @@ static sqlite3 *dbfile_open(char *filename)
 	return db;
 }
 
-static void dbfile_close(sqlite3 *db)
+void dbfile_close(sqlite3 *db)
 {
 	if (db)
 		sqlite3_close(db);
@@ -383,57 +383,18 @@ static int dbfile_check_version(sqlite3 *db)
 	return 0;
 }
 
-int dbfile_open_write(char *filename, struct dbfile_write_ctxt *ctxt)
+int dbfile_write_file_info(sqlite3 *db, struct filerec *file)
 {
 	int ret;
-	sqlite3 *db;
-	sqlite3_stmt *file_stmt = NULL;
-	sqlite3_stmt *hash_stmt = NULL;
-
-	db = dbfile_open(filename);
-	if (!db)
-		return ENOENT;
+	sqlite3_stmt *stmt = NULL;
 
 #define	WRITE_FILE							\
 "INSERT INTO files (ino, subvol, filename, size, blocks) VALUES (?1, ?2, ?3, ?4, ?5);"
-	ret = sqlite3_prepare_v2(db, WRITE_FILE, -1, &file_stmt, NULL);
+	ret = sqlite3_prepare_v2(db, WRITE_FILE, -1, &stmt, NULL);
 	if (ret) {
 		perror_sqlite(ret, "preparing filerec insert statement");
 		goto out_error;
 	}
-
-#define	UPDATE_HASH						\
-"INSERT INTO hashes (ino, subvol, loff, flags, digest) VALUES (?1, ?2, ?3, ?4, ?5);"
-	ret = sqlite3_prepare_v2(db, UPDATE_HASH, -1, &hash_stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing hash insert statement");
-		sqlite3_finalize(file_stmt);
-		goto out_error;
-	}
-
-	ctxt->db = db;
-	ctxt->file_stmt = file_stmt;
-	ctxt->hash_stmt = hash_stmt;
-
-	return 0;
-out_error:
-	dbfile_close(db);
-	return ret;
-}
-
-void dbfile_close_write(struct dbfile_write_ctxt *ctxt)
-{
-	if (ctxt) {
-		dbfile_close(ctxt->db);
-		sqlite3_finalize(ctxt->file_stmt);
-		sqlite3_finalize(ctxt->hash_stmt);
-	}
-}
-
-int dbfile_write_file_info(struct dbfile_write_ctxt *ctxt, struct filerec *file)
-{
-	int ret;
-	sqlite3_stmt *stmt = ctxt->file_stmt;
 
 	ret = sqlite3_bind_int64(stmt, 1, file->inum);
 	if (ret)
@@ -466,19 +427,18 @@ bind_error:
 	if (ret)
 		perror_sqlite(ret, "binding values");
 out_error:
-	sqlite3_reset(stmt);
 
+	sqlite3_finalize(stmt);
 	return ret;
 }
 
-int dbfile_write_hashes(struct dbfile_write_ctxt *ctxt, struct filerec *file, uint64_t nb_hash,
+int dbfile_write_hashes(sqlite3 *db, struct filerec *file, uint64_t nb_hash,
 			struct block *hashes)
 {
 	int ret;
 	uint64_t i;
 	char *errorstr = NULL;
-	sqlite3 *db = ctxt->db;
-	sqlite3_stmt *stmt = ctxt->hash_stmt;
+	sqlite3_stmt *stmt = NULL;
 	uint64_t loff;
 	uint32_t flags;
 	unsigned char *digest;
@@ -488,6 +448,14 @@ int dbfile_write_hashes(struct dbfile_write_ctxt *ctxt, struct filerec *file, ui
 		perror_sqlite(ret, "starting transaction");
 		sqlite3_free(errorstr);
 		return ret;
+	}
+
+#define	UPDATE_HASH						\
+"INSERT INTO hashes (ino, subvol, loff, flags, digest) VALUES (?1, ?2, ?3, ?4, ?5);"
+	ret = sqlite3_prepare_v2(db, UPDATE_HASH, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing hash insert statement");
+		goto out_error;
 	}
 
 	for (i = 0; i < nb_hash; i++) {
@@ -536,8 +504,8 @@ bind_error:
 	if (ret)
 		perror_sqlite(ret, "binding values");
 out_error:
-	sqlite3_reset(stmt);
 
+	sqlite3_finalize(stmt);
 	return ret;
 }
 
