@@ -21,6 +21,19 @@
 #include "d_tree.h"
 #include "debug.h"
 
+void debug_print_digest_tree(struct rb_root *d_tree)
+{
+	struct rb_node *node;
+	struct d_tree *d_node;
+
+	printf("Digests in digest tree:\n");
+	for (node = rb_first(d_tree); node; node = rb_next(node)) {
+		d_node = rb_entry(node, struct d_tree, t_node);
+		debug_print_digest(stdout, d_node->digest);
+		printf("\n");
+	}
+}
+
 static struct d_tree *digest_new(unsigned char *digest)
 {
 	struct d_tree *token = malloc(sizeof(struct d_tree));

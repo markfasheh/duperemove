@@ -40,6 +40,37 @@ declare_alloc_tracking(dupe_blocks_list);
 
 extern unsigned int blocksize;
 
+/*
+ * Management of filerec->block_tree rb tree. This is simple - ordered
+ * by loff. So that the code in find_dupes.c can walk them in logical
+ * order. We use a tree for this so that our dbfile backend is free to
+ * insert blocks in any order. There's no other tree management
+ * required than insert.
+ */
+static void insert_block_into_filerec(struct filerec *file,
+				      struct file_block *block)
+{
+	struct rb_node **p = &file->block_tree.rb_node;
+	struct rb_node *parent = NULL;
+	struct file_block *tmp;
+
+	while (*p) {
+		parent = *p;
+
+		tmp = rb_entry(parent, struct file_block, b_file_next);
+
+		if (tmp->b_loff > block->b_loff)
+			p = &(*p)->rb_left;
+		else if (tmp->b_loff < block->b_loff)
+			p = &(*p)->rb_right;
+		else abort_lineno(); /* If need be, insert_hashed_block() should
+				      * check for this (right now it doesn't) */
+	}
+
+	rb_link_node(&block->b_file_next, parent, p);
+	rb_insert_color(&block->b_file_next, &file->block_tree);
+}
+
 void debug_print_block(struct file_block *e)
 {
 	struct filerec *f = e->b_file;
@@ -242,6 +273,7 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 	e->b_flags = flags;
 	e->b_parent = d;
 
+	rb_init_node(&e->b_file_next);
 	INIT_LIST_HEAD(&e->b_head_list);
 
 	if (add_file_hash_head(d, e)) {
@@ -249,7 +281,7 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 		return ENOMEM;
 	}
 
-	list_add_tail(&e->b_file_next, &file->block_list);
+	insert_block_into_filerec(file, e);
 	file->num_blocks++;
 
 	d->dl_num_elem++;
@@ -267,12 +299,12 @@ static void remove_hashed_block(struct hash_tree *tree,
 
 	abort_on(blocklist->dl_num_elem == 0);
 
-	if (!list_empty(&block->b_file_next)) {
+	if (!RB_EMPTY_NODE(&block->b_file_next)) {
 		abort_on(file->num_blocks == 0);
 		file->num_blocks--;
 	}
 
-	list_del(&block->b_file_next);
+	rb_erase(&block->b_file_next, &file->block_tree);
 	list_del(&block->b_list);
 
 	list_del(&block->b_head_list);
@@ -294,10 +326,13 @@ static void remove_hashed_block(struct hash_tree *tree,
 
 void remove_hashed_blocks(struct hash_tree *tree, struct filerec *file)
 {
-	struct file_block *block, *tmp;
+	struct rb_node *node;
+	struct file_block *block;
 
-	list_for_each_entry_safe(block, tmp, &file->block_list, b_file_next)
+	while ((node = rb_first(&file->block_tree)) != NULL) {
+		block = rb_entry(node, struct file_block, b_file_next);
 		remove_hashed_block(tree, block, file);
+	}
 }
 
 static unsigned int seen_counter = 1;
