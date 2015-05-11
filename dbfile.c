@@ -85,6 +85,23 @@ out:
 	return ret;
 }
 
+static int dbfile_set_modes(sqlite3 *db)
+{
+	int ret;
+
+	ret = sqlite3_exec(db, "PRAGMA synchronous = OFF", NULL, NULL, NULL);
+	if (ret) {
+		perror_sqlite(ret, "configuring database (sync pragma)");
+		return ret;
+	}
+
+	ret = sqlite3_exec(db, "PRAGMA journal_mode = MEMORY", NULL, NULL, NULL);
+	if (ret)
+		perror_sqlite(ret, "configuring database (journal pragma)");
+
+	return ret;
+}
+
 int dbfile_create(char *filename)
 {
 	int ret;
@@ -113,6 +130,13 @@ int dbfile_create(char *filename)
 		return ret;
 	}
 
+	ret = dbfile_set_modes(db);
+	if (ret) {
+		perror_sqlite(ret, "setting journal modes");
+		sqlite3_close(db);
+		return ret;
+	}
+
 	gdb = db;
 	return 0;
 }
@@ -125,6 +149,13 @@ int dbfile_open(char *filename)
 	ret = sqlite3_open_v2(filename, &db, OPEN_FLAGS, NULL);
 	if (ret) {
 		perror_sqlite_open(db, filename);
+		sqlite3_close(db);
+		return ret;
+	}
+
+	ret = dbfile_set_modes(db);
+	if (ret) {
+		perror_sqlite(ret, "setting journal modes");
 		sqlite3_close(db);
 		return ret;
 	}
