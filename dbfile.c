@@ -22,6 +22,8 @@
 #define DB_FILE_MAJOR	1
 #define DB_FILE_MINOR	2
 
+static sqlite3 *gdb = NULL;
+
 #define	perror_sqlite(_err, _why)					\
 	fprintf(stderr, "%s(): Database error %d while %s: %s\n",	\
 		__FUNCTION__, _err, _why, sqlite3_errstr(_err))
@@ -29,6 +31,11 @@
 #define	perror_sqlite_open(_ptr, _filename)				\
 	fprintf(stderr, "Error opening db \"%s\": %s\n", _filename,	\
 		sqlite3_errmsg(_ptr))
+
+sqlite3 *dbfile_get_handle(void)
+{
+	return gdb;
+}
 
 #if 0
 static int debug_print_cb(void *priv, int argc, char **argv, char **column)
@@ -106,11 +113,11 @@ int dbfile_create(char *filename)
 		return ret;
 	}
 
-	sqlite3_close(db);
-	return ret;
+	gdb = db;
+	return 0;
 }
 
-sqlite3 *dbfile_open(char *filename)
+int dbfile_open(char *filename)
 {
 	int ret;
 	sqlite3 *db;
@@ -119,16 +126,18 @@ sqlite3 *dbfile_open(char *filename)
 	if (ret) {
 		perror_sqlite_open(db, filename);
 		sqlite3_close(db);
-		return NULL;
+		return ret;
 	}
 
-	return db;
+	gdb = db;
+	return 0;
 }
 
-void dbfile_close(sqlite3 *db)
+void dbfile_close(void)
 {
-	if (db)
-		sqlite3_close(db);
+	if (gdb)
+		sqlite3_close(gdb);
+	gdb = NULL;
 }
 
 int __dbfile_sync_config(sqlite3 *db, unsigned int block_size)
@@ -199,18 +208,16 @@ out:
 	return ret;
 }
 
-int dbfile_sync_config(char *filename, unsigned int block_size)
+int dbfile_sync_config(unsigned int block_size)
 {
 	sqlite3 *db;
 	int ret;
 
-	db = dbfile_open(filename);
+	db = dbfile_get_handle();
 	if (!db)
 		return ENOENT;
 
 	ret = __dbfile_sync_config(db, block_size);
-
-	dbfile_close(db);
 
 	return ret;
 }
@@ -344,21 +351,14 @@ out:
 	return ret;
 }
 
-int dbfile_get_config(char *filename, unsigned int *block_size,
-		      uint64_t *num_hashes, uint64_t *num_files, int *major,
-		      int *minor)
+int dbfile_get_config(unsigned int *block_size, uint64_t *num_hashes,
+		      uint64_t *num_files, int *major, int *minor)
 {
 	int ret;
-	sqlite3 *db;
 
-	db = dbfile_open(filename);
-	if (!db)
-		return ENOENT;
-
-	ret = __dbfile_get_config(db, block_size, num_hashes, num_files, major,
+	ret = __dbfile_get_config(gdb, block_size, num_hashes, num_files, major,
 				  minor);
 
-	dbfile_close(db);
 	return ret;
 }
 
@@ -571,7 +571,7 @@ static int load_into_hash_tree_cb(struct filerec *file, unsigned char *digest,
 	return insert_hashed_block(tree, digest, file, loff, flags);
 }
 
-int dbfile_read_all_hashes(char *dbfile, struct hash_tree *tree)
+int dbfile_read_all_hashes(struct hash_tree *tree)
 {
 	int ret;
 	sqlite3 *db;
@@ -580,20 +580,20 @@ int dbfile_read_all_hashes(char *dbfile, struct hash_tree *tree)
 	uint64_t ino, subvolid;
 	struct filerec *file;
 
-	db = dbfile_open(dbfile);
+	db = dbfile_get_handle();
 	if (!db)
 		return ENOENT;
 
 	ret = dbfile_check_version(db);
 	if (ret)
-		goto out_close;
+		return ret;
 
 	ret = sqlite3_prepare_v2(db,
 				 "SELECT ino, subvol, filename from files;", -1,
 				 &stmt, NULL);
 	if (ret) {
 		perror_sqlite(ret, "preparing statement");
-		goto out_close;
+		return ret;
 	}
 
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
@@ -622,9 +622,6 @@ int dbfile_read_all_hashes(char *dbfile, struct hash_tree *tree)
 out_finalize:
 	sqlite3_finalize(stmt);
 
-out_close:
-	dbfile_close(db);
-
 	return ret;
 }
 
@@ -649,7 +646,7 @@ static int load_into_bloom_cb(struct filerec *file, unsigned char *digest,
 	return ret;
 }
 
-int dbfile_populate_hashes(char *dbfile, struct rb_root *d_tree)
+int dbfile_populate_hashes(struct rb_root *d_tree)
 {
 	int ret;
 	sqlite3 *db;
@@ -660,18 +657,18 @@ int dbfile_populate_hashes(char *dbfile, struct rb_root *d_tree)
 	struct filerec *file;
 	struct bloom_cb_priv priv;
 
-	db = dbfile_open(dbfile);
+	db = dbfile_get_handle();
 	if (!db)
 		return ENOENT;
 
 	ret = dbfile_count_rows(db, &num_hashes, NULL);
 	if (ret)
-		goto out_close;
+		return ret;
 
 	priv.d_tree = d_tree;
 	ret = bloom_init(&priv.bloom, num_hashes, 0.01);
 	if (ret)
-		goto out_bloom;
+		return ret;
 
 	ret = sqlite3_prepare_v2(db,
 				 "SELECT ino, subvol, filename from files;", -1,
@@ -707,13 +704,11 @@ out_finalize:
 	sqlite3_finalize(stmt);
 out_bloom:
 	bloom_free(&priv.bloom);
-out_close:
-	dbfile_close(db);
 
 	return ret;
 }
 
-int dbfile_load_hashes_bloom(char *dbfile, struct hash_tree *hash_tree,
+int dbfile_load_hashes_bloom(struct hash_tree *hash_tree,
 			     struct rb_root *d_tree)
 {
 	int ret;
@@ -725,7 +720,7 @@ int dbfile_load_hashes_bloom(char *dbfile, struct hash_tree *hash_tree,
 	int flags;
 	struct filerec *file;
 
-	db = dbfile_open(dbfile);
+	db = dbfile_get_handle();
 	if (!db)
 		return ENOENT;
 
@@ -784,8 +779,6 @@ int dbfile_load_hashes_bloom(char *dbfile, struct hash_tree *hash_tree,
 out:
 	if (stmt)
 		sqlite3_finalize(stmt);
-
-	dbfile_close(db);
 
 	return ret;
 }

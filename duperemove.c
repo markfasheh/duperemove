@@ -331,19 +331,21 @@ int main(int argc, char **argv)
 		ret = dbfile_create(serialize_fname);
 		if (ret)
 			break;
-		ret = populate_tree_swap(&digest_tree, serialize_fname);
+		ret = populate_tree_swap(&digest_tree);
 		break;
 	case H_READ:
+		ret = dbfile_open(serialize_fname);
+		if (ret)
+			break;
 		/*
 		 * Skips the file scan, used to isolate the
 		 * extent-find and dedupe stages
 		 */
-		ret = dbfile_get_config(serialize_fname, &blocksize, NULL,
-					NULL, NULL, NULL);
+		ret = dbfile_get_config(&blocksize, NULL, NULL, NULL, NULL);
 		if (ret)
 			break;
 
-		ret = dbfile_populate_hashes(serialize_fname, &digest_tree);
+		ret = dbfile_populate_hashes(&digest_tree);
 		if (ret)
 			break;
 		break;
@@ -361,7 +363,7 @@ int main(int argc, char **argv)
 	}
 
 	if (use_hashfile == H_WRITE || use_hashfile == H_UPDATE) {
-		ret = dbfile_sync_config(serialize_fname, blocksize);
+		ret = dbfile_sync_config(blocksize);
 		if (ret)
 			goto out;
 		if (use_hashfile == H_WRITE) {
@@ -389,8 +391,7 @@ int main(int argc, char **argv)
 
 		init_hash_tree(&dups_tree);
 
-		ret = dbfile_load_hashes_bloom(serialize_fname, &dups_tree,
-					       &digest_tree);
+		ret = dbfile_load_hashes_bloom(&dups_tree, &digest_tree);
 		if (ret)
 			goto out;
 
@@ -414,6 +415,7 @@ int main(int argc, char **argv)
 
 	free_all_filerecs();
 out:
+	dbfile_close();
 
 	if (ret == ENOMEM || debug)
 		print_mem_stats();

@@ -60,7 +60,6 @@ struct thread_params {
 	int num_hashes;          /* Total number of hashes we hashed */
 	unsigned int bloom_match;/* Total number of matched by bloom */
 	struct bloom bloom;      /* the real bloom filter */
-	char		*serialize_fname;
 };
 
 static int get_dirent_type(struct dirent *entry, int fd)
@@ -499,7 +498,7 @@ static void csum_whole_file_swap(struct filerec *file,
 		goto err_noclose;
 	}
 
-	db = dbfile_open(params->serialize_fname);
+	db = dbfile_get_handle();
 	if (!db)
 		goto err_noclose;
 
@@ -576,7 +575,6 @@ static void csum_whole_file_swap(struct filerec *file,
 	params->num_hashes += nb_hash;
 	g_mutex_unlock(mutex);
 
-	dbfile_close(db);
 	filerec_close(file);
 	free(curr_block.buf);
 	if (fc)
@@ -588,7 +586,6 @@ static void csum_whole_file_swap(struct filerec *file,
 err:
 	filerec_close(file);
 err_noclose:
-	dbfile_close(db);
 	free(curr_block.buf);
 	if (hashes)
 		free(hashes);
@@ -634,15 +631,13 @@ out:
 	return ret;
 }
 
-int populate_tree_swap(struct rb_root *tree, char *serialize_fname)
+int populate_tree_swap(struct rb_root *tree)
 {
 	int ret = 0;
 	GMutex mutex;
 	GThreadPool *pool;
 
 	struct thread_params params = { tree, 0, 0, 0, };
-
-	params.serialize_fname = serialize_fname;
 
 	ret = bloom_init(&params.bloom, walked_size / blocksize, 0.01);
 	if (ret)

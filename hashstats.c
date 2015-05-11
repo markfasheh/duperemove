@@ -272,12 +272,16 @@ int main(int argc, char **argv)
 	if (init_csum_module(DEFAULT_HASH_STR))
 		return ENOMEM;
 
-	ret = dbfile_get_config(serialize_fname, &disk_blocksize, &disk_hashes,
-				&disk_files, &major, &minor);
+	ret = dbfile_open(serialize_fname);
 	if (ret)
 		return ret;
 
-	ret = dbfile_read_all_hashes(serialize_fname, &tree);
+	ret = dbfile_get_config(&disk_blocksize, &disk_hashes, &disk_files,
+				&major, &minor);
+	if (ret)
+		return ret;
+
+	ret = dbfile_read_all_hashes(&tree);
 	if (ret)
 		return ret;
 
@@ -290,6 +294,8 @@ int main(int argc, char **argv)
 
 	if (print_file_list)
 		print_filerecs();
+
+	dbfile_close();
 
 	return ret;
 }
