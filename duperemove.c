@@ -38,7 +38,6 @@
 #include "results-tree.h"
 #include "dedupe.h"
 #include "util.h"
-#include "serialize.h"
 #include "btrfs-util.h"
 #include "dbfile.h"
 #include "memstats.h"

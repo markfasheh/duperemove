@@ -29,7 +29,6 @@
 #include "filerec.h"
 #include "hash-tree.h"
 #include "util.h"
-#include "serialize.h"
 #include "dbfile.h"
 
 #include "bswap.h"
@@ -170,8 +169,7 @@ static unsigned int disk_blocksize;
 static int major, minor;
 static uint64_t disk_files, disk_hashes;
 
-static void print_file_info(struct hash_tree *tree,
-			    struct hash_file_header *h)
+static void print_file_info(struct hash_tree *tree)
 {
 	printf("Raw header info for \"%s\":\n", serialize_fname);
 	printf("  version: %u.%u\tblock_size: %u\n", major, minor,
@@ -259,7 +257,6 @@ int main(int argc, char **argv)
 {
 	int ret;
 	struct hash_tree tree;
-	struct hash_file_header h;
 
 	init_filerec();
 	init_hash_tree(&tree);
@@ -285,7 +282,7 @@ int main(int argc, char **argv)
 	if (ret)
 		return ret;
 
-	print_file_info(&tree, &h);
+	print_file_info(&tree);
 
 	if (num_to_print || print_all_hashes) {
 		sort_by_size(&tree);

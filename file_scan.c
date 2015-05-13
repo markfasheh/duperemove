@@ -40,7 +40,6 @@
 #include "hash-tree.h"
 #include "btrfs-util.h"
 #include "debug.h"
-#include "serialize.h"
 #include "file_scan.h"
 #include "bloom.h"
 #include "d_tree.h"
