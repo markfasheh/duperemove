@@ -276,7 +276,11 @@ void filerec_free(struct filerec *file)
 	if (file) {
 		free(file->filename);
 
-		abort_on(!RB_EMPTY_ROOT(&file->block_tree));
+		/*
+		 * XXX: Enable this check when we are freeing
+		 * file_block's from free_all_filerecs()
+		 */
+//		abort_on(!RB_EMPTY_ROOT(&file->block_tree));
 		list_del(&file->extent_list);
 		list_del(&file->rec_list);
 		list_del(&file->tmp_list);
@@ -296,7 +300,6 @@ void free_all_filerecs(void)
 	list_for_each_entry_safe(file, tmp, &filerec_list, rec_list) {
 		filerec_free(file);
 	}
-
 }
 
 int filerec_open(struct filerec *file, int write)
