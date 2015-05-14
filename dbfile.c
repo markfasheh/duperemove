@@ -438,7 +438,7 @@ int dbfile_write_file_info(sqlite3 *db, struct filerec *file)
 	if (ret)
 		goto bind_error;
 
-	ret = sqlite3_bind_int64(stmt, 4, 0ULL);
+	ret = sqlite3_bind_int64(stmt, 4, file->size);
 	if (ret)
 		goto bind_error;
 
