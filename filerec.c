@@ -276,7 +276,7 @@ void filerec_free(struct filerec *file)
 	if (file) {
 		free(file->filename);
 
-		abort_on(RB_EMPTY_ROOT(&file->block_tree));
+		abort_on(!RB_EMPTY_ROOT(&file->block_tree));
 		list_del(&file->extent_list);
 		list_del(&file->rec_list);
 		list_del(&file->tmp_list);
