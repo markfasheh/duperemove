@@ -26,8 +26,6 @@
 #include "dedupe.h"
 #include "debug.h"
 
-#define MAX_DEDUPES_PER_IOCTL	120
-
 struct dedupe_req {
 	struct filerec		*req_file;
 	struct list_head	req_list; /* see comment in dedupe.h */

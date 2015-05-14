@@ -106,7 +106,8 @@ static void process_dedupe_results(struct dedupe_ctxt *ctxt,
 	while (!done) {
 		done = pop_one_dedupe_result(ctxt, &target_status, &target_loff,
 					     &target_bytes, &f);
-		*kern_bytes += target_bytes;
+		if (kern_bytes)
+			*kern_bytes += target_bytes;
 
 		dprintf("\"%s\":\toffset: %llu\tprocessed bytes: %llu"
 			"\tstatus: %d\n", f->filename,
@@ -430,4 +431,68 @@ void dedupe_results(struct results_tree *res)
 	printf("Kernel processed data (excludes target files): %s\nComparison "
 	       "of extent info shows a net change in shared extents of: %s\n",
 	       pretty_size(counts.kern_bytes), pretty_size(counts.fiemap_bytes));
+}
+
+int fdupes_dedupe(void)
+{
+	int ret;
+	struct filerec *file;
+	struct dedupe_ctxt *ctxt = NULL;
+	uint64_t bytes = 0;
+	OPEN_ONCE(open_files);
+
+	list_for_each_entry(file, &filerec_list, rec_list) {
+		ret = filerec_open_once(file, 0, &open_files);
+		if (ret) {
+			fprintf(stderr, "%s: Skipping dedupe.\n",
+				file->filename);
+			continue;
+		}
+
+		printf("Queue entire file for dedupe: %s\n", file->filename);
+
+		if (ctxt == NULL) {
+			ctxt = new_dedupe_ctxt(MAX_DEDUPES_PER_IOCTL,
+					       0, file->size, file);
+			if (ctxt == NULL) {
+				fprintf(stderr, "Out of memory while "
+					"allocating dedupe context.\n");
+				ret = ENOMEM;
+				goto out;
+			}
+			continue;
+		}
+
+		ret = add_extent_to_dedupe(ctxt, 0, file);
+		if (ret < 0) {
+			fprintf(stderr, "%s: Request not queued.\n",
+				file->filename);
+			ret = ENOMEM;
+			goto out;
+		} else if (ret == 0 ||
+			   list_is_last(&file->rec_list, &filerec_list)) {
+			ret = dedupe_extents(ctxt);
+			if (ret) {
+				ret = errno;
+				fprintf(stderr,
+					"FAILURE: Dedupe ioctl returns %d: %s\n",
+					ret, strerror(ret));
+				goto out;
+			}
+			filerec_close_open_list(&open_files);
+			process_dedupe_results(ctxt, &bytes);
+			free_dedupe_ctxt(ctxt);
+			ctxt = NULL;
+
+			printf("Dedupe pass on %llu files completed\n",
+			       num_filerecs);
+		}
+	}
+
+	ret = 0;
+out:
+	filerec_close_open_list(&open_files);
+	free_dedupe_ctxt(ctxt);
+	free_all_filerecs();
+	return ret;
 }

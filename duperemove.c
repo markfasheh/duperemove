@@ -63,6 +63,7 @@ int one_file_system = 0;
 
 int target_rw = 1;
 static int version_only = 0;
+static int fdupes_mode = 0;
 
 static enum {
 	H_NONE = 0,
@@ -118,8 +119,46 @@ enum {
 	IO_THREADS_OPTION,
 	LOOKUP_EXTENTS_OPTION,
 	ONE_FILESYSTEM_OPTION,
-	HASH_OPTION
+	HASH_OPTION,
+	FDUPES_OPTION,
 };
+
+static int files_from_stdin(int fdupes)
+{
+	int ret = 0;
+	char *path = NULL;
+	size_t pathlen = 0;
+	ssize_t readlen;
+
+	while ((readlen = getline(&path, &pathlen, stdin)) != -1) {
+		if (readlen == 0)
+			continue;
+
+		if (fdupes && readlen == 1 && path[0] == '\n') {
+			ret = fdupes_dedupe();
+			if (ret)
+				return ret;
+			continue;
+		}
+
+		if (readlen > 0 && path[readlen - 1] == '\n') {
+			path[--readlen] = '\0';
+		}
+
+		if (readlen > PATH_MAX - 1) {
+			fprintf(stderr, "Path max exceeded: %s\n", path);
+			continue;
+		}
+
+		if (add_file(path, AT_FDCWD))
+			return 1;
+	}
+
+	if (path != NULL)
+		free(path);
+
+	return 0;
+}
 
 /*
  * Ok this is doing more than just parsing options.
@@ -143,6 +182,7 @@ static int parse_options(int argc, char **argv)
 		{ "lookup-extents", 1, NULL, LOOKUP_EXTENTS_OPTION },
 		{ "one-file-system", 0, NULL, ONE_FILESYSTEM_OPTION },
 		{ "hash", 1, NULL, HASH_OPTION },
+		{ "fdupes", 0, NULL, FDUPES_OPTION },
 		{ NULL, 0, NULL, 0}
 	};
 
@@ -207,6 +247,9 @@ static int parse_options(int argc, char **argv)
 		case HASH_OPTION:
 			user_hash = optarg;
 			break;
+		case FDUPES_OPTION:
+			fdupes_mode = 1;
+			break;
 		case HELP_OPTION:
 		case '?':
 		default:
@@ -237,33 +280,29 @@ static int parse_options(int argc, char **argv)
 				"file list argument\n");
 			return 1;
 		}
+		if (fdupes_mode) {
+			fprintf(stderr,
+				"Error: cannot mix hashfile option with "
+				"--fdupes option\n");
+			return 1;
+		}
 		goto out_nofiles;
 	}
 
-	if (numfiles == 1 && strcmp(argv[optind], "-") == 0) {
-		char *path = NULL;
-		size_t pathlen = 0;
-		ssize_t readlen;
-
-		while ((readlen = getline(&path, &pathlen, stdin)) != -1) {
-			if (readlen > 0 && path[readlen - 1] == '\n') {
-				path[--readlen] = '\0';
-			}
-
-			if (readlen == 0)
-				continue;
-
-			if (readlen > PATH_MAX - 1) {
-				fprintf(stderr, "Path max exceeded: %s\n", path);
-				continue;
-			}
-
-			if (add_file(path, AT_FDCWD))
-				return 1;
+	if (fdupes_mode) {
+		if (numfiles) {
+			fprintf(stderr,
+				"Error: fdupes option does not take a file "
+				"list argument\n");
+			return 1;
 		}
+		/* rest of fdupes mode is implemented in main() */
+		return 0;
+	}
 
-		if (path != NULL)
-			free(path);
+	if (numfiles == 1 && strcmp(argv[optind], "-") == 0) {
+		if (files_from_stdin(0))
+			return 1;
 	} else {
 		for (i = 0; i < numfiles; i++) {
 			const char *name = argv[i + optind];
@@ -308,6 +347,9 @@ int main(int argc, char **argv)
 		usage(argv[0]);
 		return EINVAL;
 	}
+
+	if (fdupes_mode)
+		return files_from_stdin(1);
 
 	ret = init_csum_module(user_hash);
 	if (ret) {

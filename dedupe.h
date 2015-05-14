@@ -4,6 +4,8 @@
 #include "list.h"
 #include "btrfs-ioctl.h"
 
+#define MAX_DEDUPES_PER_IOCTL	120
+
 struct dedupe_ctxt {
 
 	/*

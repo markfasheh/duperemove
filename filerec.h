@@ -18,7 +18,7 @@ struct filerec {
 	struct rb_node		inum_node;
 
 	uint64_t		num_blocks;	/* blocks we've inserted */
-
+	uint64_t		size;
 	struct rb_root		block_tree;	/* root for hash blocks tree */
 	struct list_head	extent_list;	/* head for results node list */
 

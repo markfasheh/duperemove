@@ -266,6 +266,7 @@ int add_file(const char *name, int dirfd)
 		return ENOMEM;
 	}
 
+	file->size = st.st_size;
 out:
 	pathp = pathtmp;
 	return 0;
