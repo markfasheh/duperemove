@@ -1,4 +1,4 @@
-VER=0.10-dev
+VER=0.10.beta1
 RELEASE=v$(VER)
 
 CC = gcc
