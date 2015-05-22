@@ -302,14 +302,14 @@ run_dedupe:
 			       ctxt->ioctl_file->filename);
 
 			ret = dedupe_extents(ctxt);
-			if (ret) {
+			if (ret == 0) {
+				process_dedupe_results(ctxt, kern_bytes);
+			} else {
 				ret = errno;
 				fprintf(stderr,
 					"FAILURE: Dedupe ioctl returns %d: %s\n",
 					ret, strerror(ret));
 			}
-
-			process_dedupe_results(ctxt, kern_bytes);
 		}
 
 		filerec_close_open_list(&open_files);
