@@ -627,8 +627,7 @@ int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
 				*shared_bytes += ext_len;
 		}
 
-		fiemap->fm_start = (fm_ext[i - 1].fe_logical +
-				    fm_ext[i - 1].fe_length);
+		start = (fm_ext[i - 1].fe_logical + fm_ext[i - 1].fe_length);
 	} while (last == 0);
 
 	return 0;
