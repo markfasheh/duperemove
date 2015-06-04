@@ -1,5 +1,6 @@
 #ifndef __HASH_TREE__
 #define __HASH_TREE__
+extern unsigned int blocksize;
 
 struct hash_tree {
 	struct rb_root	root;
@@ -28,6 +29,7 @@ struct dupe_blocks_list {
 #define FILE_BLOCK_SKIP_COMPARE	0x0001
 #define FILE_BLOCK_DEDUPED	0x0002
 #define FILE_BLOCK_HOLE		0x0004
+#define	FILE_BLOCK_PARTIAL	0x0008
 
 struct file_block {
 	struct dupe_blocks_list	*b_parent;
@@ -42,6 +44,20 @@ struct file_block {
 	struct rb_node		b_file_next; /* filerec->block_tree */
 	struct list_head	b_head_list; /* file_hash_head->h_blocks */
 };
+
+static inline unsigned long block_len(struct file_block *block)
+{
+	/*
+	 * Avoid storing the length of each block and instead use a
+	 * flag for partial blocks.
+	 *
+	 * NOTE: This only works if we assume that partial blocks are
+	 * at the end of a file
+	 */
+	if (block->b_flags & FILE_BLOCK_PARTIAL)
+		return block->b_file->size % blocksize;
+	return blocksize;
+}
 
 int insert_hashed_block(struct hash_tree *tree, unsigned char *digest,
 			struct filerec *file, uint64_t loff, unsigned int flags);

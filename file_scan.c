@@ -333,6 +333,7 @@ static inline int csum_next_block(struct csum_block *data, uint64_t *off)
 	int ret = 0;
 	struct fiemap_ctxt *fc = NULL;
 	unsigned int hole;
+	int partial = 0;
 
 	bytes_read = read(data->file->fd, data->buf + stored_bytes,
 				blocksize - stored_bytes);
@@ -350,10 +351,17 @@ static inline int csum_next_block(struct csum_block *data, uint64_t *off)
 	data->bytes += bytes_read;
 
 	/* Handle partial read */
-	if (bytes_read > 0 && data->bytes < blocksize)
-		return 1;
-
-	data->flags = hole = 0;
+	if (bytes_read < blocksize) {
+		/*
+		 * Don't want to store the len of each block, so
+		 * hash-tree makes the assumption that a partial block
+		 * is the last one.
+		 */
+		if (bytes_read + *off != data->file->size)
+			return -1;
+		partial = FILE_BLOCK_PARTIAL;
+	}
+	data->flags = hole = partial;
 	if (fc) {
 		unsigned int fieflags = 0;
 
@@ -378,6 +386,8 @@ static inline int csum_next_block(struct csum_block *data, uint64_t *off)
 	}
 
 	checksum_block(data->buf, data->bytes, data->digest);
+	if (data->flags & FILE_BLOCK_PARTIAL)
+		return 1;
 	return 2;
 }
 
@@ -421,6 +431,8 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 		goto err_noclose;
 
 	while (1) {
+		int iret;
+
 		ret = csum_next_block(&curr_block, &off);
 		if (ret == 0) /* EOF */
 			break;
@@ -428,14 +440,11 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 		if (ret == -1) /* Err */
 			goto err;
 
-		if (ret == 1) /* Partial read */
-			continue;
-
 		g_mutex_lock(mutex);
-		ret = insert_hashed_block(tree, curr_block.digest, file,
+		iret = insert_hashed_block(tree, curr_block.digest, file,
 						off, curr_block.flags);
 		g_mutex_unlock(mutex);
-		if (ret)
+		if (iret || ret == 1)
 			break;
 
 		off += curr_block.bytes;
@@ -519,9 +528,6 @@ static void csum_whole_file_swap(struct filerec *file,
 		if (ret == -1) /* Err */
 			goto err;
 
-		if (ret == 1) /* Partial read */
-			continue;
-
 		hashes = realloc(hashes, sizeof(struct block) * (nb_hash + 1));
 		if (!hashes) {
 			ret = ENOMEM;
@@ -533,6 +539,9 @@ static void csum_whole_file_swap(struct filerec *file,
 		memcpy(hashes[nb_hash].digest, curr_block.digest,
 					DIGEST_LEN_MAX);
 		nb_hash++;
+
+		if (ret == 1) /* Partial read, don't get any more blocks */
+			break;
 
 		off += curr_block.bytes;
 		curr_block.bytes = 0;
