@@ -116,7 +116,7 @@ static int write_file_info(int fd, struct filerec *file)
 	char *n;
 
 	finfo.ino = swap64(file->inum);
-	finfo.file_size = 0ULL; /* We don't store this yet */
+	finfo.file_size = swap64(file->size); /* We don't store this yet */
 	finfo.num_blocks = swap64(file->num_blocks);
 	finfo.subvolid = swap64(file->subvolid);
 
@@ -282,6 +282,7 @@ static int read_one_file(int fd, struct hash_tree *tree)
 	file = filerec_new(fname, finfo.ino, finfo.subvolid);
 	if (file == NULL)
 		return ENOMEM;
+	file->size = finfo.file_size;
 
 	for (i = 0; i < finfo.num_blocks; i++) {
 		ret = read_hash(fd, &bhash);

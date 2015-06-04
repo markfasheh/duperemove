@@ -439,7 +439,8 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 	ssize_t bytes = 0, bytes_read = 0;
 	int ret = 0;
 	struct fiemap_ctxt *fc = NULL;
-	unsigned int flags, hole;
+	unsigned int flags, hole = 0;
+	int partial = 0;
 
 	char *buf = malloc(blocksize);
 	assert(buf != NULL);
@@ -483,11 +484,18 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 
 		bytes += bytes_read;
 
-		/* Handle partial read */
-		if (bytes_read > 0 && bytes < blocksize)
-			continue;
+		if (bytes_read < blocksize) {
+			/*
+			 * Don't want to store the len of each block, so
+			 * hash-tree makes the assumption that a partial block
+			 * is the last one.
+			 */
+			if (bytes_read + off != file->size)
+				goto err;
+			partial = FILE_BLOCK_PARTIAL;
+		}
 
-		flags = hole = 0;
+		flags = partial;
 		if (fc) {
 			unsigned int fieflags = 0;
 
@@ -520,6 +528,9 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 		ret = insert_hashed_block(tree, digest, file, off, flags);
 		glib2_mutex_unlock(tree_mutex);
 		if (ret)
+			break;
+
+		if (flags & FILE_BLOCK_PARTIAL)
 			break;
 
 		off += bytes;
@@ -848,6 +859,7 @@ static int add_file(const char *name, int dirfd)
 			"for: %s\n", path);
 		return ENOMEM;
 	}
+	file->size = st.st_size;
 
 out:
 	pathp = pathtmp;
@@ -999,6 +1011,21 @@ out_nofiles:
 	return 0;
 }
 
+static inline unsigned long block_len(struct file_block *block)
+{
+	uint64_t bs = blocksize;
+	/*
+	 * Avoid storing the length of each block and instead use a
+	 * flag for partial blocks.
+	 *
+	 * NOTE: This only works if we assume that partial blocks are
+	 * at the end of a file
+	 */
+	if (block->b_flags & FILE_BLOCK_PARTIAL)
+		return block->b_file->size % bs;
+	return blocksize;
+}
+
 static void record_match(struct results_tree *res, unsigned char *digest,
 			 struct filerec *orig, struct filerec *walk,
 			 struct file_block **start, struct file_block **end)
@@ -1017,8 +1044,8 @@ static void record_match(struct results_tree *res, unsigned char *digest,
 	soff[0] = start[0]->b_loff;
 	soff[1] = start[1]->b_loff;
 
-	eoff[0] = blocksize + end[0]->b_loff;
-	eoff[1] = blocksize + end[1]->b_loff;
+	eoff[0] = block_len(end[0]) + end[0]->b_loff;
+	eoff[1] = block_len(end[1]) + end[1]->b_loff;
 
 	len = eoff[0] - soff[0];
 

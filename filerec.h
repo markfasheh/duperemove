@@ -12,6 +12,7 @@ struct filerec {
 	int		fd;			/* file descriptor */
 	char	*filename;		/* path to file */
 	uint64_t subvolid;
+	uint64_t size;
 
 	uint64_t		inum;
 	struct rb_node		inum_node;
