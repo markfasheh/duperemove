@@ -250,6 +250,8 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 	if (!e)
 		return ENOMEM;
 
+	abort_on((flags & FILE_BLOCK_PARTIAL) && !(file->size % blocksize));
+
 	d = find_block_list(tree, digest);
 	if (d == NULL) {
 		d = calloc_dupe_blocks_list(1);
