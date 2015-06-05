@@ -24,6 +24,8 @@ struct dedupe_ctxt {
 	unsigned int		num_queued;
 
 	unsigned int		same_size;
+
+	unsigned int		fs_blocksize;
 	/*
 	 * request tracking.
 	 *	queued: request is awaiting dedupe
