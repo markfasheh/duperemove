@@ -152,6 +152,10 @@ static int files_from_stdin(int fdupes)
 
 		if (add_file(path, AT_FDCWD))
 			return 1;
+
+		/* Give the user a chance to see some output from add_file(). */
+		if (!fdupes)
+			fflush(stdout);
 	}
 
 	if (path != NULL)
