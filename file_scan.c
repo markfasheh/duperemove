@@ -195,12 +195,12 @@ int add_file(const char *name, int dirfd)
 	}
 
 	if (!S_ISREG(st.st_mode)) {
-		fprintf(stderr, "Skipping non-regular file %s\n", path);
+		vprintf("Skipping non-regular file %s\n", path);
 		goto out;
 	}
 
 	if (st.st_size < blocksize) {
-		fprintf(stderr, "Skipping too small file %s\n", path);
+		vprintf("Skipping small file %s\n", path);
 		goto out;
 	}
 
