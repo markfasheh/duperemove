@@ -144,7 +144,10 @@ static unsigned int get_fs_blocksize(struct filerec *file)
 	int ret;
 	struct statfs fs;
 
+        if (filerec_open(file, 0))
+		return 0;
 	ret = fstatfs(file->fd, &fs);
+        filerec_close(file);
 	if (ret)
 		return 0;
 	return fs.f_bsize;
