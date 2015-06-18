@@ -643,6 +643,7 @@ static char *fiemap_flags_str(unsigned long long flags)
 	int written = 0;
 	char *str = flagstr;
 
+        *str = '\0';
 	if (flags) {
 		written = snprintf(str, size, "(");
 		str += written;
