@@ -73,10 +73,16 @@ static int create_tables(sqlite3 *db)
 	if (ret)
 		goto out;
 
-#define CREATE_HASHES_INDEX						\
+#define CREATE_INO_INDEX						\
 "create index idx_inosub on hashes(ino, subvol);"
+	ret = sqlite3_exec(db, CREATE_INO_INDEX, NULL, db, &errorstr);
+	if (ret)
+		goto out;
 
-	ret = sqlite3_exec(db, CREATE_HASHES_INDEX, NULL, db, &errorstr);
+#define	CREATE_DIGEST_INDEX						\
+"create index idx_digest on hashes(digest);"
+	ret = sqlite3_exec(db, CREATE_DIGEST_INDEX, NULL, db, &errorstr);
+
 out:
 
 	sqlite3_free(errorstr);
