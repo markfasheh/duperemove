@@ -309,7 +309,10 @@ int dedupe_extents(struct dedupe_ctxt *ctxt)
 		populate_dedupe_request(ctxt, ctxt->same);
 
 retry:
+		if (filerec_open(ctxt->ioctl_file, 0))
+			break;
 		ret = btrfs_extent_same(ctxt->ioctl_file->fd, ctxt->same);
+		filerec_close(ctxt->ioctl_file);
 		if (ret)
 			break;
 
