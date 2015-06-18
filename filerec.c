@@ -584,6 +584,8 @@ static char *fiemap_flags_str(unsigned long long flags)
 	int written = 0;
 	char *str = flagstr;
 
+	*str = '\0';
+
 	if (flags) {
 		written = snprintf(str, size, "(");
 		str += written;
@@ -659,7 +661,7 @@ int main(int argc, char **argv)
 {
 	int ret, i;
 	struct filerec *file;
-	uint64_t shared = 0;
+	uint64_t shared;
 
 	init_filerec();
 
@@ -679,6 +681,7 @@ int main(int argc, char **argv)
 		if (ret)
 			goto out;
 
+		shared = 0;
 		ret = filerec_count_shared(file, 0, -1ULL, &shared);
 		filerec_close(file);
 		if (ret) {
