@@ -144,7 +144,10 @@ static unsigned int get_fs_blocksize(struct filerec *file)
 	int ret;
 	struct statfs fs;
 
+        if (filerec_open(file, 0))
+		return 0;
 	ret = fstatfs(file->fd, &fs);
+        filerec_close(file);
 	if (ret)
 		return 0;
 	return fs.f_bsize;
@@ -309,7 +312,10 @@ int dedupe_extents(struct dedupe_ctxt *ctxt)
 		populate_dedupe_request(ctxt, ctxt->same);
 
 retry:
+		if (filerec_open(ctxt->ioctl_file, 0))
+			break;
 		ret = btrfs_extent_same(ctxt->ioctl_file->fd, ctxt->same);
+		filerec_close(ctxt->ioctl_file);
 		if (ret)
 			break;
 
