@@ -41,7 +41,6 @@
 #include "btrfs-util.h"
 #include "debug.h"
 #include "file_scan.h"
-#include "bloom.h"
 #include "d_tree.h"
 #include "dbfile.h"
 
@@ -54,11 +53,8 @@ static uint64_t walked_size;
 static GMutex io_mutex; /* locks db writes */
 
 struct thread_params {
-	struct rb_root *tree;    /* Unique hashes */
 	int num_files;           /* Total number of files we hashed */
 	int num_hashes;          /* Total number of hashes we hashed */
-	unsigned int bloom_match;/* Total number of matched by bloom */
-	struct bloom bloom;      /* the real bloom filter */
 };
 
 static int get_dirent_type(struct dirent *entry, int fd)
@@ -486,7 +482,6 @@ err_noclose:
 static void csum_whole_file_swap(struct filerec *file,
 				struct thread_params *params)
 {
-	struct rb_root *tree = params->tree;
 	uint64_t off = 0;
 	int ret = 0;
 	struct fiemap_ctxt *fc = NULL;
@@ -498,10 +493,8 @@ static void csum_whole_file_swap(struct filerec *file,
 	curr_block.file = file;
 	curr_block.bytes = 0;
 
-	int i;
 	struct block *hashes = malloc(sizeof(struct block));
 	int nb_hash = 0;
-	int matched = 0;
 
 	GMutex *mutex;
 
@@ -547,26 +540,6 @@ static void csum_whole_file_swap(struct filerec *file,
 		curr_block.bytes = 0;
 	}
 
-	/*
-	 * write down all hashes, add all hashes to the bloom filter,
-	 * and store possibly dups
-	 */
-	g_mutex_lock(mutex);
-	for (i = 0; i < nb_hash; i++) {
-		ret = bloom_add(&params->bloom,
-			hashes[i].digest, digest_len);
-		if (ret == 1) {
-			ret = digest_insert(tree, hashes[i].digest);
-			if (ret) {
-				g_mutex_unlock(mutex);
-				goto err;
-			}
-			params->bloom_match++;
-			matched++;
-		}
-	}
-	g_mutex_unlock(mutex);
-
 	g_mutex_lock(&io_mutex);
 	file->num_blocks = nb_hash;
 	ret = dbfile_write_file_info(db, file);
@@ -581,8 +554,6 @@ static void csum_whole_file_swap(struct filerec *file,
 		goto err;
 	}
 	g_mutex_unlock(&io_mutex);
-
-	file->num_blocks = matched;
 
 	g_mutex_lock(mutex);
 	params->num_files++;
@@ -645,17 +616,13 @@ out:
 	return ret;
 }
 
-int populate_tree_swap(struct rb_root *tree)
+int populate_tree_swap()
 {
 	int ret = 0;
 	GMutex mutex;
 	GThreadPool *pool;
 
-	struct thread_params params = { tree, 0, 0, 0, };
-
-	ret = bloom_init(&params.bloom, walked_size / blocksize, 0.01);
-	if (ret)
-		goto out;
+	struct thread_params params = { 0, 0, };
 
 	pool = setup_pool(&params, &mutex, csum_whole_file_swap);
 	if (!pool) {
@@ -665,14 +632,9 @@ int populate_tree_swap(struct rb_root *tree)
 
 	run_pool(pool);
 
-
-	printf("Bloom gave us %i hashes as 'almost duplicate'\n",
-		params.bloom_match);
-	printf("We stored %" PRIu64 " unique hashes\n", digest_count(tree));
-
+	printf("Total files:  %d\n", params.num_files);
 	printf("Total hashes: %d\n", params.num_hashes);
 out:
-	bloom_free(&params.bloom);
 	g_dataset_destroy(&params);
 
 	return ret;

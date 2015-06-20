@@ -30,7 +30,6 @@
 
 #include <glib.h>
 
-#include "rbtree.h"
 #include "list.h"
 #include "csum.h"
 #include "filerec.h"
@@ -42,7 +41,6 @@
 #include "dbfile.h"
 #include "memstats.h"
 #include "debug.h"
-#include "bloom.h"
 
 #include "file_scan.h"
 #include "find_dupes.h"
@@ -332,13 +330,11 @@ int main(int argc, char **argv)
 	struct results_tree res;
 	struct filerec *file;
 	struct hash_tree scan_tree;
-	struct rb_root digest_tree;
 
 	init_filerec();
 	init_results_tree(&res);
 
 	init_hash_tree(&scan_tree);
-	digest_tree = RB_ROOT;
 
 	/* Parse options might change this so set a default here */
 #if GLIB_CHECK_VERSION(2,36,0)
@@ -376,7 +372,7 @@ int main(int argc, char **argv)
 		ret = dbfile_create(serialize_fname);
 		if (ret)
 			break;
-		ret = populate_tree_swap(&digest_tree);
+		ret = populate_tree_swap();
 		break;
 	case H_READ:
 		ret = dbfile_open(serialize_fname);
@@ -387,12 +383,6 @@ int main(int argc, char **argv)
 		 * extent-find and dedupe stages
 		 */
 		ret = dbfile_get_config(&blocksize, NULL, NULL, NULL, NULL);
-		if (ret)
-			break;
-
-		ret = dbfile_populate_hashes(&digest_tree);
-		if (ret)
-			break;
 		break;
 	case H_NONE:
 		ret = populate_tree_aim(&scan_tree);
@@ -430,20 +420,19 @@ int main(int argc, char **argv)
 		ret = find_all_dupes(&scan_tree, &res);
 	} else {
 		/* We will now reread the serialized file, and create a new
-		 * shiny tree with only 'almost-dups' hashes
+		 * shiny tree with only duplicate hashes
 		 */
 		struct hash_tree dups_tree;
 
 		init_hash_tree(&dups_tree);
 
-		ret = dbfile_load_hashes_bloom(&dups_tree, &digest_tree);
+		ret = dbfile_load_hashes(&dups_tree);
 		if (ret)
 			goto out;
 
 		ret = find_all_dupes(&dups_tree, &res);
 	}
 
-	digest_free(&digest_tree);
 	if (debug) {
 		print_dupes_table(&res);
 		printf("\n\nRemoving overlapping extents\n\n");

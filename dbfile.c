@@ -12,8 +12,6 @@
 #include "filerec.h"
 #include "hash-tree.h"
 
-#include "bloom.h"
-
 #include "file_scan.h"
 
 #include "dbfile.h"
@@ -661,98 +659,13 @@ out_finalize:
 	return ret;
 }
 
-struct bloom_cb_priv {
-	struct rb_root	*d_tree;
-	struct bloom	bloom;
-};
-
-static int load_into_bloom_cb(struct filerec *file, unsigned char *digest,
-			      uint64_t loff, int flags, void *priv)
+int dbfile_load_hashes(struct hash_tree *hash_tree)
 {
 	int ret;
-	struct bloom_cb_priv *p = priv;
-
-	ret = bloom_add(&p->bloom, digest, digest_len);
-	if (ret == 1) {
-		ret = digest_insert(p->d_tree, digest);
-		if (ret)
-			return ret;
-	}
-
-	return ret;
-}
-
-int dbfile_populate_hashes(struct rb_root *d_tree)
-{
-	int ret;
-	sqlite3 *db;
-	sqlite3_stmt *stmt = NULL;
-	char *filename;
-	uint64_t ino, subvolid;
-	uint64_t num_hashes;
-	struct filerec *file;
-	struct bloom_cb_priv priv;
-
-	db = dbfile_get_handle();
-	if (!db)
-		return ENOENT;
-
-	ret = dbfile_count_rows(db, &num_hashes, NULL);
-	if (ret)
-		return ret;
-
-	priv.d_tree = d_tree;
-	ret = bloom_init(&priv.bloom, num_hashes, 0.01);
-	if (ret)
-		return ret;
-
-	ret = sqlite3_prepare_v2(db,
-				 "SELECT ino, subvol, filename from files;", -1,
-				 &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing statement");
-		goto out_bloom;
-	}
-
-	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
-		ino = sqlite3_column_int64(stmt, 0);
-		subvolid = sqlite3_column_int64(stmt, 1);
-		filename = (char *)sqlite3_column_text(stmt, 2);
-
-		file = filerec_new(filename, ino, subvolid);
-		if (!file) {
-			ret = ENOMEM;
-			goto out_finalize;
-		}
-
-		ret = dbfile_walk_file_hashes(db, file, load_into_bloom_cb,
-					      &priv);
-		if (ret)
-			goto out_finalize;
-	}
-	if (ret != SQLITE_DONE) {
-		perror_sqlite(ret, "retrieving file info from table");
-		goto out_finalize;
-	}
-
-	ret = 0;
-out_finalize:
-	sqlite3_finalize(stmt);
-out_bloom:
-	bloom_free(&priv.bloom);
-
-	return ret;
-}
-
-int dbfile_load_hashes_bloom(struct hash_tree *hash_tree,
-			     struct rb_root *d_tree)
-{
-	int ret;
-	struct rb_node *d_hash_node = rb_first(d_tree);
-	struct d_tree *d_hash;
 	sqlite3 *db;
 	sqlite3_stmt *stmt = NULL;
 	uint64_t subvol, ino, loff;
+	unsigned char *digest;
 	int flags;
 	struct filerec *file;
 
@@ -760,56 +673,47 @@ int dbfile_load_hashes_bloom(struct hash_tree *hash_tree,
 	if (!db)
 		return ENOENT;
 
-	ret = sqlite3_prepare_v2(db,
-	 "SELECT ino, subvol, loff, flags FROM hashes WHERE digest = ?1;",
-				 -1, &stmt, NULL);
+	ret = dbfile_check_version(db);
+	if (ret)
+		return ret;
+
+#define GET_DUPLICATE_HASHES \
+	"SELECT hashes.digest, ino, subvol, loff, flags FROM hashes " \
+	"JOIN (SELECT digest FROM hashes GROUP BY digest " \
+				"HAVING count(*) > 1) AS duplicate_hashes " \
+	"on hashes.digest = duplicate_hashes.digest;"
+
+	ret = sqlite3_prepare_v2(db, GET_DUPLICATE_HASHES, -1, &stmt, NULL);
 	if (ret) {
 		perror_sqlite(ret, "preparing statement");
 		return ret;
 	}
 
-	for (d_hash_node = rb_first(d_tree); d_hash_node;
-	     d_hash_node = rb_next(d_hash_node)) {
-		d_hash = rb_entry(d_hash_node, struct d_tree, t_node);
+	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
+		digest = (unsigned char *)sqlite3_column_blob(stmt, 0);
+		ino = sqlite3_column_int64(stmt, 1);
+		subvol = sqlite3_column_int64(stmt, 2);
+		loff = sqlite3_column_int64(stmt, 3);
+		flags = sqlite3_column_int(stmt, 4);
 
-		/*
-		 * XXX: Using SQLITE_STATIC here because it's probably
-		 * faster. If we ever free items from d_tree, we need
-		 * to change that.
-		 */
-		ret = sqlite3_bind_blob(stmt, 1, d_hash->digest,
-					digest_len, SQLITE_STATIC);
-		if (ret) {
-			perror_sqlite(ret, "looking up hash (bind)");
+		file = filerec_find(ino, subvol);
+		if (!file) {
+			ret = ENOENT;
+			fprintf(stderr,
+				"Filerec (%"PRIu64",%"PRIu64" is in db"
+				" but not in hash!\n", ino, subvol);
 			goto out;
 		}
 
-		while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
-			ino = sqlite3_column_int64(stmt, 0);
-			subvol = sqlite3_column_int64(stmt, 1);
-			loff = sqlite3_column_int64(stmt, 2);
-			flags = sqlite3_column_int(stmt, 3);
-
-			file = filerec_find(ino, subvol);
-			if (!file) {
-				ret = ENOENT;
-				fprintf(stderr,
-					"Filerec (%"PRIu64",%"PRIu64" is in db"
-					" but not in hash!\n", ino, subvol);
-				goto out;
-			}
-
-			ret = insert_hashed_block(hash_tree, d_hash->digest,
-						  file, loff, flags);
-			if (ret)
-				return ENOMEM;
-		}
-		if (ret != SQLITE_DONE) {
-			perror_sqlite(ret, "looking up hash");
-			goto out;
-		}
-		sqlite3_reset(stmt);
+		ret = insert_hashed_block(hash_tree, digest, file, loff, flags);
+		if (ret)
+			return ENOMEM;
 	}
+	if (ret != SQLITE_DONE) {
+		perror_sqlite(ret, "looking up hash");
+		goto out;
+	}
+	sqlite3_reset(stmt);
 
 	ret = 0;
 out:
