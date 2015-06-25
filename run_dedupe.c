@@ -50,7 +50,6 @@ void print_dupes_table(struct results_tree *res)
 	struct rb_node *node = rb_first(root);
 	struct dupe_extents *dext;
 	struct extent *extent;
-	uint64_t calc_bytes = 0;
 
 	printf("Simple read and compare of file data found %u instances of "
 	       "extents that might benefit from deduplication.\n",
@@ -69,7 +68,6 @@ void print_dupes_table(struct results_tree *res)
 
 		len = dext->de_len;
 		len_blocks = len / blocksize;
-		calc_bytes += dext->de_score;
 
 		vprintf("%u extents had length %llu Blocks (%llu) for a"
 			" score of %llu.\n", dext->de_num_dupes,
