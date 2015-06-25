@@ -362,5 +362,5 @@ void dupe_extents_free(struct dupe_extents *dext, struct results_tree *res)
 		n = rb_first(&dext->de_extents_root);
 		extent = rb_entry(n, struct extent, e_node);
 		count = remove_extent(res, extent);
-	} while (count > 1);
+	} while (count > 0);
 }
