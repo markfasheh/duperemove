@@ -143,10 +143,18 @@ static unsigned int get_fs_blocksize(struct filerec *file)
 {
 	int ret;
 	struct statfs fs;
+	static int bsize_warned = 0;
 
 	ret = fstatfs(file->fd, &fs);
-	if (ret)
-		return 0;
+	if (ret) {
+		if (!bsize_warned) {
+			fprintf(stderr, "Error %d (\"%s\") while getting fs "
+				"blocksize, defaulting to 4096 bytes for this "
+				"dedupe.\n", errno, strerror(errno));
+			bsize_warned = 1;
+		}
+		return 4096;
+	}
 	return fs.f_bsize;
 }
 
@@ -187,11 +195,6 @@ struct dedupe_ctxt *new_dedupe_ctxt(unsigned int max_extents, uint64_t loff,
 	INIT_LIST_HEAD(&ctxt->completed);
 
 	ctxt->fs_blocksize = get_fs_blocksize(ioctl_file);
-	if (!ctxt->fs_blocksize) {
-		free(same);
-		free(ctxt);
-		return NULL;
-	}
 
 	return ctxt;
 }
