@@ -204,12 +204,6 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 	shared_prev = shared_post = 0ULL;
 	add_shared_extents(dext, &shared_prev);
 
-	/* Second pass: remove already deduped extents. */
-	while(clean_deduped(&dext));
-
-	if (dext == NULL || list_empty(&dext->de_extents))
-		goto out;
-
 	list_for_each_entry(extent, &dext->de_extents, e_list) {
 		vprintf("%s\tstart block: %llu (%llu)\n",
 			extent->e_file->filename,
@@ -367,6 +361,15 @@ static int dedupe_worker(struct dupe_extents *dext,
 	int ret;
 	uint64_t fiemap_bytes = 0ULL;
 	uint64_t kern_bytes = 0ULL;
+
+	/*
+	 * Remove any extents which have already been deduped. This
+	 * will free dext for us if the number of available extents
+	 * goes below 2.
+	 */
+	while(clean_deduped(&dext));
+	if (!dext)
+		return 0;
 
 	ret = dedupe_extent_list(dext, &fiemap_bytes, &kern_bytes);
 	if (ret) {
