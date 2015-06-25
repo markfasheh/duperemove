@@ -143,11 +143,13 @@ static void add_shared_extents(struct dupe_extents *dext, uint64_t *shared)
  * Returns 0 upon completion
  * If it returns 1, function might be called again
  */
-static int clean_deduped(struct dupe_extents *dext)
+static int clean_deduped(struct dupe_extents **ret_dext)
 {
+	struct dupe_extents *dext = *ret_dext;
 	struct extent *outer_extent, *outer_tmp;
 	struct extent *inner_extent, *inner_tmp;
 	bool next_removed = false;
+	int left;
 
 	if (!dext || list_empty(&dext->de_extents))
 		return 0;
@@ -172,8 +174,12 @@ static int clean_deduped(struct dupe_extents *dext)
 					next_removed = true;
 
 				g_mutex_lock(&mutex);
-				remove_extent(results_tree, inner_extent);
+				left = remove_extent(results_tree, inner_extent);
 				g_mutex_unlock(&mutex);
+				if (left == 0) {
+					*ret_dext = NULL;
+					return 0;
+				}
 			}
 		}
 	}
@@ -208,15 +214,18 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 			fprintf(stderr, "%s: Skipping dedupe.\n",
 				extent->e_file->filename);
 			g_mutex_lock(&mutex);
-			remove_extent(results_tree, extent);
+			if (!remove_extent(results_tree, extent))
+				dext = NULL;
 			g_mutex_unlock(&mutex);
+			if (!dext)
+				goto out;
 		}
 	}
 
 	/* Second pass: remove already deduped extents. */
-	while(clean_deduped(dext));
+	while(clean_deduped(&dext));
 
-	if (list_empty(&dext->de_extents))
+	if (dext == NULL || list_empty(&dext->de_extents))
 		goto out;
 
 	list_for_each_entry(extent, &dext->de_extents, e_list) {
@@ -415,6 +424,17 @@ void dedupe_results(struct results_tree *res)
 	while (node) {
 		dext = rb_entry(node, struct dupe_extents, de_node);
 
+		/*
+		 * dext may be free'd by the dedupe threads, so get
+		 * the next node now. In addition we want to lock
+		 * around the rbtree code here so rb_erase doesn't
+		 * change the tree underneath us.
+		 */
+
+		g_mutex_lock(&mutex);
+		node = rb_next(node);
+		g_mutex_unlock(&mutex);
+
 		g_thread_pool_push(dedupe_pool, dext, &err);
 		if (err) {
 			fprintf(stderr, "Fatal error while deduping: %s\n",
@@ -422,8 +442,6 @@ void dedupe_results(struct results_tree *res)
 			g_error_free(err);
 			break;
 		}
-
-		node = rb_next(node);
 	}
 
 	g_thread_pool_free(dedupe_pool, FALSE, TRUE);
