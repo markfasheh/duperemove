@@ -200,27 +200,11 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 	OPEN_ONCE(open_files);
 	struct extent *prev = NULL;
 	struct extent *to_add;
-	struct extent *tmp;
 
 	abort_on(dext->de_num_dupes < 2);
 
 	shared_prev = shared_post = 0ULL;
 	add_shared_extents(dext, &shared_prev);
-
-	/* First pass: try to open all files, remove missing */
-	list_for_each_entry_safe(extent, tmp, &dext->de_extents, e_list) {
-		ret = filerec_open_once(extent->e_file, target_rw, &open_files);
-		if (ret) {
-			fprintf(stderr, "%s: Skipping dedupe.\n",
-				extent->e_file->filename);
-			g_mutex_lock(&mutex);
-			if (!remove_extent(results_tree, extent))
-				dext = NULL;
-			g_mutex_unlock(&mutex);
-			if (!dext)
-				goto out;
-		}
-	}
 
 	/* Second pass: remove already deduped extents. */
 	while(clean_deduped(&dext));
@@ -236,6 +220,21 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 
 		if (list_is_last(&extent->e_list, &dext->de_extents))
 			last = 1;
+
+		ret = filerec_open_once(extent->e_file, target_rw, &open_files);
+		if (ret) {
+			fprintf(stderr, "%s: Skipping dedupe.\n",
+				extent->e_file->filename);
+			/*
+			 * If this was our last duplicate extent in
+			 * the list, and we added dupes from a
+			 * previous iteration of the loop we need to
+			 * run dedupe before exiting.
+			 */
+			if (ctxt && last)
+				goto run_dedupe;
+			continue;
+		}
 
 		to_add = extent;
 
