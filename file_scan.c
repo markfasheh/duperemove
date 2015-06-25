@@ -500,6 +500,7 @@ static void csum_whole_file_swap(struct filerec *file,
 
 	int i;
 	struct block *hashes = malloc(sizeof(struct block));
+	void *retp;
 	int nb_hash = 0;
 	int matched = 0;
 
@@ -528,11 +529,12 @@ static void csum_whole_file_swap(struct filerec *file,
 		if (ret == -1) /* Err */
 			goto err;
 
-		hashes = realloc(hashes, sizeof(struct block) * (nb_hash + 1));
-		if (!hashes) {
+		retp = realloc(hashes, sizeof(struct block) * (nb_hash + 1));
+		if (!retp) {
 			ret = ENOMEM;
 			goto err;
 		}
+		hashes = retp;
 
 		hashes[nb_hash].loff = off;
 		hashes[nb_hash].flags = curr_block.flags;
