@@ -2,7 +2,7 @@ VER=0.11-dev
 RELEASE=v$(VER)
 
 CC = gcc
-CFLAGS = -Wall -ggdb
+CFLAGS = -Wall -ggdb -O2
 
 MANPAGES=duperemove.8 btrfs-extent-same.8 hashstats.8 show-shared-extents.8
 
