@@ -278,6 +278,8 @@ int main(int argc, char **argv)
 	if (ret)
 		return ret;
 
+	blocksize = disk_blocksize;
+
 	ret = dbfile_read_all_hashes(&tree);
 	if (ret)
 		return ret;
