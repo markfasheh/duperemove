@@ -59,11 +59,6 @@ int init_csum_module(const char *type)
 
 	abort_on(digest_len == 0 || digest_len > DIGEST_LEN_MAX);
 
-	if (csum_mod != &csum_module_sha256)
-		fprintf(stderr,
-			"Warning: %s support is experimental!\n",
-			csum_mod->name);
-
 	return 0;
 }
 
