@@ -109,7 +109,7 @@ struct d_tree *digest_find(struct rb_root *root,
 uint64_t digest_count(struct rb_root *root)
 {
 	struct rb_node *n = rb_first(root);
-	int count;
+	uint64_t count = 0;
 
 	while (n) {
 		count++;

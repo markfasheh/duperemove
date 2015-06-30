@@ -86,14 +86,14 @@ static void usage(const char *prog)
 	printf("Find duplicate extents and print them to stdout\n\n");
 	printf("Usage: %s [-r] [-d] [-h] [--debug] [--hashfile=hashfile]"
 	       " OBJECTS\n", prog);
-	printf("Where \"OBJECTS\" is a list of files (or directories) which\n");
-	printf("we want to find duplicate extents in. If a directory is \n");
+	printf("\n\"OBJECTS\" is a list of files (or directories) which we\n");
+	printf("want to find duplicate extents in. If a directory is \n");
 	printf("specified, all regular files inside of it will be scanned.\n");
 	printf("\n\t<switches>\n");
 	printf("\t-r\t\tEnable recursive dir traversal.\n");
 	printf("\t-d\t\tDe-dupe the results - only works on btrfs.\n");
 	printf("\t-h\t\tPrint numbers in human-readable format.\n");
-	printf("\t--hashfile\t\tUse a file instead of memory for storing hashes.\n");
+	printf("\t--hashfile=FILE\tUse a file instead of memory for storing hashes.\n");
 	printf("\t--help\t\tPrints this help text.\n");
 	printf("\nPlease see the duperemove(8) manpage for more options.\n");
 }

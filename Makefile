@@ -2,7 +2,7 @@ VER=0.11-dev
 RELEASE=v$(VER)
 
 CC = gcc
-CFLAGS = -Wall -ggdb
+CFLAGS = -Wall -ggdb -O2
 
 MANPAGES=duperemove.8 btrfs-extent-same.8 hashstats.8 show-shared-extents.8
 
@@ -38,7 +38,8 @@ hashstats_obj = $(hash_obj) rbtree.o hash-tree.o filerec.o util.o \
 show_shared_obj = rbtree.o util.o
 csum_test_obj = $(hash_obj) util.o csum.o
 
-progs = duperemove hashstats btrfs-extent-same show-shared-extents csum-test
+install_progs = duperemove hashstats btrfs-extent-same show-shared-extents
+progs = $(install_progs) csum-test
 
 glib_CFLAGS=$(shell pkg-config --cflags glib-2.0)
 glib_LIBS=$(shell pkg-config --libs glib-2.0)
@@ -82,9 +83,9 @@ tarball: clean
 btrfs-extent-same: btrfs-extent-same.c
 	$(CC) $(CFLAGS) -o btrfs-extent-same btrfs-extent-same.c
 
-install: $(progs) $(MANPAGES)
+install: $(install_progs) $(MANPAGES)
 	mkdir -p -m 0755 $(DESTDIR)$(SBINDIR)
-	for prog in $(progs); do \
+	for prog in $(install_progs); do \
 		install -m 0755 $$prog $(DESTDIR)$(SBINDIR); \
 	done
 	mkdir -p -m 0755 $(DESTDIR)$(MANDIR)/man8

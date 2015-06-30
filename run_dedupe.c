@@ -50,7 +50,6 @@ void print_dupes_table(struct results_tree *res)
 	struct rb_node *node = rb_first(root);
 	struct dupe_extents *dext;
 	struct extent *extent;
-	uint64_t calc_bytes = 0;
 
 	printf("Simple read and compare of file data found %u instances of "
 	       "extents that might benefit from deduplication.\n",
@@ -69,7 +68,6 @@ void print_dupes_table(struct results_tree *res)
 
 		len = dext->de_len;
 		len_blocks = len / blocksize;
-		calc_bytes += dext->de_score;
 
 		vprintf("%u extents had length %llu Blocks (%llu) for a"
 			" score of %llu.\n", dext->de_num_dupes,
@@ -143,11 +141,13 @@ static void add_shared_extents(struct dupe_extents *dext, uint64_t *shared)
  * Returns 0 upon completion
  * If it returns 1, function might be called again
  */
-static int clean_deduped(struct dupe_extents *dext)
+static int clean_deduped(struct dupe_extents **ret_dext)
 {
+	struct dupe_extents *dext = *ret_dext;
 	struct extent *outer_extent, *outer_tmp;
 	struct extent *inner_extent, *inner_tmp;
 	bool next_removed = false;
+	int left;
 
 	if (!dext || list_empty(&dext->de_extents))
 		return 0;
@@ -172,8 +172,12 @@ static int clean_deduped(struct dupe_extents *dext)
 					next_removed = true;
 
 				g_mutex_lock(&mutex);
-				remove_extent(results_tree, inner_extent);
+				left = remove_extent(results_tree, inner_extent);
 				g_mutex_unlock(&mutex);
+				if (left == 0) {
+					*ret_dext = NULL;
+					return 0;
+				}
 			}
 		}
 	}
@@ -181,6 +185,7 @@ static int clean_deduped(struct dupe_extents *dext)
 	return 0;
 }
 
+#define	DEDUPE_EXTENTS_CLEANED	(-1)
 static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 			      uint64_t *kern_bytes)
 {
@@ -194,30 +199,21 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 	OPEN_ONCE(open_files);
 	struct extent *prev = NULL;
 	struct extent *to_add;
-	struct extent *tmp;
 
 	abort_on(dext->de_num_dupes < 2);
 
 	shared_prev = shared_post = 0ULL;
 	add_shared_extents(dext, &shared_prev);
 
-	/* First pass: try to open all files, remove missing */
-	list_for_each_entry_safe(extent, tmp, &dext->de_extents, e_list) {
-		ret = filerec_open_once(extent->e_file, target_rw, &open_files);
-		if (ret) {
-			fprintf(stderr, "%s: Skipping dedupe.\n",
-				extent->e_file->filename);
-			g_mutex_lock(&mutex);
-			remove_extent(results_tree, extent);
-			g_mutex_unlock(&mutex);
-		}
-	}
-
-	/* Second pass: remove already deduped extents. */
-	while(clean_deduped(dext));
-
-	if (list_empty(&dext->de_extents))
-		goto out;
+	/*
+	 * Remove any extents which have already been deduped. This
+	 * will free dext for us if the number of available extents
+	 * goes below 2. If that happens, we return a special value so
+	 * the caller knows not to reference dext any more.
+	 */
+	while(clean_deduped(&dext));
+	if (!dext)
+		return DEDUPE_EXTENTS_CLEANED;
 
 	list_for_each_entry(extent, &dext->de_extents, e_list) {
 		vprintf("%s\tstart block: %llu (%llu)\n",
@@ -227,6 +223,21 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 
 		if (list_is_last(&extent->e_list, &dext->de_extents))
 			last = 1;
+
+		ret = filerec_open_once(extent->e_file, target_rw, &open_files);
+		if (ret) {
+			fprintf(stderr, "%s: Skipping dedupe.\n",
+				extent->e_file->filename);
+			/*
+			 * If this was our last duplicate extent in
+			 * the list, and we added dupes from a
+			 * previous iteration of the loop we need to
+			 * run dedupe before exiting.
+			 */
+			if (ctxt && last)
+				goto run_dedupe;
+			continue;
+		}
 
 		to_add = extent;
 
@@ -364,6 +375,8 @@ static int dedupe_worker(struct dupe_extents *dext,
 
 	ret = dedupe_extent_list(dext, &fiemap_bytes, &kern_bytes);
 	if (ret) {
+		if (ret == DEDUPE_EXTENTS_CLEANED)
+			return 0;
 		/* dedupe_extent_list already printed to stderr for us */
 		return ret;
 	}
@@ -415,6 +428,17 @@ void dedupe_results(struct results_tree *res)
 	while (node) {
 		dext = rb_entry(node, struct dupe_extents, de_node);
 
+		/*
+		 * dext may be free'd by the dedupe threads, so get
+		 * the next node now. In addition we want to lock
+		 * around the rbtree code here so rb_erase doesn't
+		 * change the tree underneath us.
+		 */
+
+		g_mutex_lock(&mutex);
+		node = rb_next(node);
+		g_mutex_unlock(&mutex);
+
 		g_thread_pool_push(dedupe_pool, dext, &err);
 		if (err) {
 			fprintf(stderr, "Fatal error while deduping: %s\n",
@@ -422,8 +446,6 @@ void dedupe_results(struct results_tree *res)
 			g_error_free(err);
 			break;
 		}
-
-		node = rb_next(node);
 	}
 
 	g_thread_pool_free(dedupe_pool, FALSE, TRUE);

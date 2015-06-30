@@ -255,14 +255,13 @@ int add_file(const char *name, int dirfd)
 	close(fd);
 
 	walked_size += st.st_size;
-	file = filerec_new(path, st.st_ino, subvolid);
+	file = filerec_new(path, st.st_ino, subvolid, st.st_size);
 	if (file == NULL) {
 		fprintf(stderr, "Out of memory while allocating file record "
 			"for: %s\n", path);
 		return ENOMEM;
 	}
 
-	file->size = st.st_size;
 out:
 	pathp = pathtmp;
 	return 0;
@@ -494,6 +493,7 @@ static void csum_whole_file_swap(struct filerec *file,
 	curr_block.bytes = 0;
 
 	struct block *hashes = malloc(sizeof(struct block));
+	void *retp;
 	int nb_hash = 0;
 
 	GMutex *mutex;
@@ -521,11 +521,12 @@ static void csum_whole_file_swap(struct filerec *file,
 		if (ret == -1) /* Err */
 			goto err;
 
-		hashes = realloc(hashes, sizeof(struct block) * (nb_hash + 1));
-		if (!hashes) {
+		retp = realloc(hashes, sizeof(struct block) * (nb_hash + 1));
+		if (!retp) {
 			ret = ENOMEM;
 			goto err;
 		}
+		hashes = retp;
 
 		hashes[nb_hash].loff = off;
 		hashes[nb_hash].flags = curr_block.flags;
