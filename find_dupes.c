@@ -270,7 +270,7 @@ static void update_extent_search_status(struct hash_tree *tree,
 	int width = 40;
 	float progress;
 
-	if (!fancy_status)
+	if (!stdout_is_tty)
 		return;
 
 	progress = (float) processed / tree->num_blocks;
@@ -297,7 +297,7 @@ static void update_extent_search_status(struct hash_tree *tree,
 static void clear_extent_search_status(unsigned long long processed,
 				       int err)
 {
-	if (!fancy_status)
+	if (!stdout_is_tty)
 		return;
 
 	if (err)

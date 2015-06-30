@@ -75,7 +75,7 @@ static char *serialize_fname = NULL;
 unsigned int io_threads;
 int do_lookup_extents = 0;
 
-int fancy_status = 0;
+int stdout_is_tty = 0;
 
 static char *user_hash = DEFAULT_HASH_STR;
 
@@ -365,7 +365,7 @@ int main(int argc, char **argv)
 	}
 
 	if (isatty(STDOUT_FILENO))
-		fancy_status = 1;
+		stdout_is_tty = 1;
 
 	printf("Using %uK blocks\n", blocksize / 1024);
 	printf("Using hash: %s\n", csum_mod->name);
@@ -406,6 +406,13 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Error while populating extent tree!\n");
 		goto out;
 	}
+
+	/*
+	 * File scan from above can cause quite a bit of output, flush
+	 * here in case of logfile.
+	 */
+	if (stdout_is_tty)
+		fflush(stdout);
 
 	if (use_hashfile == H_WRITE || use_hashfile == H_UPDATE) {
 		ret = dbfile_sync_config(blocksize);

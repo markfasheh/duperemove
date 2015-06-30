@@ -2,7 +2,7 @@
 #define	__FIND_DUPES_H__
 
 /* from duperemove.c */
-extern int fancy_status;
+extern int stdout_is_tty;
 extern int do_lookup_extents;
 extern unsigned int blocksize;
 
