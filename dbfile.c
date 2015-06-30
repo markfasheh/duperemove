@@ -613,7 +613,7 @@ int dbfile_read_all_hashes(struct hash_tree *tree)
 	sqlite3 *db;
 	sqlite3_stmt *stmt = NULL;
 	char *filename;
-	uint64_t ino, subvolid;
+	uint64_t ino, subvolid, size;
 	struct filerec *file;
 
 	db = dbfile_get_handle();
@@ -625,7 +625,7 @@ int dbfile_read_all_hashes(struct hash_tree *tree)
 		return ret;
 
 	ret = sqlite3_prepare_v2(db,
-				 "SELECT ino, subvol, filename from files;", -1,
+				 "SELECT ino, subvol, filename, size from files;", -1,
 				 &stmt, NULL);
 	if (ret) {
 		perror_sqlite(ret, "preparing statement");
@@ -636,8 +636,9 @@ int dbfile_read_all_hashes(struct hash_tree *tree)
 		ino = sqlite3_column_int64(stmt, 0);
 		subvolid = sqlite3_column_int64(stmt, 1);
 		filename = (char *)sqlite3_column_text(stmt, 2);
+		size = sqlite3_column_int64(stmt, 3);
 
-		file = filerec_new(filename, ino, subvolid);
+		file = filerec_new(filename, ino, subvolid, size);
 		if (!file) {
 			ret = ENOMEM;
 			goto out_finalize;
@@ -688,7 +689,7 @@ int dbfile_populate_hashes(struct rb_root *d_tree)
 	sqlite3 *db;
 	sqlite3_stmt *stmt = NULL;
 	char *filename;
-	uint64_t ino, subvolid;
+	uint64_t ino, subvolid, size;
 	uint64_t num_hashes;
 	struct filerec *file;
 	struct bloom_cb_priv priv;
@@ -707,7 +708,7 @@ int dbfile_populate_hashes(struct rb_root *d_tree)
 		return ret;
 
 	ret = sqlite3_prepare_v2(db,
-				 "SELECT ino, subvol, filename from files;", -1,
+				 "SELECT ino, subvol, filename, size from files;", -1,
 				 &stmt, NULL);
 	if (ret) {
 		perror_sqlite(ret, "preparing statement");
@@ -718,8 +719,9 @@ int dbfile_populate_hashes(struct rb_root *d_tree)
 		ino = sqlite3_column_int64(stmt, 0);
 		subvolid = sqlite3_column_int64(stmt, 1);
 		filename = (char *)sqlite3_column_text(stmt, 2);
+		size = sqlite3_column_int64(stmt, 3);
 
-		file = filerec_new(filename, ino, subvolid);
+		file = filerec_new(filename, ino, subvolid, size);
 		if (!file) {
 			ret = ENOMEM;
 			goto out_finalize;
