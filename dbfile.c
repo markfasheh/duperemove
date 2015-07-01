@@ -23,9 +23,15 @@
 
 static sqlite3 *gdb = NULL;
 
+#if (SQLITE_VERSION_NUMBER < 3007015)
+#define	perror_sqlite(_err, _why)					\
+	fprintf(stderr, "%s(): Database error %d while %s: %s\n",	\
+		__FUNCTION__, _err, _why, "[sqlite3_errstr() unavailable]")
+#else
 #define	perror_sqlite(_err, _why)					\
 	fprintf(stderr, "%s(): Database error %d while %s: %s\n",	\
 		__FUNCTION__, _err, _why, sqlite3_errstr(_err))
+#endif
 
 #define	perror_sqlite_open(_ptr, _filename)				\
 	fprintf(stderr, "Error opening db \"%s\": %s\n", _filename,	\
