@@ -67,11 +67,13 @@ int init_csum_module(const char *type)
 	return 0;
 }
 
-void debug_print_digest(FILE *stream, unsigned char *digest)
+void debug_print_digest_len(FILE *stream, unsigned char *digest, int len)
 {
 	uint32_t i;
 
-	for (i = 0; i < digest_len; i++)
+	abort_on(len > digest_len);
+
+	for (i = 0; i < len; i++)
 		fprintf(stream, "%.2x", digest[i]);
 }
 
