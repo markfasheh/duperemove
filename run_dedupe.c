@@ -42,6 +42,7 @@
 #include "run_dedupe.h"
 
 static GMutex mutex;
+static GMutex console_mutex;
 static struct results_tree *results_tree;
 
 void print_dupes_table(struct results_tree *res)
@@ -59,33 +60,20 @@ void print_dupes_table(struct results_tree *res)
 		return;
 
 	while (1) {
-		uint64_t len, len_blocks;
-
 		if (node == NULL)
 			break;
 
 		dext = rb_entry(node, struct dupe_extents, de_node);
 
-		len = dext->de_len;
-		len_blocks = len / blocksize;
-
-		vprintf("%u extents had length %llu Blocks (%llu) for a"
-			" score of %llu.\n", dext->de_num_dupes,
-			(unsigned long long)len_blocks,
-			(unsigned long long)len,
-			(unsigned long long)dext->de_score);
-		if (debug) {
-			printf("Hash is: ");
-			debug_print_digest(stdout, dext->de_hash);
-			printf("\n");
-		}
-
-		printf("Start\t\tLength\t\tFilename (%u extents)\n",
+		printf("Showing %u identical extents with id ",
 		       dext->de_num_dupes);
+		debug_print_digest_short(stdout, dext->de_hash);
+		printf("\n");
+		printf("Start\t\tLength\t\tFilename\n");
 		list_for_each_entry(extent, &dext->de_extents, e_list) {
 			printf("%s\t%s\t\"%s\"\n",
 			       pretty_size(extent->e_loff),
-			       pretty_size(len),
+			       pretty_size(dext->de_len),
 			       extent->e_file->filename);
 		}
 
@@ -100,6 +88,7 @@ static void process_dedupe_results(struct dedupe_ctxt *ctxt,
 	int target_status;
 	uint64_t target_loff, target_bytes;
 	struct filerec *f;
+	const char *status_str = "[unknown status]";
 
 	while (!done) {
 		done = pop_one_dedupe_result(ctxt, &target_status, &target_loff,
@@ -107,10 +96,16 @@ static void process_dedupe_results(struct dedupe_ctxt *ctxt,
 		if (kern_bytes)
 			*kern_bytes += target_bytes;
 
-		dprintf("\"%s\":\toffset: %llu\tprocessed bytes: %llu"
-			"\tstatus: %d\n", f->filename,
-			(unsigned long long)target_loff,
-			(unsigned long long)target_bytes, target_status);
+		if (target_status) {
+			if (target_status == BTRFS_SAME_DATA_DIFFERS)
+				status_str = "data changed";
+			else if (target_status < 0)
+				status_str = strerror(-target_status);
+			printf("[%p] Dedupe for file \"%s\" had status (%d) "
+			       "\"%s\".\n",
+			       g_thread_self(), f->filename, target_status,
+			       status_str);
+		}
 	}
 }
 
@@ -205,6 +200,13 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 	shared_prev = shared_post = 0ULL;
 	add_shared_extents(dext, &shared_prev);
 
+	/* Dedupe extents with id %s*/
+	g_mutex_lock(&console_mutex);
+	printf("[%p] Try to dedupe extents with id ", g_thread_self());
+	debug_print_digest_short(stdout, dext->de_hash);
+	printf("\n");
+	g_mutex_unlock(&console_mutex);
+
 	/*
 	 * Remove any extents which have already been deduped. This
 	 * will free dext for us if the number of available extents
@@ -212,15 +214,12 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 	 * the caller knows not to reference dext any more.
 	 */
 	while(clean_deduped(&dext));
-	if (!dext)
+	if (!dext) {
+		printf("[%p] Skipping - extents are already deduped.\n",
+		       g_thread_self());
 		return DEDUPE_EXTENTS_CLEANED;
-
+	}
 	list_for_each_entry(extent, &dext->de_extents, e_list) {
-		vprintf("%s\tstart block: %llu (%llu)\n",
-			extent->e_file->filename,
-			(unsigned long long)extent->e_loff / blocksize,
-			(unsigned long long)extent->e_loff);
-
 		if (list_is_last(&extent->e_list, &dext->de_extents))
 			last = 1;
 
@@ -240,6 +239,10 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 		}
 
 		to_add = extent;
+
+		vprintf("[%p] Add extent for file \"%s\" at offset %s\n",
+			g_thread_self(), to_add->e_file->filename,
+			pretty_size(to_add->e_loff));
 
 		if (ctxt == NULL) {
 			ctxt = new_dedupe_ctxt(dext->de_num_dupes,
@@ -304,13 +307,16 @@ run_dedupe:
 		 * case but always do cleanup.
 		 */
 		if (ctxt->num_queued) {
-			printf("[%p] Dedupe %d extents with target: (%s, %s), "
+			g_mutex_lock(&console_mutex);
+			printf("[%p] Dedupe %d extents (id: ", g_thread_self(),
+			       ctxt->num_queued);
+			debug_print_digest_short(stdout, dext->de_hash);
+			printf(") with target: (%s, %s), "
 			       "\"%s\"\n",
-			       g_thread_self(),
-			       ctxt->num_queued,
 			       pretty_size(ctxt->orig_file_off),
 			       pretty_size(ctxt->orig_len),
 			       ctxt->ioctl_file->filename);
+			g_mutex_unlock(&console_mutex);
 
 			ret = dedupe_extents(ctxt);
 			if (ret == 0) {
