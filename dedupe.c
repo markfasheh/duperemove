@@ -301,6 +301,15 @@ static void process_dedupes(struct dedupe_ctxt *ctxt,
 	/* Increment our ioctl file pointers */
 	ctxt->len -= max_deduped;
 	ctxt->ioctl_file_off += max_deduped;
+
+	if (ctxt->len < ctxt->fs_blocksize && must_align_len) {
+		/*
+		 * If we go around again in this situation, we'll just
+		 * get -EINVAL on all the fds. Short circuit this then
+		 * by moving everything off the queued list.
+		 */
+		list_splice_init(&ctxt->queued, &ctxt->completed);
+	}
 }
 
 int dedupe_extents(struct dedupe_ctxt *ctxt)
