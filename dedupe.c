@@ -232,7 +232,7 @@ static void add_dedupe_request(struct dedupe_ctxt *ctxt,
 	info->bytes_deduped = 0;
 	same->dest_count++;
 
-	vprintf("add ioctl request %s, off: %llu, dest: %d\n", file->filename,
+	dprintf("add ioctl request %s, off: %llu, dest: %d\n", file->filename,
 		(unsigned long long)req->req_loff, same->dest_count);
 }
 
