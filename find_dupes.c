@@ -316,6 +316,9 @@ int find_all_dupes(struct hash_tree *tree, struct results_tree *res)
 	struct dupe_blocks_list *dups;
 	unsigned long long processed = 0;
 
+	printf("Hashing completed. Calculating duplicate extents - this may "
+		"take some time.\n");
+
 	while (1) {
 		if (node == NULL)
 			break;
