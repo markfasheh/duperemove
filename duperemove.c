@@ -427,11 +427,7 @@ int main(int argc, char **argv)
 			       serialize_fname);
 			goto out;
 		}
-
 	}
-
-	printf("Hashing completed. Calculating duplicate extents - this may "
-		"take some time.\n");
 
 	if (use_hashfile == H_NONE) {
 		ret = find_all_dupes(&scan_tree, &res);
@@ -440,6 +436,8 @@ int main(int argc, char **argv)
 		 * shiny tree with only 'almost-dups' hashes
 		 */
 		struct hash_tree dups_tree;
+
+		printf("Loading only duplicated hashes from hashfile.\n");
 
 		init_hash_tree(&dups_tree);
 
