@@ -522,7 +522,8 @@ static char *fiemap_flags_str(unsigned long long flags);
  * which is Copyright 2003 by Theodore Ts'o and released under the GPL.
  */
 int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
-			 uint64_t *shared_bytes, uint64_t *poff)
+			 uint64_t *shared_bytes, uint64_t *poff,
+			 uint64_t *first_plen)
 {
 	char buf[16384];
 	struct fiemap *fiemap = (struct fiemap *)buf;
@@ -591,6 +592,11 @@ int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
 			loff = fm_ext[i].fe_logical;
 			ext_len = fm_ext[i].fe_length;
 			ext_end = loff + ext_len;
+
+			if (first_plen) {
+				*first_plen = ext_len;
+				first_plen = NULL;/* Only return the first one */
+			}
 
 			if (ext_end <= start) {
 				/* extent is before our search area */
@@ -743,7 +749,7 @@ int main(int argc, char **argv)
 			goto out;
 
 		shared = 0;
-		ret = filerec_count_shared(file, 0, -1ULL, &shared, NULL);
+		ret = filerec_count_shared(file, 0, -1ULL, &shared, NULL, NULL);
 		filerec_close(file);
 		if (ret) {
 			fprintf(stderr, "fiemap error %d: %s\n", ret, strerror(ret));
