@@ -122,7 +122,8 @@ static void add_shared_extents(struct dupe_extents *dext, uint64_t *shared)
 			continue;
 
 		ret = filerec_count_shared(file, extent->e_loff, dext->de_len,
-					   shared, &(extent->e_poff));
+					   shared, &(extent->e_poff),
+					   &extent->e_plen);
 		if (ret) {
 			fprintf(stderr, "%s: fiemap error %d: %s\n",
 				extent->e_file->filename, ret, strerror(ret));
@@ -131,9 +132,37 @@ static void add_shared_extents(struct dupe_extents *dext, uint64_t *shared)
 	}
 }
 
+static int disk_extent_grew(struct dupe_extents *dext, struct extent *extent)
+{
+	/*
+	 * Check length of the virtual extent versus that of the 1st
+	 * physical extent in our range.
+	 *
+	 * If the physical extent is smaller than our virtual
+	 * (duplicate) extent, we want to go ahead and dedupe in order
+	 * to catch two cases:
+	 *
+	 * - The files were appended to (separately) with duplicate
+	 *   data - this will result in a pair of new extents on each
+	 *   file that can be deduped.
+	 *
+	 * - Kernels before 4.2 rejected unaligned lengths, so we can
+	 *   have a residual tail extent to dedupe.
+	 */
+	if (extent->e_plen < dext->de_len)
+		return 1;
+	return 0;
+}
+
+/*
+ * Removes extents which it believes have already been deduped. We err
+ * on the side of more deduping here.
+ */
 static void clean_deduped(struct dupe_extents **ret_dext)
 {
 	int left;
+	int extents_kept = 0;
+	int first = 1;
 	struct dupe_extents *dext = *ret_dext;
 	struct rb_node *inner, *outer;
 	struct extent *inner_extent, *outer_extent;
@@ -145,10 +174,35 @@ static void clean_deduped(struct dupe_extents **ret_dext)
 	while (outer) {
 		outer_extent = rb_entry(outer, struct extent, e_node);
 
+		/*
+		 * First extent will not be considered for removal
+		 * below, which is fine as remove_extent() handles the
+		 * case of only 1 extent left on the dext for us.
+		 *
+		 * Replicate the checks though and count it as kept if
+		 * we don't want it deleted. That will trigger the
+		 * logic below to save the dext if we should wind up
+		 * throwing everything else out.
+		 */
+		if (first &&
+		    (outer_extent->e_poff == 0 ||
+		     disk_extent_grew(dext, outer_extent)))
+			extents_kept++;
+		first = 0;
+
 		inner = rb_next(outer);
 		while (inner) {
 			inner_extent = rb_entry(inner, struct extent, e_node);
 			inner = rb_next(inner);
+
+			/*
+			 * Track if any extents have survived the
+			 * culling. If we're down to the last two and
+			 * at least one of them was deemed worthy,
+			 * exit here so that he may be deduped.
+			 */
+			if (dext->de_num_dupes == 2 && extents_kept)
+				return;
 
 			/*
 			 * e_poff could be zero if fiemap from
@@ -156,18 +210,25 @@ static void clean_deduped(struct dupe_extents **ret_dext)
 			 * skip the extent (it might want to be
 			 * deduped).
 			 */
-			if (inner_extent->e_poff) {
-				if (outer_extent->e_poff == inner_extent->e_poff) {
-					g_mutex_lock(&mutex);
-					left = remove_extent(results_tree,
-							     inner_extent);
-					g_mutex_unlock(&mutex);
-					if (left == 0) {
-						*ret_dext = dext = NULL;
-						return;
-					}
+			if (inner_extent->e_poff
+			    && outer_extent->e_poff == inner_extent->e_poff
+			    && !disk_extent_grew(dext, inner_extent)) {
+				dprintf("Remove extent "
+					"(\"%s\", %"PRIu64", %"PRIu64")\n",
+				       inner_extent->e_file->filename,
+				       inner_extent->e_poff,
+				       inner_extent->e_plen);
+
+				g_mutex_lock(&mutex);
+				left = remove_extent(results_tree,
+						     inner_extent);
+				g_mutex_unlock(&mutex);
+				if (left == 0) {
+					*ret_dext = dext = NULL;
+					return;
 				}
-			}
+			} else
+				extents_kept++;
 		}
 		outer = rb_next(outer);
 	}

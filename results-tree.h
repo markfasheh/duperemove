@@ -32,7 +32,15 @@ struct extent	{
 	 * easier to remove overlapping duplicates. */
 	struct list_head	e_file_extents; /* filerec->extent_list */
 
+	/*
+	 * Physical offset and length are used to figure out whether
+	 * we have already deduped this extent yet.
+	 *
+	 * e_plen is the length of the *first* physical extent in our
+	 * range, not a total of all extents covered.
+	 */
 	uint64_t		e_poff;
+	uint64_t		e_plen;
 };
 
 /* endoff is NOT inclusive! */
