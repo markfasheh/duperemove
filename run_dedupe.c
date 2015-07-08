@@ -197,15 +197,15 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 
 	abort_on(dext->de_num_dupes < 2);
 
-	shared_prev = shared_post = 0ULL;
-	add_shared_extents(dext, &shared_prev);
-
 	/* Dedupe extents with id %s*/
 	g_mutex_lock(&console_mutex);
 	printf("[%p] Try to dedupe extents with id ", g_thread_self());
 	debug_print_digest_short(stdout, dext->de_hash);
 	printf("\n");
 	g_mutex_unlock(&console_mutex);
+
+	shared_prev = shared_post = 0ULL;
+	add_shared_extents(dext, &shared_prev);
 
 	/*
 	 * Remove any extents which have already been deduped. This
