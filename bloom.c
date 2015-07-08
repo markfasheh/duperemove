@@ -22,6 +22,8 @@
 #include "bloom.h"
 #include "csum.h"
 
+#include "debug.h"
+
 static int bloom_check_add(struct bloom *bloom,
 			void *buffer, int len, int add)
 {
@@ -31,12 +33,14 @@ static int bloom_check_add(struct bloom *bloom,
 	}
 
 	int hits = 0;
-	unsigned char digest[DIGEST_LEN_MAX];
+	unsigned int digest[DIGEST_LEN_MAX / sizeof(unsigned int)];
 
-	checksum_block(buffer, len, digest);
+	BUILD_BUG_ON(DIGEST_LEN_MAX % sizeof(unsigned int));
 
-	register unsigned int a = ((unsigned int *)digest)[0];
-	register unsigned int b = ((unsigned int *)digest)[1];
+	checksum_block(buffer, len, (unsigned char *)digest);
+
+	register unsigned int a = digest[0];
+	register unsigned int b = digest[1];
 
 	register unsigned int x;
 	register unsigned int i;
