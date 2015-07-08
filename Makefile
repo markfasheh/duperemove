@@ -69,6 +69,9 @@ MANDIR = $(SHAREDIR)/man
 	$(CC) $(CFLAGS) -c $< -o $@ $(LIBRARY_FLAGS)
 
 all: $(progs)
+debug: CFLAGS += -fsanitize=address -ggdb3
+debug: $(progs)
+
 #TODO: Replace this with an auto-dependency
 $(objects): $(HEADERS)
 duperemove: $(objects)
