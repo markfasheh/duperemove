@@ -559,12 +559,12 @@ int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
 		if (rc < 0)
 			return errno;
 
-		if (poff)
-			*poff = fiemap->fm_extents[0].fe_physical;
-
 		/* If 0 extents are returned, then more ioctls are not needed */
 		if (fiemap->fm_mapped_extents == 0)
 			break;
+
+		if (poff)
+			*poff = fiemap->fm_extents[0].fe_physical;
 
 		for (i = 0; i < fiemap->fm_mapped_extents; i++) {
 			if (fm_ext[i].fe_flags & FIEMAP_EXTENT_LAST)
