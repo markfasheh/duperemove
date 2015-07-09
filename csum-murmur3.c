@@ -136,8 +136,10 @@ static void murmur3_add_to_running_checksum(struct running_checksum *_c,
 
 	/* We will now process 16-bytes blocks, as much as possible */
 	while(len >= 16){
-		uint64_t k1 = ((uint64_t *)data)[0];
-		uint64_t k2 = ((uint64_t *)data)[1];
+		uint64_t k1, k2;
+
+		memcpy(&k1, data, sizeof(k1));
+		memcpy(&k2, data + sizeof(k1), sizeof(k2));
 
 		k1 *= c1;
 		k1 = ROTL64(k1, 31);
