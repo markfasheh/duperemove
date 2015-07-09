@@ -131,53 +131,46 @@ static void add_shared_extents(struct dupe_extents *dext, uint64_t *shared)
 	}
 }
 
-/*
- * Remove already deduped extents from list.
- * Returns 0 upon completion
- * If it returns 1, function might be called again
- */
-static int clean_deduped(struct dupe_extents **ret_dext)
+static void clean_deduped(struct dupe_extents **ret_dext)
 {
-	struct dupe_extents *dext = *ret_dext;
-	struct extent *outer_extent, *outer_tmp;
-	struct extent *inner_extent, *inner_tmp;
-	bool next_removed = false;
 	int left;
+	struct dupe_extents *dext = *ret_dext;
+	struct rb_node *inner, *outer;
+	struct extent *inner_extent, *outer_extent;
 
-	if (!dext || list_empty(&dext->de_extents))
-		return 0;
+	if (!dext || dext->de_num_dupes == 0)
+		return;
 
-	list_for_each_entry_safe(outer_extent, outer_tmp,
-				 &dext->de_extents, e_list) {
-		if (next_removed)
-			return 1;
-		next_removed = false;
+	outer = rb_first(&dext->de_extents_root);
+	while (outer) {
+		outer_extent = rb_entry(outer, struct extent, e_node);
 
-		list_for_each_entry_safe(inner_extent, inner_tmp,
-					 &outer_extent->e_list, e_list) {
-			/* We checked data up to outer_extent already */
-			if (&inner_extent->e_list == &dext->de_extents)
-				break;
+		inner = rb_next(outer);
+		while (inner) {
+			inner_extent = rb_entry(inner, struct extent, e_node);
+			inner = rb_next(inner);
 
-			if (outer_extent == inner_extent)
-				continue;
-			if (outer_extent->e_poff == inner_extent->e_poff) {
-				/* Outer loop next item removed, rerun. */
-				if (inner_extent == outer_tmp)
-					next_removed = true;
-
-				g_mutex_lock(&mutex);
-				left = remove_extent(results_tree, inner_extent);
-				g_mutex_unlock(&mutex);
-				if (left == 0) {
-					*ret_dext = NULL;
-					return 0;
+			/*
+			 * e_poff could be zero if fiemap from
+			 * add_shared_extents fails. In that case,
+			 * skip the extent (it might want to be
+			 * deduped).
+			 */
+			if (inner_extent->e_poff) {
+				if (outer_extent->e_poff == inner_extent->e_poff) {
+					g_mutex_lock(&mutex);
+					left = remove_extent(results_tree,
+							     inner_extent);
+					g_mutex_unlock(&mutex);
+					if (left == 0) {
+						*ret_dext = dext = NULL;
+						return;
+					}
 				}
 			}
 		}
+		outer = rb_next(outer);
 	}
-
-	return 0;
 }
 
 #define	DEDUPE_EXTENTS_CLEANED	(-1)
@@ -213,12 +206,13 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 	 * goes below 2. If that happens, we return a special value so
 	 * the caller knows not to reference dext any more.
 	 */
-	while(clean_deduped(&dext));
+	clean_deduped(&dext);
 	if (!dext) {
 		printf("[%p] Skipping - extents are already deduped.\n",
 		       g_thread_self());
 		return DEDUPE_EXTENTS_CLEANED;
 	}
+
 	list_for_each_entry(extent, &dext->de_extents, e_list) {
 		if (list_is_last(&extent->e_list, &dext->de_extents))
 			last = 1;
