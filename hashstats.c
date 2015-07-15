@@ -33,6 +33,8 @@
 
 #include "bswap.h"
 
+extern sqlite3 *gdb;
+
 int verbose = 0, debug = 0;
 unsigned int blocksize;
 static int version_only = 0;
@@ -41,144 +43,212 @@ static int print_blocks = 0;
 static int num_to_print = 10;
 static int print_file_list = 0;
 static char *serialize_fname = NULL;
-static struct rb_root by_size = RB_ROOT;
+static uint64_t disk_files, disk_hashes;
 
-static int cmp(struct dupe_blocks_list *tmp, struct dupe_blocks_list *dups)
-{
-	if (tmp->dl_num_elem < dups->dl_num_elem)
-		return -1;
-	else if (tmp->dl_num_elem > dups->dl_num_elem)
-		return 1;
-	return memcmp(dups->dl_hash, tmp->dl_hash, digest_len);
-}
+static sqlite3_stmt *top_hashes_stmt = NULL;
+static sqlite3_stmt *files_count_stmt = NULL;
+static sqlite3_stmt *find_blocks_stmt = NULL;
 
-static void insert_by_size(struct dupe_blocks_list *dups)
+static int prepare_statements(void)
 {
-	struct rb_node **p = &by_size.rb_node;
-	struct rb_node *parent = NULL;
-	struct dupe_blocks_list *tmp;
 	int ret;
 
-	while (*p) {
-		parent = *p;
-
-		tmp = rb_entry(parent, struct dupe_blocks_list, dl_by_size);
-
-		ret = cmp(tmp, dups);
-		if (ret < 0)
-			p = &(*p)->rb_left;
-		else if (ret > 0)
-			p = &(*p)->rb_right;
-		else
-			break;
+#define	FIND_TOP_HASHES							\
+"select digest, count(digest) from hashes group by digest having (count(digest) > 1) order by (count(digest)) desc;"
+	ret = sqlite3_prepare_v2(gdb, FIND_TOP_HASHES, -1, &top_hashes_stmt,
+				 NULL);
+	if (ret) {
+		fprintf(stderr, "error %d while prepping hash search stmt: %s\n",
+			ret, sqlite3_errstr(ret));
+		return ret;
 	}
 
-	rb_link_node(&dups->dl_by_size, parent, p);
-	rb_insert_color(&dups->dl_by_size, &by_size);
-}
-
-static void sort_by_size(struct hash_tree *tree)
-{
-	struct rb_root *root = &tree->root;
-	struct rb_node *node = rb_first(root);
-	struct dupe_blocks_list *dups;
-
-	while (1) {
-		if (node == NULL)
-			break;
-
-		dups = rb_entry(node, struct dupe_blocks_list, dl_node);
-
-		insert_by_size(dups);
-
-		node = rb_next(node);
+#define	FIND_FILES_COUNT						\
+"select count (distinct files.filename) from files INNER JOIN hashes on hashes.digest = ?1 AND files.subvol=hashes.subvol AND files.ino=hashes.ino;"
+	ret = sqlite3_prepare_v2(gdb, FIND_FILES_COUNT, -1, &files_count_stmt,
+				 NULL);
+	if (ret) {
+		fprintf(stderr, "error %d while preparing file count stmt: %s\n",
+			ret, sqlite3_errstr(ret));
+		return ret;
 	}
+
+#define	FIND_BLOCKS							\
+"select files.filename, hashes.loff, hashes.flags from files INNER JOIN hashes on hashes.digest = ?1 AND files.subvol=hashes.subvol AND files.ino=hashes.ino;"
+
+	ret = sqlite3_prepare_v2(gdb, FIND_BLOCKS, -1, &find_blocks_stmt, NULL);
+	if (ret) {
+		fprintf(stderr, "error %d while prepping find blocks stmt: %s\n",
+			ret, sqlite3_errstr(ret));
+		return ret;
+	}
+	return 0;
 }
 
-static void printf_file_block_flags(struct file_block *block)
+static void finalize_statements(void)
 {
-	if (!block->b_flags)
+	sqlite3_finalize(top_hashes_stmt);
+	sqlite3_finalize(files_count_stmt);
+	sqlite3_finalize(find_blocks_stmt);
+}
+
+static void printf_file_block_flags(unsigned int flags)
+{
+	if (!flags)
 		return;
 
 	printf("( ");
-	if (block->b_flags & FILE_BLOCK_SKIP_COMPARE)
+	if (flags & FILE_BLOCK_SKIP_COMPARE)
 		printf("skip_compare ");
-	if (block->b_flags & FILE_BLOCK_DEDUPED)
+	if (flags & FILE_BLOCK_DEDUPED)
 		printf("deduped ");
-	if (block->b_flags & FILE_BLOCK_HOLE)
+	if (flags & FILE_BLOCK_HOLE)
 		printf("hole ");
+	if (flags & FILE_BLOCK_PARTIAL)
+		printf("partial ");
 	printf(")");
+}
+
+static int print_all_blocks(unsigned char *digest)
+{
+	int ret;
+	uint64_t loff;
+	unsigned int flags;
+	const unsigned char *filename;
+
+	ret = sqlite3_bind_blob(find_blocks_stmt, 1, digest, digest_len,
+				SQLITE_STATIC);
+	if (ret) {
+		fprintf(stderr, "Error %d binding digest for blocks: %s\n", ret,
+			sqlite3_errstr(ret));
+		return ret;
+	}
+
+	while ((ret = sqlite3_step(find_blocks_stmt)) == SQLITE_ROW) {
+		filename = sqlite3_column_text(find_blocks_stmt, 0);
+		loff = sqlite3_column_int64(find_blocks_stmt, 1);
+		flags = sqlite3_column_int(find_blocks_stmt, 2);
+
+		printf("  %s\tloff: %llu lblock: %llu "
+		       "flags: 0x%x ", filename,
+		       (unsigned long long)loff,
+		       (unsigned long long)loff / blocksize,
+		       flags);
+		printf_file_block_flags(flags);
+		printf("\n");
+	}
+	if (ret != SQLITE_DONE) {
+		fprintf(stderr,
+			"error %d running block stmt: %s\n",
+			ret, sqlite3_errstr(ret));
+		return ret;
+	}
+
+	sqlite3_reset(find_blocks_stmt);
+
+	return 0;
 }
 
 static void print_by_size(void)
 {
-	struct rb_node *node = rb_first(&by_size);
-	struct dupe_blocks_list *dups;
-	struct file_block *block;
+	int ret;
+	int header_printed = 0;
+	unsigned char *digest;
+	uint64_t count, files_count;
 
 	if (print_all_hashes)
-		printf("Print all hashes\n");
+		printf("Print all hashes ");
 	else
-		printf("Print top %d hashes\n", num_to_print);
+		printf("Print top %d hashes ", num_to_print);
 
-	printf("Hash, # Blocks, # Files\n");
+	printf("(this may take some time)\n");
 
-	while (1) {
-		if (node == NULL)
-			break;
+	while ((ret = sqlite3_step(top_hashes_stmt)) == SQLITE_ROW) {
+		digest = (unsigned char *)sqlite3_column_blob(top_hashes_stmt, 0);
+		count = sqlite3_column_int64(top_hashes_stmt, 1);
 
-		dups = rb_entry(node, struct dupe_blocks_list, dl_by_size);
-
-		debug_print_digest(stdout, dups->dl_hash);
-		printf(", %u, %u\n", dups->dl_num_elem, dups->dl_num_files);
-		if (print_blocks) {
-			list_for_each_entry(block, &dups->dl_list,
-					    b_list) {
-				struct filerec *f = block->b_file;
-				printf("  %s\tloff: %llu lblock: %llu "
-				       "flags: 0x%x ", f->filename,
-				       (unsigned long long)block->b_loff,
-				       (unsigned long long)block->b_loff / blocksize,
-				       block->b_flags);
-				printf_file_block_flags(block);
-				printf("\n");
-			}
+		ret = sqlite3_bind_blob(files_count_stmt, 1, digest, digest_len,
+					SQLITE_STATIC);
+		if (ret) {
+			fprintf(stderr, "Error %d binding digest: %s\n", ret,
+				sqlite3_errstr(ret));
+			return;
 		}
 
-		if (!print_all_hashes && --num_to_print == 0)
-			break;
+		ret = sqlite3_step(files_count_stmt);
+		if (ret != SQLITE_ROW && ret != SQLITE_DONE) {
+			fprintf(stderr, "error %d, file count search: %s\n",
+				ret, sqlite3_errstr(ret));
+			return;
+		}
 
-		node = rb_next(node);
+		files_count = sqlite3_column_int64(files_count_stmt, 0);
+
+		if (!header_printed) {
+			printf("Hash, # Blocks, # Files\n");
+			header_printed = 1;
+		}
+
+		debug_print_digest(stdout, digest);
+		printf(", %"PRIu64", %"PRIu64"\n", count, files_count);
+
+		sqlite3_reset(files_count_stmt);
+
+		if (print_blocks) {
+			ret = print_all_blocks(digest);
+			if (ret)
+				return;
+		}
+
+		if (!print_all_hashes && --num_to_print == 0) {
+			ret = SQLITE_DONE;
+			break;
+		}
 	}
+	if (ret != SQLITE_DONE) {
+		fprintf(stderr, "error %d retrieving hashes from table: %s\n",
+			ret, sqlite3_errstr(ret));
+	}
+}
+
+static int print_files_cb(void *priv, int argc, char **argv, char **column)
+{
+	int i;
+	for(i = 0; i < argc; i++)
+		printf("%s\t", argv[i]);
+	printf("\n");
+	return 0;
 }
 
 static void print_filerecs(void)
 {
-	struct filerec *file;
+	int ret;
+	char *errorstr;
 
-	printf("Showing %llu files.\nInode\tBlocks Stored\tSubvold ID\tFilename\n",
-		num_filerecs);
+#define	LIST_FILES							\
+"select ino, subvol, blocks, size, filename from files;"
 
-	list_for_each_entry(file, &filerec_list, rec_list) {
-		printf("%"PRIu64"\t%"PRIu64"\t%"PRIu64"\t%s\n", file->inum,
-		       file->num_blocks, file->subvolid, file->filename);
+	printf("Showing %"PRIu64" files.\nInode\tSubvol ID\tBlocks Stored\tSize\tFilename\n",
+		disk_files);
+
+	ret = sqlite3_exec(gdb, LIST_FILES, print_files_cb, gdb, &errorstr);
+	if (ret) {
+		fprintf(stderr, "error %d, executing file search: %s\n", ret,
+			errorstr);
+		return;
 	}
 }
 
 static unsigned int disk_blocksize;
 static int major, minor;
-static uint64_t disk_files, disk_hashes;
 
-static void print_file_info(struct hash_tree *tree)
+static void print_file_info(void)
 {
 	printf("Raw header info for \"%s\":\n", serialize_fname);
 	printf("  version: %u.%u\tblock_size: %u\n", major, minor,
 	       disk_blocksize);
 	printf("  num_files: %"PRIu64"\tnum_hashes: %"PRIu64"\n",
 	       disk_files, disk_hashes);
-	printf("Loaded hashes from %"PRIu64" blocks into %"PRIu64" nodes\n",
-	       tree->num_blocks, tree->num_hashes);
-	printf("Loaded %llu file records\n", num_filerecs);
 }
 
 static void usage(const char *prog)
@@ -280,19 +350,19 @@ int main(int argc, char **argv)
 
 	blocksize = disk_blocksize;
 
-	ret = dbfile_read_all_hashes(&tree);
+	ret = prepare_statements();
 	if (ret)
 		return ret;
 
-	print_file_info(&tree);
+	print_file_info();
 
-	if (num_to_print || print_all_hashes) {
-		sort_by_size(&tree);
+	if (num_to_print || print_all_hashes)
 		print_by_size();
-	}
 
 	if (print_file_list)
 		print_filerecs();
+
+	finalize_statements();
 
 	dbfile_close();
 
