@@ -21,7 +21,8 @@
 #define DB_FILE_MAJOR	1
 #define DB_FILE_MINOR	2
 
-static sqlite3 *gdb = NULL;
+/* exported for hashstats.c */
+sqlite3 *gdb = NULL;
 
 #if (SQLITE_VERSION_NUMBER < 3007015)
 #define	perror_sqlite(_err, _why)					\
