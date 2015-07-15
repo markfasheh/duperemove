@@ -25,6 +25,7 @@
 #include <ctype.h>
 #include <inttypes.h>
 #include <execinfo.h>
+#include <sys/time.h>
 
 #include "debug.h"
 #include "util.h"
@@ -130,4 +131,24 @@ void print_stack_trace(void)
 	for (i=0; i < trace_size; i++)
 		printf("%s\n", messages[i]);
 	free(messages);
+}
+
+void record_start(struct elapsed_time *e, const char *name)
+{
+	e->name = name;
+	gettimeofday(&e->start, NULL);
+}
+
+static void record_end(struct elapsed_time *e)
+{
+	gettimeofday(&e->end, NULL);
+
+	e->elapsed = (e->end.tv_sec - e->start.tv_sec) +
+		((e->end.tv_usec - e->start.tv_usec) / 1000000.0F);
+}
+
+void record_end_print(struct elapsed_time *e)
+{
+	record_end(e);
+	printf("%s took %fs\n", e->name, e->elapsed);
 }

@@ -21,4 +21,14 @@ int pretty_size_snprintf(uint64_t size, char *str, size_t str_bytes);
 		_str;							\
 	})
 
+/* Trivial wrapper around gettimeofday */
+struct elapsed_time {
+	struct timeval	start;
+	struct timeval	end;
+	const char	*name;
+	double		elapsed;
+};
+void record_start(struct elapsed_time *e, const char *name);
+void record_end_print(struct elapsed_time *e);
+
 #endif	/* __UTIL_H__ */
