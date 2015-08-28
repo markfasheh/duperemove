@@ -79,6 +79,12 @@ A future enhancement will allow duperemove to reuse the data inside
 hashfiles to optimize the file scan by skipping unchanged files.
 
 .TP
+\fB\--fdupes\fR
+Run in \fBfdupes\fR mode. With this option you can pipe the output of
+\fBfdupes\fR to duperemove to dedupe any duplicate files found. When
+recieving a file list in this manner, duperemove will skip the hashing phase.
+
+.TP
 \fB\-x\fR
 Don't cross filesystem boundaries.
 
@@ -157,3 +163,4 @@ Deduplication is currently only supported by the \fIbtrfs\fR filesystem.
 .SH "SEE ALSO"
 .BR filesystems(5)
 .BR btrfs(8)
+.BR fdupes(1)
