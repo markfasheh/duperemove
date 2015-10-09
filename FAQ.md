@@ -2,12 +2,15 @@
 
 ### Is there an upper limit to the amount of data duperemove can process?
 
-v0.08 of duperemove has been tested on small numbers of VMS or iso
-files (5-10) it can probably scale up to 50 or so.
+Duperemove v0.10 is fast at reading and cataloging data. Dedupe runs
+will be memory limited unless the '--hashfile' option is used. '--hashfile'
+allows duperemove to temporarily store duplicated hashes to disk, thus removing
+the large memory overhead and allowing for a far larger amount of data to be
+scanned and deduped. Realistically though you will be limited by the speed of
+your disks and cpu.
 
-v0.09 is much faster at hashing and cataloging extents and therefore
-can handle a larger data set. My own testing is typically with a
-filesystem of about 750 gigabytes and millions of files.
+Actual performance numbers are dependent on hardware - up to date
+testing information is kept [on the wiki](https://github.com/markfasheh/duperemove/wiki/Performance-Numbers)
 
 
 ### Why does it not print out all duplicate extents?
@@ -20,11 +23,14 @@ based on the results of that classification.
 ### How can I find out my space savings after a dedupe?
 
 Duperemove will print out an estimate of the saved space after a
-dedupe operation for you. You can also do a df before the dedupe
-operation, then a df about 60 seconds after the operation. It is
-common for btrfs space reporting to be 'behind' while delayed updates
-get processed, so an immediate df after deduping might not show any
-savings.
+dedupe operation for you.
+
+You can get a more accurate picture by running 'btrfs fi df' before
+and after each duperemove run.
+
+Be careful about using the 'df' tool on btrfs - it is common for space
+reporting to be 'behind' while delayed updates get processed, so an
+immediate df after deduping might not show any savings.
 
 
 ### Why is the total deduped data report an estimate?
