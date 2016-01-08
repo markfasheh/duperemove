@@ -325,12 +325,12 @@ struct csum_block {
 	unsigned char digest[DIGEST_LEN_MAX];
 };
 
-static inline int csum_next_block(struct csum_block *data, uint64_t *off)
+static inline int csum_next_block(struct csum_block *data, uint64_t *off,
+				  struct fiemap_ctxt *fc)
 {
 	ssize_t stored_bytes = data->bytes;
 	ssize_t bytes_read;
 	int ret = 0;
-	struct fiemap_ctxt *fc = NULL;
 	unsigned int hole;
 	int partial = 0;
 
@@ -432,7 +432,7 @@ static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
 	while (1) {
 		int iret;
 
-		ret = csum_next_block(&curr_block, &off);
+		ret = csum_next_block(&curr_block, &off, fc);
 		if (ret == 0) /* EOF */
 			break;
 
@@ -521,7 +521,7 @@ static void csum_whole_file_swap(struct filerec *file,
 		goto err_noclose;
 
 	while (1) {
-		ret = csum_next_block(&curr_block, &off);
+		ret = csum_next_block(&curr_block, &off, fc);
 		if (ret == 0) /* EOF */
 			break;
 
