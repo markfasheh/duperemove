@@ -16,7 +16,7 @@ int dbfile_sync_config(unsigned int block_size);
 
 struct hash_tree;
 struct hash_file_header;
-/* Used by tools, will load *all* hashes into 'hash_tree' */
+/* Used only by hashstats, will load *all* hashes into 'hash_tree' */
 int dbfile_read_all_hashes(struct hash_tree *tree);
 struct rb_root;
 
@@ -30,13 +30,10 @@ struct rb_root;
 int dbfile_populate_hashes(struct rb_root *d_tree);
 
 /*
- * Load hashes into hash_tree only if they are found in our bloom
- * filter. The extent search is later run on the resulting hash_tree.
- *
- * This is 'stage 2' when we're using dbfile for swap
+ * Load hashes into hash_tree only if they have a duplicate in the db.
+ * The extent search is later run on the resulting hash_tree.
  */
-int dbfile_load_hashes_bloom(struct hash_tree *scan_tree,
-			     struct rb_root *digest_tree);
+int dbfile_load_hashes(struct hash_tree *scan_tree);
 
 /*
  * Following are used during file scan stage to get our hashes into
