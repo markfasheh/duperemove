@@ -19,6 +19,7 @@
 #define	__UTIL_H__
 
 #include <stdint.h>
+#include <sys/time.h>
 
 /* controlled by user options, turns pretty print on if true. */
 extern int human_readable;
