@@ -24,7 +24,9 @@
 #include <stdint.h>
 #include <ctype.h>
 #include <inttypes.h>
+#ifdef __GLIBC__
 #include <execinfo.h>
+#endif
 #include <sys/time.h>
 
 #include "debug.h"
@@ -125,12 +127,14 @@ void print_stack_trace(void)
 	char **messages = (char **)NULL;
 	int i, trace_size = 0;
 
+#ifdef __GLIBC__
 	trace_size = backtrace(trace, 16);
 	messages = backtrace_symbols(trace, trace_size);
 	printf("[stack trace follows]\n");
 	for (i=0; i < trace_size; i++)
 		printf("%s\n", messages[i]);
 	free(messages);
+#endif
 }
 
 void record_start(struct elapsed_time *e, const char *name)
