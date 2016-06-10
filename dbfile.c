@@ -263,16 +263,9 @@ int dbfile_sync_config(unsigned int block_size)
 	return ret;
 }
 
-static int __dbfile_count_rows(sqlite3_stmt *stmt, const char *rowid,
-			       uint64_t *num)
+static int __dbfile_count_rows(sqlite3_stmt *stmt, uint64_t *num)
 {
 	int ret;
-
-	ret = sqlite3_bind_text(stmt, 1, rowid, -1, SQLITE_STATIC);
-	if (ret) {
-		perror_sqlite(ret, "retrieving count from table (bind)");
-		return ret;
-	}
 
 	ret = sqlite3_step(stmt);
 	if (ret != SQLITE_ROW) {
@@ -294,12 +287,12 @@ static int dbfile_count_rows(sqlite3 *db, uint64_t *num_hashes,
 	sqlite3_stmt *stmt = NULL;
 
 	if (num_hashes) {
-#define COUNT_HASHES "select COUNT(?1) from hashes;"
+#define COUNT_HASHES "select COUNT(*) from hashes;"
 		ret = sqlite3_prepare_v2(db, COUNT_HASHES, -1, &stmt, NULL);
 		if (ret)
 			goto out;
 
-		ret = __dbfile_count_rows(stmt, "digest", num_hashes);
+		ret = __dbfile_count_rows(stmt, num_hashes);
 		if (ret)
 			goto out;
 
@@ -308,12 +301,12 @@ static int dbfile_count_rows(sqlite3 *db, uint64_t *num_hashes,
 	}
 
 	if (num_files) {
-#define COUNT_FILES "select COUNT(?1) from files;"
+#define COUNT_FILES "select COUNT(*) from files;"
 		ret = sqlite3_prepare_v2(db, COUNT_FILES, -1, &stmt, NULL);
 		if (ret)
 			goto out;
 
-		ret = __dbfile_count_rows(stmt, "filename", num_files);
+		ret = __dbfile_count_rows(stmt, num_files);
 		if (ret)
 			goto out;
 
