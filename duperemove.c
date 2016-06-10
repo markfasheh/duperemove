@@ -200,8 +200,11 @@ static int parse_options(int argc, char **argv)
 		case 'b':
 			blocksize = parse_size(optarg);
 			if (blocksize < MIN_BLOCKSIZE ||
-			    blocksize > MAX_BLOCKSIZE)
+			    blocksize > MAX_BLOCKSIZE){
+				fprintf(stderr, "Error: Blocksize is bounded by %u and %u, %u found\n",
+					MIN_BLOCKSIZE, MAX_BLOCKSIZE, blocksize);
 				return EINVAL;
+			}
 			break;
 		case 'd':
 		case 'D':
@@ -236,8 +239,10 @@ static int parse_options(int argc, char **argv)
 			break;
 		case IO_THREADS_OPTION:
 			io_threads = strtoul(optarg, NULL, 10);
-			if (!io_threads)
+			if (!io_threads){
+				fprintf(stderr, "Error: --io-threads must be an interger, %s found\n", optarg);
 				return EINVAL;
+			}
 			break;
 		case LOOKUP_EXTENTS_OPTION:
 			do_lookup_extents = parse_yesno_option(optarg, 0);
