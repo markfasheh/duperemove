@@ -406,78 +406,6 @@ static void csum_whole_file_init(GMutex **mutex, void *location,
 	}
 }
 
-static void csum_whole_file(struct filerec *file, struct hash_tree *tree)
-{
-	uint64_t off = 0;
-	int ret = 0;
-	struct fiemap_ctxt *fc = NULL;
-	struct csum_block curr_block;
-	GMutex *mutex;
-
-	curr_block.buf = malloc(blocksize);
-	assert(curr_block.buf != NULL);
-	curr_block.file = file;
-	curr_block.bytes = 0;
-
-	csum_whole_file_init(&mutex, tree, file, &fc);
-
-	ret = filerec_open(file, 0);
-	if (ret)
-		goto err_noclose;
-
-	while (1) {
-		int iret;
-
-		ret = csum_next_block(&curr_block, &off, fc);
-		if (ret == 0) /* EOF */
-			break;
-
-		if (ret == -1) /* Err */
-			goto err;
-
-		g_mutex_lock(mutex);
-		iret = insert_hashed_block(tree, curr_block.digest, file,
-						off, curr_block.flags);
-		g_mutex_unlock(mutex);
-		if (iret || ret == 1)
-			break;
-
-		off += curr_block.bytes;
-		curr_block.bytes = 0;
-	}
-
-	filerec_close(file);
-	free(curr_block.buf);
-	if (fc)
-		free(fc);
-
-	return;
-
-err:
-	filerec_close(file);
-err_noclose:
-	free(curr_block.buf);
-	if (fc)
-		free(fc);
-
-	fprintf(
-		stderr,
-		"Skipping file due to error %d (%s), %s\n",
-		ret,
-		strerror(ret),
-		file->filename);
-
-	g_mutex_lock(mutex);
-	remove_hashed_blocks(tree, file);
-	/*
-	 * filerec_free will remove from the filerec tree keep it
-	 * under tree_mutex until we have a need for real locking in
-	 * filerec.c
-	 */
-	filerec_free(file);
-	g_mutex_unlock(mutex);
-}
-
 static void csum_whole_file_swap(struct filerec *file,
 				struct thread_params *params)
 {
@@ -595,26 +523,6 @@ err_noclose:
 	g_mutex_unlock(mutex);
 
 	return;
-}
-
-int populate_tree_aim(struct hash_tree *tree)
-{
-	int ret = 0;
-	GMutex mutex;
-	GThreadPool *pool;
-
-	pool = setup_pool(tree, &mutex, csum_whole_file);
-	if (!pool) {
-		ret = -1;
-		goto out;
-	}
-
-	run_pool(pool);
-
-out:
-	g_dataset_remove_data(tree, "mutex");
-
-	return ret;
 }
 
 int populate_tree_swap()

@@ -15,7 +15,6 @@ extern unsigned int io_threads;
  * Returns nonzero on fatal errors only
  */
 int add_file(const char *name, int dirfd);
-int populate_tree_aim(struct hash_tree *tree);
 int populate_tree_swap();
 
 /* For dbfile.c */
