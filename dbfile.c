@@ -61,20 +61,20 @@ static int create_tables(sqlite3 *db)
 
 #define CREATE_TABLE_CONFIG	\
 "CREATE TABLE config(keyname TEXT PRIMARY KEY NOT NULL, keyval BLOB);"
-	ret = sqlite3_exec(db, CREATE_TABLE_CONFIG, NULL, db, &errorstr);
+	ret = sqlite3_exec(db, CREATE_TABLE_CONFIG, NULL, NULL, &errorstr);
 	if (ret)
 		goto out;
 
 #define	CREATE_TABLE_FILES	\
 "CREATE TABLE files(filename TEXT PRIMARY KEY NOT NULL, ino INTEGER, "\
 "subvol INTEGER, size INTEGER, blocks INTEGER);"
-	ret = sqlite3_exec(db, CREATE_TABLE_FILES, NULL, db, &errorstr);
+	ret = sqlite3_exec(db, CREATE_TABLE_FILES, NULL, NULL, &errorstr);
 	if (ret)
 		goto out;
 
 #define	CREATE_TABLE_HASHES					\
 "CREATE TABLE hashes(digest BLOB KEY NOT NULL, ino INTEGER, subvol INTEGER, loff INTEGER, flags INTEGER);"
-	ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, db, &errorstr);
+	ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, &errorstr);
 	if (ret)
 		goto out;
 
@@ -521,7 +521,7 @@ int dbfile_write_hashes(sqlite3 *db, struct filerec *file, uint64_t nb_hash,
 		sqlite3_reset(stmt);
 	}
 
-	ret = sqlite3_exec(db, "COMMIT TRANSACTION", NULL, db, &errorstr);
+	ret = sqlite3_exec(db, "COMMIT TRANSACTION", NULL, NULL, &errorstr);
 	if (ret) {
 		perror_sqlite(ret, "committing transaction");
 		sqlite3_free(errorstr);
