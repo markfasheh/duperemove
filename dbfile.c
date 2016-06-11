@@ -57,24 +57,23 @@ static int debug_print_cb(void *priv, int argc, char **argv, char **column)
 static int create_tables(sqlite3 *db)
 {
 	int ret;
-	char *errorstr = NULL;
 
 #define CREATE_TABLE_CONFIG	\
 "CREATE TABLE config(keyname TEXT PRIMARY KEY NOT NULL, keyval BLOB);"
-	ret = sqlite3_exec(db, CREATE_TABLE_CONFIG, NULL, NULL, &errorstr);
+	ret = sqlite3_exec(db, CREATE_TABLE_CONFIG, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
 #define	CREATE_TABLE_FILES	\
 "CREATE TABLE files(filename TEXT PRIMARY KEY NOT NULL, ino INTEGER, "\
 "subvol INTEGER, size INTEGER, blocks INTEGER);"
-	ret = sqlite3_exec(db, CREATE_TABLE_FILES, NULL, NULL, &errorstr);
+	ret = sqlite3_exec(db, CREATE_TABLE_FILES, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
 #define	CREATE_TABLE_HASHES					\
 "CREATE TABLE hashes(digest BLOB KEY NOT NULL, ino INTEGER, subvol INTEGER, loff INTEGER, flags INTEGER);"
-	ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, &errorstr);
+	ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
@@ -83,9 +82,6 @@ static int create_tables(sqlite3 *db)
 	ret = sqlite3_exec(db, CREATE_DIGEST_INDEX, NULL, db, &errorstr);
 
 out:
-
-	sqlite3_free(errorstr);
-
 	return ret;
 }
 
