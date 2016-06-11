@@ -16,8 +16,6 @@ int dbfile_sync_config(unsigned int block_size);
 
 struct hash_tree;
 struct hash_file_header;
-/* Used only by hashstats, will load *all* hashes into 'hash_tree' */
-int dbfile_read_all_hashes(struct hash_tree *tree);
 struct rb_root;
 
 /*
