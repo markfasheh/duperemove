@@ -77,11 +77,17 @@ static int create_tables(sqlite3 *db)
 	if (ret)
 		goto out;
 
+out:
+	return ret;
+}
+
+int create_indexes(sqlite3 *db)
+{
+	int ret;
 #define	CREATE_DIGEST_INDEX						\
 "create index idx_digest on hashes(digest);"
-	ret = sqlite3_exec(db, CREATE_DIGEST_INDEX, NULL, db, &errorstr);
+	ret = sqlite3_exec(db, CREATE_DIGEST_INDEX, NULL, NULL, NULL);
 
-out:
 	return ret;
 }
 

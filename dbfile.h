@@ -18,14 +18,7 @@ struct hash_tree;
 struct hash_file_header;
 struct rb_root;
 
-/*
- * Scans hashes by digest, adding each one to our bloom filter. If we
- * find a duplicate, it is inserted into d_tree.
- *
- * This effectively does 'scan #1' for us when we're loading from a
- * dbfile instead of doing a file scan.
- */
-int dbfile_populate_hashes(struct rb_root *d_tree);
+int create_indexes(sqlite3 *db);
 
 /*
  * Load hashes into hash_tree only if they have a duplicate in the db.

@@ -402,6 +402,8 @@ int main(int argc, char **argv)
 		goto out;
 	}
 
+	create_indexes(dbfile_get_handle());
+
 	/*
 	 * File scan from above can cause quite a bit of output, flush
 	 * here in case of logfile.
