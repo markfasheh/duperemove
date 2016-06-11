@@ -373,7 +373,7 @@ int main(int argc, char **argv)
 		ret = dbfile_create(serialize_fname);
 		if (ret)
 			break;
-		ret = populate_tree_swap();
+		ret = populate_tree();
 		break;
 	case H_READ:
 		ret = dbfile_open(serialize_fname);

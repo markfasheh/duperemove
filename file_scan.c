@@ -406,7 +406,7 @@ static void csum_whole_file_init(GMutex **mutex, void *location,
 	}
 }
 
-static void csum_whole_file_swap(struct filerec *file,
+static void csum_whole_file(struct filerec *file,
 				struct thread_params *params)
 {
 	uint64_t off = 0;
@@ -525,7 +525,7 @@ err_noclose:
 	return;
 }
 
-int populate_tree_swap()
+int populate_tree()
 {
 	int ret = 0;
 	GMutex mutex;
@@ -533,7 +533,7 @@ int populate_tree_swap()
 
 	struct thread_params params = { 0, 0, };
 
-	pool = setup_pool(&params, &mutex, csum_whole_file_swap);
+	pool = setup_pool(&params, &mutex, csum_whole_file);
 	if (!pool) {
 		ret = -1;
 		goto out;
