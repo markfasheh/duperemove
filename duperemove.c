@@ -64,12 +64,11 @@ static int version_only = 0;
 static int fdupes_mode = 0;
 
 static enum {
-	H_NONE = 0,
 	H_READ,
 	H_WRITE,
 	H_UPDATE,
-} use_hashfile = H_NONE;
-static char *serialize_fname = NULL;
+} use_hashfile = H_UPDATE;
+static char *serialize_fname = ":memory:";
 unsigned int io_threads;
 int do_lookup_extents = 0;
 
@@ -334,12 +333,9 @@ int main(int argc, char **argv)
 	int ret;
 	struct results_tree res;
 	struct filerec *file;
-	struct hash_tree scan_tree;
 
 	init_filerec();
 	init_results_tree(&res);
-
-	init_hash_tree(&scan_tree);
 
 	/* Parse options might change this so set a default here */
 #if GLIB_CHECK_VERSION(2,36,0)
@@ -377,7 +373,7 @@ int main(int argc, char **argv)
 		ret = dbfile_create(serialize_fname);
 		if (ret)
 			break;
-		ret = populate_tree_swap();
+		ret = populate_tree();
 		break;
 	case H_READ:
 		ret = dbfile_open(serialize_fname);
@@ -389,9 +385,6 @@ int main(int argc, char **argv)
 		 */
 		ret = dbfile_get_config(&blocksize, NULL, NULL, NULL, NULL);
 		break;
-	case H_NONE:
-		ret = populate_tree_aim(&scan_tree);
-		break;
 	default:
 		abort_lineno();
 		break;
@@ -401,6 +394,8 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Error while populating extent tree!\n");
 		goto out;
 	}
+
+	create_indexes(dbfile_get_handle());
 
 	/*
 	 * File scan from above can cause quite a bit of output, flush
@@ -424,24 +419,20 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (use_hashfile == H_NONE) {
-		ret = find_all_dupes(&scan_tree, &res);
-	} else {
-		/* We will now reread the serialized file, and create a new
-		 * shiny tree with only duplicate hashes
-		 */
-		struct hash_tree dups_tree;
+	/* We will now reread the serialized file, and create a new
+	 * shiny tree with only duplicate hashes
+	 */
+	struct hash_tree dups_tree;
 
-		printf("Loading only duplicated hashes from hashfile.\n");
+	printf("Loading only duplicated hashes from hashfile.\n");
 
-		init_hash_tree(&dups_tree);
+	init_hash_tree(&dups_tree);
 
-		ret = dbfile_load_hashes(&dups_tree);
-		if (ret)
-			goto out;
+	ret = dbfile_load_hashes(&dups_tree);
+	if (ret)
+		goto out;
 
-		ret = find_all_dupes(&dups_tree, &res);
-	}
+	ret = find_all_dupes(&dups_tree, &res);
 
 	if (debug) {
 		print_dupes_table(&res);

@@ -16,24 +16,15 @@ int dbfile_sync_config(unsigned int block_size);
 
 struct hash_tree;
 struct hash_file_header;
-/* Used only by hashstats, will load *all* hashes into 'hash_tree' */
-int dbfile_read_all_hashes(struct hash_tree *tree);
 struct rb_root;
 
-/*
- * Scans hashes by digest, adding each one to our bloom filter. If we
- * find a duplicate, it is inserted into d_tree.
- *
- * This effectively does 'scan #1' for us when we're loading from a
- * dbfile instead of doing a file scan.
- */
-int dbfile_populate_hashes(struct rb_root *d_tree);
+int create_indexes(sqlite3 *db);
 
 /*
  * Load hashes into hash_tree only if they have a duplicate in the db.
  * The extent search is later run on the resulting hash_tree.
  */
-int dbfile_load_hashes(struct hash_tree *scan_tree);
+int dbfile_load_hashes(struct hash_tree *hash_tree);
 
 /*
  * Following are used during file scan stage to get our hashes into

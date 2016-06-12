@@ -57,40 +57,36 @@ static int debug_print_cb(void *priv, int argc, char **argv, char **column)
 static int create_tables(sqlite3 *db)
 {
 	int ret;
-	char *errorstr = NULL;
 
 #define CREATE_TABLE_CONFIG	\
 "CREATE TABLE config(keyname TEXT PRIMARY KEY NOT NULL, keyval BLOB);"
-	ret = sqlite3_exec(db, CREATE_TABLE_CONFIG, NULL, db, &errorstr);
+	ret = sqlite3_exec(db, CREATE_TABLE_CONFIG, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
 #define	CREATE_TABLE_FILES	\
 "CREATE TABLE files(filename TEXT PRIMARY KEY NOT NULL, ino INTEGER, "\
 "subvol INTEGER, size INTEGER, blocks INTEGER);"
-	ret = sqlite3_exec(db, CREATE_TABLE_FILES, NULL, db, &errorstr);
+	ret = sqlite3_exec(db, CREATE_TABLE_FILES, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
 #define	CREATE_TABLE_HASHES					\
 "CREATE TABLE hashes(digest BLOB KEY NOT NULL, ino INTEGER, subvol INTEGER, loff INTEGER, flags INTEGER);"
-	ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, db, &errorstr);
+	ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, NULL);
 	if (ret)
 		goto out;
-
-#define CREATE_INO_INDEX						\
-"create index idx_inosub on hashes(ino, subvol);"
-	ret = sqlite3_exec(db, CREATE_INO_INDEX, NULL, db, &errorstr);
-	if (ret)
-		goto out;
-
-#define	CREATE_DIGEST_INDEX						\
-"create index idx_digest on hashes(digest);"
-	ret = sqlite3_exec(db, CREATE_DIGEST_INDEX, NULL, db, &errorstr);
 
 out:
+	return ret;
+}
 
-	sqlite3_free(errorstr);
+int create_indexes(sqlite3 *db)
+{
+	int ret;
+#define	CREATE_DIGEST_INDEX						\
+"create index if not exists idx_digest on hashes(digest);"
+	ret = sqlite3_exec(db, CREATE_DIGEST_INDEX, NULL, NULL, NULL);
 
 	return ret;
 }
@@ -263,16 +259,9 @@ int dbfile_sync_config(unsigned int block_size)
 	return ret;
 }
 
-static int __dbfile_count_rows(sqlite3_stmt *stmt, const char *rowid,
-			       uint64_t *num)
+static int __dbfile_count_rows(sqlite3_stmt *stmt, uint64_t *num)
 {
 	int ret;
-
-	ret = sqlite3_bind_text(stmt, 1, rowid, -1, SQLITE_STATIC);
-	if (ret) {
-		perror_sqlite(ret, "retrieving count from table (bind)");
-		return ret;
-	}
 
 	ret = sqlite3_step(stmt);
 	if (ret != SQLITE_ROW) {
@@ -294,12 +283,12 @@ static int dbfile_count_rows(sqlite3 *db, uint64_t *num_hashes,
 	sqlite3_stmt *stmt = NULL;
 
 	if (num_hashes) {
-#define COUNT_HASHES "select COUNT(?1) from hashes;"
+#define COUNT_HASHES "select COUNT(*) from hashes;"
 		ret = sqlite3_prepare_v2(db, COUNT_HASHES, -1, &stmt, NULL);
 		if (ret)
 			goto out;
 
-		ret = __dbfile_count_rows(stmt, "digest", num_hashes);
+		ret = __dbfile_count_rows(stmt, num_hashes);
 		if (ret)
 			goto out;
 
@@ -308,12 +297,12 @@ static int dbfile_count_rows(sqlite3 *db, uint64_t *num_hashes,
 	}
 
 	if (num_files) {
-#define COUNT_FILES "select COUNT(?1) from files;"
+#define COUNT_FILES "select COUNT(*) from files;"
 		ret = sqlite3_prepare_v2(db, COUNT_FILES, -1, &stmt, NULL);
 		if (ret)
 			goto out;
 
-		ret = __dbfile_count_rows(stmt, "filename", num_files);
+		ret = __dbfile_count_rows(stmt, num_files);
 		if (ret)
 			goto out;
 
@@ -534,7 +523,7 @@ int dbfile_write_hashes(sqlite3 *db, struct filerec *file, uint64_t nb_hash,
 		sqlite3_reset(stmt);
 	}
 
-	ret = sqlite3_exec(db, "COMMIT TRANSACTION", NULL, db, &errorstr);
+	ret = sqlite3_exec(db, "COMMIT TRANSACTION", NULL, NULL, &errorstr);
 	if (ret) {
 		perror_sqlite(ret, "committing transaction");
 		sqlite3_free(errorstr);
@@ -547,123 +536,6 @@ bind_error:
 out_error:
 
 	sqlite3_finalize(stmt);
-	return ret;
-}
-
-typedef int (walk_file_hashes_cb)(struct filerec *file, unsigned char *digest,
-				   uint64_t loff, int flags, void *priv);
-
-static int dbfile_walk_file_hashes(sqlite3 *db, struct filerec *file,
-				   walk_file_hashes_cb *cb, void *priv)
-{
-	int ret;
-	sqlite3_stmt *stmt = NULL;
-	unsigned char *digest;
-	uint64_t loff;
-	unsigned int flags;
-
-#define	LOAD_HASHES_SQL	\
-"SELECT digest, loff, flags FROM hashes WHERE ino = ?1 AND subvol = ?2 ORDER BY loff;"
-
-	ret = sqlite3_prepare_v2(db, LOAD_HASHES_SQL, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing statement");
-		return ret;
-	}
-
-	ret = sqlite3_bind_int64(stmt, 1, file->inum);
-	if (ret) {
-		perror_sqlite(ret, "binding inum to statement");
-		goto out_finalize;
-	}
-
-	ret = sqlite3_bind_int64(stmt, 2, file->subvolid);
-	if (ret) {
-		perror_sqlite(ret, "binding subvolid to statement");
- 		goto out_finalize;
-	}
-
-	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
-		digest = (unsigned char *)sqlite3_column_blob(stmt, 0);
-		loff = sqlite3_column_int64(stmt, 1);
-		flags = sqlite3_column_int(stmt, 2);
-
-		ret = cb(file, digest, loff, flags, priv);
-		if (ret)
-			goto out_finalize;
-	}
-	if (ret != SQLITE_DONE) {
-		perror_sqlite(ret, "retrieving hashes from table");
-		goto out_finalize;
-	}
-
-	ret = 0;
-out_finalize:
-	sqlite3_finalize(stmt);
-
-	return ret;
-}
-
-static int load_into_hash_tree_cb(struct filerec *file, unsigned char *digest,
-				  uint64_t loff, int flags, void *priv)
-{
-	struct hash_tree *tree = priv;
-
-	return insert_hashed_block(tree, digest, file, loff, flags);
-}
-
-int dbfile_read_all_hashes(struct hash_tree *tree)
-{
-	int ret;
-	sqlite3 *db;
-	sqlite3_stmt *stmt = NULL;
-	char *filename;
-	uint64_t ino, subvolid, size;
-	struct filerec *file;
-
-	db = dbfile_get_handle();
-	if (!db)
-		return ENOENT;
-
-	ret = dbfile_check_version(db);
-	if (ret)
-		return ret;
-
-	ret = sqlite3_prepare_v2(db,
-				 "SELECT ino, subvol, filename, size from files;", -1,
-				 &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing statement");
-		return ret;
-	}
-
-	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
-		ino = sqlite3_column_int64(stmt, 0);
-		subvolid = sqlite3_column_int64(stmt, 1);
-		filename = (char *)sqlite3_column_text(stmt, 2);
-		size = sqlite3_column_int64(stmt, 3);
-
-		file = filerec_new(filename, ino, subvolid, size);
-		if (!file) {
-			ret = ENOMEM;
-			goto out_finalize;
-		}
-
-		ret = dbfile_walk_file_hashes(db, file, load_into_hash_tree_cb,
-					      tree);
-		if (ret)
-			goto out_finalize;
-	}
-	if (ret != SQLITE_DONE) {
-		perror_sqlite(ret, "retrieving hashes from table");
-		ret = EIO;
-		goto out_finalize;
-	}
-
-	ret = 0;
-out_finalize:
-	sqlite3_finalize(stmt);
-
 	return ret;
 }
 
