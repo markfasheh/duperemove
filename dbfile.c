@@ -580,7 +580,7 @@ int dbfile_load_hashes(struct hash_tree *hash_tree)
 		if (!file) {
 			ret = ENOENT;
 			fprintf(stderr,
-				"Filerec (%"PRIu64",%"PRIu64" is in db"
+				"Filerec (%"PRIu64",%"PRIu64") is in db"
 				" but not in hash!\n", ino, subvol);
 			goto out;
 		}

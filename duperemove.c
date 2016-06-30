@@ -239,7 +239,8 @@ static int parse_options(int argc, char **argv)
 		case IO_THREADS_OPTION:
 			io_threads = strtoul(optarg, NULL, 10);
 			if (!io_threads){
-				fprintf(stderr, "Error: --io-threads must be an interger, %s found\n", optarg);
+				fprintf(stderr, "Error: --io-threads must be "
+					"an integer, %s found\n", optarg);
 				return EINVAL;
 			}
 			break;
