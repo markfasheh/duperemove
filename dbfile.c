@@ -539,6 +539,58 @@ out_error:
 	return ret;
 }
 
+static int dbfile_load_filerec(sqlite3 *db, uint64_t ino, uint64_t subvol,
+			       struct filerec **file)
+{
+	int ret;
+	sqlite3_stmt *stmt = NULL;
+	const unsigned char *filename;
+	uint64_t size;
+
+	*file = NULL;
+
+#define	LOAD_FILEREC	"select filename, size from files where ino = ?1 and "\
+			"subvol = ?2;"
+
+	ret = sqlite3_prepare_v2(db, LOAD_FILEREC, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing statement");
+		return ret;
+	}
+
+	ret = sqlite3_bind_int64(stmt, 1, ino);
+	if (ret) {
+		perror_sqlite(ret, "binding ino");
+		goto out;
+	}
+	ret = sqlite3_bind_int64(stmt, 2, subvol);
+	if (ret) {
+		perror_sqlite(ret, "binding subvol");
+		goto out;
+	}
+
+	ret = sqlite3_step(stmt);
+	if (ret == SQLITE_ROW) {
+		/* print a diagnostic message here? */
+		ret = SQLITE_DONE;
+	}
+	if (ret != SQLITE_DONE) {
+		perror_sqlite(ret, "executing statement");
+		goto out;
+	}
+	ret = 0;
+
+	filename = sqlite3_column_text(stmt, 0);
+	size = sqlite3_column_int64(stmt, 1);
+
+	*file = filerec_new((const char *)filename, ino, subvol, size);
+	if (!*file)
+		ret = ENOMEM;
+out:
+	sqlite3_finalize(stmt);
+	return ret;
+}
+
 int dbfile_load_hashes(struct hash_tree *hash_tree)
 {
 	int ret;
@@ -578,11 +630,13 @@ int dbfile_load_hashes(struct hash_tree *hash_tree)
 
 		file = filerec_find(ino, subvol);
 		if (!file) {
-			ret = ENOENT;
-			fprintf(stderr,
-				"Filerec (%"PRIu64",%"PRIu64") is in db"
-				" but not in hash!\n", ino, subvol);
-			goto out;
+			ret = dbfile_load_filerec(db, ino, subvol, &file);
+			if (ret) {
+				fprintf(stderr, "Error loading filerec (%"
+					PRIu64",%"PRIu64") from db\n",
+					ino, subvol);
+				goto out;
+			}
 		}
 
 		ret = insert_hashed_block(hash_tree, digest, file, loff, flags);
