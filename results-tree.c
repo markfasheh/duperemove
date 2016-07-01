@@ -20,6 +20,9 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#ifdef	ITDEBUG
+#include <inttypes.h>
+#endif
 
 #include "kernel.h"
 #include "rbtree.h"
@@ -36,13 +39,27 @@
 declare_alloc_tracking(dupe_extents);
 declare_alloc_tracking(extent);
 
+static inline uint64_t extent_len(struct extent *extent)
+{
+	return extent->e_parent->de_len;
+}
+
+static inline uint64_t extent_end(struct extent *extent)
+{
+	return extent_len(extent) + extent->e_loff - 1;
+}
+
+static inline uint64_t extent_score(struct extent *extent)
+{
+	return extent->e_parent->de_score;
+}
+
 static struct extent *alloc_extent(struct filerec *file, uint64_t loff)
 {
 	struct extent *e = calloc_extent(1);
 
 	if (e) {
 		INIT_LIST_HEAD(&e->e_list);
-		INIT_LIST_HEAD(&e->e_file_extents);
 		rb_init_node(&e->e_node);
 		e->e_file = file;
 		e->e_loff = loff;
@@ -227,20 +244,25 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 	if (e0) {
 		if (add_score)
 			dext->de_score += len;
-		list_add_tail(&e0->e_file_extents, &recs[0]->extent_list);
+		e0->e_itnode.start = e0->e_loff;
+		e0->e_itnode.last = extent_end(e0);
+		interval_tree_insert(&e0->e_itnode, &recs[0]->extent_tree);
+#ifdef	ITDEBUG
+		recs[0]->num_extents++;
+#endif
 	}
 	if (e1) {
 		if (add_score)
 			dext->de_score += len;
-		list_add_tail(&e1->e_file_extents, &recs[1]->extent_list);
+		e1->e_itnode.start = e1->e_loff;
+		e1->e_itnode.last = extent_end(e1);
+		interval_tree_insert(&e1->e_itnode, &recs[1]->extent_tree);
+#ifdef	ITDEBUG
+		recs[1]->num_extents++;
+#endif
 	}
 
 	return 0;
-}
-
-static uint64_t extent_len(struct extent *extent)
-{
-	return extent->e_parent->de_len;
 }
 
 unsigned int remove_extent(struct results_tree *res, struct extent *extent)
@@ -255,8 +277,11 @@ again:
 	result = p->de_num_dupes;
 
 	list_del_init(&extent->e_list);
-	list_del_init(&extent->e_file_extents);
 	rb_erase(&extent->e_node, &p->de_extents_root);
+	interval_tree_remove(&extent->e_itnode, &extent->e_file->extent_tree);
+#ifdef	ITDEBUG
+	extent->e_file->num_extents--;
+#endif
 	free_extent(extent);
 
 	if (p->de_num_dupes == 1) {
@@ -277,68 +302,92 @@ again:
 	return result;
 }
 
-static int compare_extent(struct results_tree *res,
-			  struct extent *extent,
-			  struct list_head *head)
+#ifdef	ITDEBUG
+static void print_all_extents(struct filerec *file)
 {
-	struct extent *pos = extent;
-	uint64_t pos_end, extent_end;
-	struct list_head *next = extent->e_file_extents.next;
+	struct extent *extent;
+	struct interval_tree_node *node;
 
-	list_for_each_entry_continue(pos, head, e_file_extents) {
-		/* This is a logic error - we shouldn't loop back on
-		 * ourselves. */
-		abort_on(pos == extent);
+	node = interval_tree_iter_first(&file->extent_tree, 0, -1ULL);
+	while (node) {
+		extent = container_of(node, struct extent, e_itnode);
 
-//		if (pos->e_loff == extent->e_loff
-//		    && extent_len(pos) == extent_len(extent))
-//			continue; /* Same extent? Skip. */
+		printf("file: %s, start: %"PRIu64", end: %"PRIu64" ep: %p\n",
+		       file->filename, extent->e_loff, extent_end(extent),
+		       extent);
 
-		pos_end = pos->e_loff + extent_len(pos) - 1;
-		extent_end = extent->e_loff + extent_len(extent) - 1;
+		node = interval_tree_iter_next(node, 0, -1ULL);
+	}
+}
+#endif	/* ITDEBUG */
 
-		if (pos_end < extent->e_loff ||
-		    pos->e_loff > extent_end)
-			continue; /* Extents don't overlap */
+static uint64_t __remove_overlaps(struct results_tree *res, struct filerec *file,
+			      struct extent *extent)
+{
+	struct interval_tree_node *node;
+	struct extent *found, *to_del;
+	uint64_t greatest = extent_end(extent);
+	uint64_t start, end;
 
-		if (extent->e_parent->de_score <= pos->e_parent->de_score) {
-			/* remove extent */
-			remove_extent(res, extent);
-		} else {
-			/* remove pos */
-			if (pos == list_entry(next, struct extent,
-					      e_file_extents))
-				next = pos->e_file_extents.next;
-			remove_extent(res, pos);
+	start = extent->e_loff;
+	end = extent_end(extent);
+
+	node = interval_tree_iter_next(&extent->e_itnode, start, end);
+	while (node) {
+		to_del = found = container_of(node, struct extent, e_itnode);
+
+		if (extent_end(found) > greatest)
+			greatest = extent_end(found);
+
+		if (extent_score(extent) < extent_score(found))
+			to_del = extent;
+
+#ifdef	ITDEBUG
+		printf("  extent: (%"PRIu64", %"PRIu64", %p)  found: "
+		       "(%"PRIu64", %"PRIu64", %p)  to_del: %p  greatest: "
+		       "%"PRIu64"\n",
+		       extent->e_loff, extent_end(extent), extent,
+		       found->e_loff, extent_end(found), found, to_del,
+		       greatest);
+#endif	/* ITDEBUG */
+
+		if (extent_score(extent) < extent_score(found)) {
+			to_del = extent;
+			extent = found;
 		}
-		return 1;
+
+		remove_extent(res, to_del);
+		node = interval_tree_iter_next(&extent->e_itnode,
+					       start, end);
 	}
 
-	return 0;
+	return greatest + 1;
 }
 
+/*
+ * At the end of this function the file should have zero dup extents
+ * with overlapping ranges.
+ */
 void remove_overlapping_extents(struct results_tree *res, struct filerec *file)
 {
-	struct extent *orig;
-	struct list_head *next;
+	struct extent *extent;
+	struct interval_tree_node *node;
+	uint64_t start = 0, end = -1ULL;
 
-	if (list_empty(&file->extent_list))
-		return;
+	while (1) {
+		node = interval_tree_iter_first(&file->extent_tree, start, end);
+		if (!node)
+			break;
+		extent = container_of(node, struct extent, e_itnode);
+#ifdef	ITDEBUG
+		dprintf("check file %s, extents: %d, (%"PRIu64", %"PRIu64") "
+			"ep: %p, search start: %"PRIu64", search end: "
+			"%"PRIu64"\n", file->filename, file->num_extents,
+			extent->e_loff, extent->e_itnode.last, extent, start,
+			end);
+#endif	/* ITDEBUG */
 
-restart:
-	next = file->extent_list.next;
-	while (next != &file->extent_list) {
-		orig = list_entry(next, struct extent, e_file_extents);
-
-		/*
-		 * Re-start the search if we wound up deleting items -
-		 * compare_extent could have deleted up to two items,
-		 * either of which could be our loop cursor.
-		 */
-		if (compare_extent(res, orig, &file->extent_list))
-			goto restart;
-
-		next = next->next;
+		start = __remove_overlaps(res, file, extent);
 	}
 }
 

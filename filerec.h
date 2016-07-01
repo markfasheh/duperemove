@@ -19,6 +19,7 @@
 #include <stdint.h>
 #include "rbtree.h"
 #include "list.h"
+#include "interval_tree.h"
 
 extern struct list_head filerec_list;
 extern unsigned long long num_filerecs;
@@ -35,13 +36,18 @@ struct filerec {
 	uint64_t		num_blocks;	/* blocks we've inserted */
 	uint64_t		size;
 	struct rb_root		block_tree;	/* root for hash blocks tree */
-	struct list_head	extent_list;	/* head for results node list */
 
 	struct list_head	rec_list;	/* all filerecs */
 
 	struct list_head	tmp_list;
 
 	struct rb_root		comparisons;
+
+	/* interval tree of dup-extents belonging to this file */
+	struct rb_root		extent_tree;
+#ifdef	ITDEBUG
+	uint64_t		num_extents;
+#endif
 };
 
 void init_filerec(void);

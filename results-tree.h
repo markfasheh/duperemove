@@ -17,6 +17,8 @@
 #ifndef __RESULTS_TREE_
 #define __RESULTS_TREE_
 
+#include "interval_tree.h"
+
 struct results_tree {
 	struct rb_root	root;
 	unsigned int	num_dupes;
@@ -44,9 +46,9 @@ struct extent	{
 	struct list_head	e_list; /* For de_extents */
 	struct rb_node		e_node; /* For de_extents_root */
 
-	/* Each file keeps a list of it's own dupes. This makes it
+	/* Each file keeps a tree of it's own dupes. This makes it
 	 * easier to remove overlapping duplicates. */
-	struct list_head	e_file_extents; /* filerec->extent_list */
+	struct interval_tree_node e_itnode;
 
 	/*
 	 * Physical offset and length are used to figure out whether
@@ -59,7 +61,7 @@ struct extent	{
 	uint64_t		e_plen;
 };
 
-/* endoff is NOT inclusive! */
+/* endoff is NOT inclusive! TODO: Fix this because it's confusing as #$%^ */
 int insert_result(struct results_tree *res, unsigned char *digest,
 		  struct filerec *recs[2], uint64_t startoff[2],
 		  uint64_t endoff[2]);
