@@ -23,6 +23,7 @@
 #include <string.h>
 #include <stdint.h>
 
+#include <inttypes.h>
 #include <glib.h>
 
 #include "csum.h"
@@ -207,59 +208,59 @@ static int walk_dupe_hashes(struct dupe_blocks_list *dups,
 			    struct results_tree *res)
 {
 	int ret;
-	struct file_block *block1, *block2;
-	struct filerec *file1, *file2;
+	struct file_block *block;
+	struct filerec *file1, *file2, *tmp1, *tmp2;
+	LIST_HEAD(cmp_files);
+	unsigned int cmp_tot = 0;
+
+	vprintf("Gather files from hash: ");
+	if (verbose)
+		debug_print_digest_short(stdout, dups->dl_hash);
+	vprintf(" (%u identical extents)\n", dups->dl_num_elem);
 
 #define SKIP_FLAGS	(FILE_BLOCK_SKIP_COMPARE|FILE_BLOCK_HOLE)
+	list_for_each_entry(block, &dups->dl_list, b_list) {
+		file1 = block->b_file;
 
-	list_for_each_entry(block1, &dups->dl_list, b_list) {
-		if (block1->b_flags & SKIP_FLAGS)
+		if (block->b_flags & SKIP_FLAGS)
 			continue;
 
-		file1 = block1->b_file;
-		block2 = block1;
-		list_for_each_entry_continue(block2,
-					     &dups->dl_list,
-					     b_list) {
-			if (block2->b_flags & SKIP_FLAGS)
-				continue;
+		if (list_empty(&file1->tmp_list)) {
+			list_add_tail(&file1->tmp_list, &cmp_files);
+			cmp_tot++;
+		}
+	}
 
-			/*
-			 * Don't compare if both blocks are already
-			 * marked as shared. In thoery however the
-			 * blocks might not be shared with each other
-			 * so we will want to account for this in a
-			 * future change.
-			 */
-			if (do_lookup_extents &&
-			    block1->b_flags & FILE_BLOCK_DEDUPED &&
-			    block2->b_flags & FILE_BLOCK_DEDUPED)
-				continue;
+	vprintf("Process %u files.\n", cmp_tot);
 
-			file2 = block2->b_file;
-
-			if (block_ever_seen(block2))
-				continue;
-
+	list_for_each_entry_safe(file1, tmp1, &cmp_files, tmp_list) {
+		file2 = file1;/* start from file1 for list iter */
+		list_for_each_entry_safe_continue(file2, tmp2, &cmp_files,
+						  tmp_list) {
 			if (filerecs_compared(file1, file2))
 				continue;
 
 			if (file1 != file2) {
+				vprintf("[%u] Compare files \"%s\" and "
+					"\"%s\"\n", cmp_tot, file1->filename,
+					file2->filename);
+
 				ret = compare_files(res, file1, file2);
 				if (ret)
-					return ret;
-				/*
-				 * End here, after finding a set of
-				 * duplicates. Future runs will see
-				 * the deduped blocks and skip them,
-				 * allowing us to dedupe any remaining
-				 * extents (if any)
-				 */
-				break;
+					goto out;
 			}
 		}
+
+		cmp_tot--;
+		list_del_init(&file1->tmp_list);
 	}
-	return 0;
+
+	ret = 0;
+out:
+	list_for_each_entry_safe(file1, tmp1, &cmp_files, tmp_list)
+		list_del_init(&file1->tmp_list);
+
+	return ret;
 }
 
 static void update_extent_search_status(struct hash_tree *tree,
@@ -270,7 +271,7 @@ static void update_extent_search_status(struct hash_tree *tree,
 	int width = 40;
 	float progress;
 
-	if (!stdout_is_tty)
+	if (!stdout_is_tty || verbose || debug)
 		return;
 
 	progress = (float) processed / tree->num_blocks;
@@ -297,7 +298,7 @@ static void update_extent_search_status(struct hash_tree *tree,
 static void clear_extent_search_status(unsigned long long processed,
 				       int err)
 {
-	if (!stdout_is_tty)
+	if (!stdout_is_tty || verbose || debug)
 		return;
 
 	if (err)
