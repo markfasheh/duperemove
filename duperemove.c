@@ -437,10 +437,9 @@ int main(int argc, char **argv)
 
 	if (debug) {
 		print_dupes_table(&res);
-		printf("\n\nRemoving overlapping extents\n\n");
 	}
 
-	printf("Removing overlapping extents\n");
+	vprintf("Removing overlapping extents\n");
 	list_for_each_entry(file, &filerec_list, rec_list) {
 		remove_overlapping_extents(&res, file);
 	}
