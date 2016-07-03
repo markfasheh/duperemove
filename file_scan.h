@@ -15,6 +15,19 @@ extern int skip_zeroes;
  * Returns nonzero on fatal errors only
  */
 int add_file(const char *name, int dirfd);
+/*
+ * Add from a db record. We still stat as before:
+ *
+ * If inum or subvolid do not match we mark the db record for
+ * deletion. Otherwise we add a filerec based on the stat'd
+ * information.
+ *
+ * * The filerec is marked to be updated in the db if size or mtime changed.
+ * * The filerec is marked for rehash if mtime changed.
+ */
+int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
+		uint64_t size, uint64_t mtime, int *delete);
+
 int populate_tree();
 
 /* For dbfile.c */

@@ -65,6 +65,7 @@ int skip_zeroes = 0;
 int target_rw = 1;
 static int version_only = 0;
 static int fdupes_mode = 0;
+static int stdin_filelist = 0;
 
 static enum {
 	H_READ,
@@ -231,7 +232,7 @@ static int add_files_from_cmdline(int numfiles, char **files)
 /*
  * Ok this is doing more than just parsing options.
  */
-static int parse_options(int argc, char **argv)
+static int parse_options(int argc, char **argv, int *filelist_idx)
 {
 	int c, numfiles;
 	int read_hashes = 0;
@@ -384,18 +385,12 @@ static int parse_options(int argc, char **argv)
 		return 0;
 	}
 
-	if (numfiles == 1 && strcmp(argv[optind], "-") == 0) {
-		if (add_files_from_stdin(0))
-			return 1;
-	} else {
-		if (add_files_from_cmdline(numfiles, &argv[optind]))
-			return 1;
+	*filelist_idx = 0;
+	if (numfiles == 1 && strcmp(argv[optind], "-") == 0)
+		stdin_filelist = 1;
+	else {
+		*filelist_idx = optind;
 	}
-
-	/* This can happen if for example, all files passed in on
-	 * command line are bad. */
-	if (list_empty(&filerec_list))
-		return EINVAL;
 
 out_nofiles:
 
@@ -404,7 +399,8 @@ out_nofiles:
 
 int main(int argc, char **argv)
 {
-	int ret;
+	int ret, filelist_idx = 0;
+	int dbfile_is_new = 0;
 	struct results_tree res;
 
 	init_filerec();
@@ -417,7 +413,7 @@ int main(int argc, char **argv)
 	io_threads = sysconf(_SC_NPROCESSORS_ONLN);
 #endif
 
-	if (parse_options(argc, argv)) {
+	if (parse_options(argc, argv, &filelist_idx)) {
 		usage(argv[0]);
 		return EINVAL;
 	}
@@ -443,9 +439,30 @@ int main(int argc, char **argv)
 	switch (use_hashfile) {
 	case H_UPDATE:
 	case H_WRITE:
-		ret = dbfile_create(serialize_fname);
+		ret = dbfile_create(serialize_fname, &dbfile_is_new);
 		if (ret)
 			break;
+
+		if (stdin_filelist)
+			ret = add_files_from_stdin(0);
+		else
+			ret = add_files_from_cmdline(argc - filelist_idx,
+						     &argv[filelist_idx]);
+		if (ret)
+			return ret;
+
+		if (!dbfile_is_new)
+			printf("Adding files from database for hashing.\n");
+
+		ret = dbfile_scan_files();
+		if (ret)
+			break;
+
+		if (list_empty(&filerec_list)) {
+			fprintf(stderr, "No dedupe candidates found.\n");
+			return EINVAL;
+		}
+
 		ret = populate_tree();
 		break;
 	case H_READ:
@@ -480,6 +497,10 @@ int main(int argc, char **argv)
 		fflush(stdout);
 
 	if (use_hashfile == H_WRITE || use_hashfile == H_UPDATE) {
+		ret = dbfile_sync_files(dbfile_get_handle());
+		if (ret)
+			goto out;
+
 		ret = dbfile_sync_config(blocksize);
 		if (ret)
 			goto out;

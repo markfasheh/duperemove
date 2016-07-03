@@ -28,6 +28,8 @@ extern unsigned long long num_filerecs;
 struct filerec {
 	int		fd;			/* file descriptor */
 	unsigned int	fd_refs;			/* fd refcount */
+
+	unsigned int		flags; /* defined below this struct */
 	char	*filename;		/* path to file */
 	uint64_t subvolid;
 
@@ -52,6 +54,30 @@ struct filerec {
 	/* mtime in nanoseconds */
 	uint64_t		mtime;
 };
+
+/*
+ * Filerec needs update or insert into the db. Used when metadata
+ * changed between disk and the db or when we must insert a fresh
+ * record.
+ */
+#define	FILEREC_UPDATE_DB	0x01
+/*
+ * Filerec was found to have out-dated hashes (file data changed). We
+ * must delete any existing hashes from the DB and rescan this file.
+ */
+#define	FILEREC_NEEDS_SCAN	0x02
+/*
+ * Filerec exists in DB. We use this to avoid running some sql for
+ * file hashes for files which were freshly added via the command
+ * line. See dbfile_write_hashes().
+*/
+#define	FILEREC_IN_DB		0x04
+/*
+ * File was rescanned. We use this during the extent search and dedupe
+ * stages to avoid comparison against files which haven't changed from
+ * our last run.
+ */
+#define	FILEREC_RESCANNED	0x08
 
 void init_filerec(void);
 void free_all_filerecs(void);

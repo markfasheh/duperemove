@@ -5,7 +5,7 @@
 struct filerec;
 struct block;
 
-int dbfile_create(char *filename);
+int dbfile_create(char *filename, int *dbfile_is_new);
 int dbfile_open(char *filename);
 void dbfile_close(void);
 
@@ -25,6 +25,12 @@ int create_indexes(sqlite3 *db);
  * The extent search is later run on the resulting hash_tree.
  */
 int dbfile_load_hashes(struct hash_tree *hash_tree);
+
+/* Scan files based on db contents. Removes any orphaned file records. */
+int dbfile_scan_files(void);
+
+/* Write any filerecs marked as needing update to the db */
+int dbfile_sync_files(sqlite3 *db);
 
 /*
  * Following are used during file scan stage to get our hashes into

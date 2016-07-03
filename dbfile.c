@@ -13,11 +13,12 @@
 #include "hash-tree.h"
 
 #include "file_scan.h"
+#include "debug.h"
 
 #include "dbfile.h"
 
-#define DB_FILE_MAJOR	1
-#define DB_FILE_MINOR	2
+#define DB_FILE_MAJOR	2
+#define DB_FILE_MINOR	0
 
 /* exported for hashstats.c */
 sqlite3 *gdb = NULL;
@@ -40,6 +41,10 @@ sqlite3 *dbfile_get_handle(void)
 {
 	return gdb;
 }
+
+static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
+			       uint64_t *num_hashes, uint64_t *num_files,
+			       int *major, int *minor);
 
 #if 0
 static int debug_print_cb(void *priv, int argc, char **argv, char **column)
@@ -90,6 +95,12 @@ int create_indexes(sqlite3 *db)
 	if (ret)
 		goto out;
 
+#define	CREATE_HASHES_INO_INDEX						\
+"create index if not exists idx_hashes_inosub on hashes(ino, subvol);"
+	ret = sqlite3_exec(db, CREATE_HASHES_INO_INDEX, NULL, NULL, NULL);
+	if (ret)
+		goto out;
+
 #define	CREATE_INO_INDEX						\
 "create index if not exists idx_inosub on files(ino, subvol);"
 	ret = sqlite3_exec(db, CREATE_INO_INDEX, NULL, NULL, NULL);
@@ -117,24 +128,22 @@ static int dbfile_set_modes(sqlite3 *db)
 	return ret;
 }
 
-int dbfile_create(char *filename)
+int dbfile_create(char *filename, int *dbfile_is_new)
 {
-	int ret;
+	int ret, inmem = 0, newfile = 0;
 	sqlite3 *db = NULL;
+	int vmajor, vminor;
 
 	if (!filename) {
+		inmem = 1;
 		filename = ":memory:";
 	} else {
-		ret = unlink(filename);
-		if (ret && errno != ENOENT) {
-			ret = errno;
-			fprintf(stderr,
-				"Error %d while unlinking old db file \"%s\": %s",
-				ret, filename, strerror(ret));
-			return ret;
-		}
+		ret = access(filename, R_OK|W_OK);
+		if (ret == -1 && errno == ENOENT)
+			newfile = 1;
 	}
 
+reopen:
 #define OPEN_FLAGS	(SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE|SQLITE_OPEN_NOMUTEX)
 	ret = sqlite3_open_v2(filename, &db, OPEN_FLAGS, NULL);
 	if (ret) {
@@ -142,11 +151,48 @@ int dbfile_create(char *filename)
 		return ret;
 	}
 
-	ret = create_tables(db);
-	if (ret) {
-		perror_sqlite(ret, "creating tables");
-		sqlite3_close(db);
-		return ret;
+	if (newfile || inmem) {
+		ret = create_tables(db);
+		if (ret) {
+			perror_sqlite(ret, "creating tables");
+			sqlite3_close(db);
+			return ret;
+		}
+	} else {
+		ret = __dbfile_get_config(db, NULL, NULL, NULL, &vmajor,
+					  &vminor);
+		if (ret) {
+			perror_sqlite(ret, "reading initial db config");
+			sqlite3_close(db);
+			return ret;
+		}
+
+		if (vmajor == 1) {
+			/*
+			 * Behavior for v1 dbfiles was to delete
+			 * them on every run. They also didn't store
+			 * mtime so any attempt to 'upgrade' would
+			 * include rescanning all files anyway.
+			 */
+			ret = unlink(filename);
+			if (ret && errno != ENOENT) {
+				ret = errno;
+				fprintf(stderr, "Error %d while unlinking old "
+					"db file \"%s\": %s", ret, filename,
+					strerror(ret));
+				return ret;
+			}
+			newfile = 1;
+			goto reopen;
+		}
+
+		if (vmajor != DB_FILE_MAJOR) {
+			fprintf(stderr, "Error: Hashfile \"%s\" has unknown "
+				"version, %d.%d (I understand %d.%d)\n",
+				filename, vmajor, vminor, DB_FILE_MAJOR,
+				DB_FILE_MINOR);
+			return -EIO;
+		}
 	}
 
 	ret = dbfile_set_modes(db);
@@ -156,6 +202,7 @@ int dbfile_create(char *filename)
 		return ret;
 	}
 
+	*dbfile_is_new = newfile;
 	gdb = db;
 	return 0;
 }
@@ -488,6 +535,88 @@ int dbfile_write_file_info(sqlite3 *db, struct filerec *file)
 	return ret;
 }
 
+/*
+ * Write any filerec metadata which was not updated during the
+ * checksumming phase.
+ */
+int dbfile_sync_files(sqlite3 *db)
+{
+	int ret;
+	struct filerec *file;
+	sqlite3_stmt *stmt = NULL;
+
+	ret = sqlite3_prepare_v2(db, WRITE_FILE, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing filerec insert statement");
+		return ret;
+	}
+
+	list_for_each_entry(file, &filerec_list, rec_list) {
+		if (file->flags & FILEREC_UPDATE_DB) {
+			dprintf("File \"%s\" still needs update in db\n",
+				file->filename);
+
+			ret = __dbfile_write_file_info(db, stmt, file);
+			if (ret)
+				break;
+
+			file->flags &= ~FILEREC_UPDATE_DB;
+			sqlite3_reset(stmt);
+		}
+	}
+
+	sqlite3_finalize(stmt);
+
+	return ret;
+}
+
+static int __dbfile_remove_file_hashes(sqlite3_stmt *stmt, uint64_t ino,
+				       uint64_t subvol)
+{
+	int ret;
+
+	ret = sqlite3_bind_int64(stmt, 1, ino);
+	if (ret) {
+		perror_sqlite(ret, "binding inode");
+		goto out;
+	}
+
+	ret = sqlite3_bind_int64(stmt, 2, subvol);
+	if (ret) {
+		perror_sqlite(ret, "binding subvol");
+		goto out;
+	}
+
+	ret = sqlite3_step(stmt);
+	if (ret != SQLITE_DONE) {
+		perror_sqlite(ret, "executing statement");
+		goto out;
+	}
+
+	ret = 0;
+out:
+	return ret;
+}
+
+static int dbfile_remove_file_hashes(sqlite3 *db, struct filerec *file)
+{
+	int ret;
+	sqlite3_stmt *stmt = NULL;
+
+#define	REMOVE_FILE_HASHES						\
+	"delete from hashes where ino = ?1 and subvol = ?2;"
+	ret = sqlite3_prepare_v2(db, REMOVE_FILE_HASHES, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing hash insert statement");
+		return ret;
+	}
+
+	ret = __dbfile_remove_file_hashes(stmt, file->inum, file->subvolid);
+
+	sqlite3_finalize(stmt);
+	return ret;
+}
+
 int dbfile_write_hashes(sqlite3 *db, struct filerec *file, uint64_t nb_hash,
 			struct block *hashes)
 {
@@ -498,6 +627,12 @@ int dbfile_write_hashes(sqlite3 *db, struct filerec *file, uint64_t nb_hash,
 	uint64_t loff;
 	uint32_t flags;
 	unsigned char *digest;
+
+	if (file->flags & FILEREC_IN_DB) {
+		ret = dbfile_remove_file_hashes(db, file);
+		if (ret)
+			return ret;
+	}
 
 	ret = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &errorstr);
 	if (ret) {
@@ -560,6 +695,195 @@ bind_error:
 	if (ret)
 		perror_sqlite(ret, "binding values");
 out_error:
+
+	sqlite3_finalize(stmt);
+	return ret;
+}
+
+struct orphan_file
+{
+	struct list_head	list;
+	char			*filename;
+	uint64_t		ino;
+	uint64_t		subvol;
+	char			buf[0];
+};
+
+static inline struct orphan_file *alloc_orphan_file(const char *filename,
+						    uint64_t ino,
+						    uint64_t subvol)
+{
+	int len = strlen(filename);
+	struct orphan_file *o = calloc(1, sizeof(*o) + len + 1);
+
+	if (o) {
+		o->filename = o->buf;
+		strncpy(o->filename, filename, len);
+		INIT_LIST_HEAD(&o->list);
+		o->subvol = subvol;
+		o->ino = ino;
+	}
+	return o;
+}
+
+static void free_orphan_list(struct list_head *orphans)
+{
+	struct orphan_file *o, *tmp;
+
+	list_for_each_entry_safe(o, tmp, orphans, list) {
+		list_del(&o->list);
+		free(o);
+	}
+}
+
+/*
+ * Walk the files in our db and let the code in add_file_db() sort out
+ * what to do with each one.
+ */
+static int dbfile_load_files(struct sqlite3 *db, struct list_head *orphans)
+{
+	int ret, del_rec;
+	sqlite3_stmt *stmt = NULL;
+	const char *filename;
+	uint64_t size, mtime, ino, subvol;
+
+#define	LOAD_ALL_FILERECS	"select filename, ino, subvol, size, mtime from files;"
+
+	ret = sqlite3_prepare_v2(db, LOAD_ALL_FILERECS, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing statement");
+		return ret;
+	}
+
+	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
+		filename = (const char *)sqlite3_column_text(stmt, 0);
+		ino = sqlite3_column_int64(stmt, 1);
+		subvol = sqlite3_column_int64(stmt, 2);
+		size = sqlite3_column_int64(stmt, 3);
+		mtime = sqlite3_column_int64(stmt, 4);
+
+		ret = add_file_db(filename, ino, subvol, size, mtime, &del_rec);
+		if (ret)
+			goto out;
+
+		if (del_rec) {
+			struct orphan_file *o = alloc_orphan_file(filename, ino,
+								  subvol);
+			if (!o) {
+				ret = ENOMEM;
+				fprintf(stderr, "Out of memory while loading "
+					"files from database.\n");
+				goto out;
+			}
+			list_add_tail(&o->list, orphans);
+		}
+	}
+	if (ret != SQLITE_DONE) {
+		perror_sqlite(ret, "looking up hash");
+		goto out;
+	}
+	sqlite3_reset(stmt);
+
+	ret = 0;
+out:
+	if (stmt)
+		sqlite3_finalize(stmt);
+
+	return ret;
+}
+
+static int dbfile_del_orphans(struct sqlite3 *db, struct list_head *orphans)
+{
+	int ret;
+	sqlite3_stmt *files_stmt = NULL;
+	sqlite3_stmt *hashes_stmt = NULL;
+	struct orphan_file *o, *tmp;
+
+#define	DELETE_FILE	"delete from files where filename = ?1;"
+	ret = sqlite3_prepare_v2(db, DELETE_FILE, -1, &files_stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing files statement");
+		goto out;
+	}
+
+	ret = sqlite3_prepare_v2(db, REMOVE_FILE_HASHES, -1, &hashes_stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing hashes statement");
+		goto out;
+	}
+
+	list_for_each_entry_safe(o, tmp, orphans, list) {
+		dprintf("Remove orphaned file \"%s\" from the db\n",
+			o->filename);
+
+		ret = __dbfile_remove_file_hashes(hashes_stmt, o->ino, o->subvol);
+		if (ret)
+			goto out;
+
+		ret = sqlite3_bind_text(files_stmt, 1, o->filename, -1,
+					SQLITE_TRANSIENT);
+		if (ret) {
+			perror_sqlite(ret, "binding filename for sql");
+			goto out;
+		}
+
+		ret = sqlite3_step(files_stmt);
+		if (ret != SQLITE_DONE) {
+			perror_sqlite(ret, "executing sql");
+			goto out;
+		}
+
+		sqlite3_reset(hashes_stmt);
+		sqlite3_reset(files_stmt);
+
+		list_del(&o->list);
+		free(o);
+	}
+
+	ret = 0;
+out:
+	if (files_stmt)
+		sqlite3_finalize(files_stmt);
+	if (hashes_stmt)
+		sqlite3_finalize(hashes_stmt);
+
+	return ret;
+}
+
+/*
+ * Scan files based on db contents:
+ *
+ *  1) Files in the db which don't yet have filerecs will be stat'd and added
+ *
+ *  2) Deleted files have their file and hash records removed
+ *
+ * The real work of step 1 happens in add_file_db()
+ *
+ * Step 2 happens at this time because it allows us to clean the
+ * database of any unused inode / subvol pairs before we start
+ * inserting stuff during the csum stage. This keeps us from getting
+ * into a situation where we've inserted duplicate file records.
+ */
+int dbfile_scan_files(void)
+{
+	int ret;
+	sqlite3 *db;
+	LIST_HEAD(orphans);
+
+	db = dbfile_get_handle();
+	if (!db)
+		return ENOENT;
+
+	ret = dbfile_load_files(db, &orphans);
+	if (ret)
+		goto out;
+
+	ret = dbfile_del_orphans(db, &orphans);
+
+out:
+	if (!list_empty(&orphans))
+		free_orphan_list(&orphans);
+
 	return ret;
 }
 

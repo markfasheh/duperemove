@@ -243,6 +243,10 @@ static int walk_dupe_hashes(struct dupe_blocks_list *dups,
 			if (filerecs_compared(file1, file2))
 				continue;
 
+			if (!(file1->flags & FILEREC_RESCANNED)
+			    && !(file2->flags & FILEREC_RESCANNED))
+				continue;
+
 			if (dedupe_same_file || file1 != file2) {
 				vprintf("[%u] Compare files \"%s\" and "
 					"\"%s\"\n", cmp_tot, file1->filename,

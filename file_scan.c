@@ -278,9 +278,94 @@ int add_file(const char *name, int dirfd)
 	}
 
 	ret = __add_file(path, &st, &file);
+	/*
+	 * We run the file scan before the database. Mark each file as
+	 * needing a db update plus rescan. Later, when we run the DB
+	 * we will conditionally clear these flags on already-seen
+	 * inodes.
+	 */
+	if (file)
+		file->flags |= FILEREC_UPDATE_DB|FILEREC_NEEDS_SCAN;
 
 out:
 	pathp = pathtmp;
+	return ret;
+}
+
+static inline void set_dbfile_update_flags(struct filerec *file, uint64_t mtime,
+					   uint64_t size)
+{
+	file->flags &= ~(FILEREC_NEEDS_SCAN|FILEREC_UPDATE_DB);
+	if (mtime != file->mtime)
+		file->flags |= FILEREC_NEEDS_SCAN|FILEREC_UPDATE_DB;
+	else if (size != file->size) /* size change alone means no alloc */
+		file->flags |= FILEREC_UPDATE_DB;
+}
+
+/*
+ * Add filerec from a db record.
+ *
+ * If we find a filerec in our ino/subvol hash, compare against db
+ * info and update flags as necessary:
+ *
+ * * The filerec is marked to be updated in the db if size or mtime changed.
+ * * The filerec is marked for rehash if mtime changed.
+ *
+ * If no filerec, we stat based on db filename:
+ *
+ * * If we don't find it (ENOENT), or subvol/inode has changed, mark
+ *   the db record for deletion.
+ *
+ * Otherwise a filerec gets added based on the stat'd information.
+ */
+int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
+		uint64_t size, uint64_t mtime, int *delete)
+{
+	int ret;
+	struct filerec *file = filerec_find(inum, subvolid);
+	struct stat st;
+
+	*delete = 0;
+
+	dprintf("Lookup/stat file \"%s\" from hashdb\n", filename);
+
+	if (file) {
+		/* We already have it from a stat() */
+		set_dbfile_update_flags(file, mtime, size);
+		if (strcmp(filename, file->filename))
+			file->flags |= FILEREC_UPDATE_DB;
+		file->flags |= FILEREC_IN_DB;
+		return 0;
+	}
+
+	/* Go to disk and look up by filename */
+	ret = stat(filename, &st);
+	if (ret == -1 && errno == ENOENT) {
+		*delete = 1;
+		return 0;
+	} else if (ret == -1) {
+		ret = errno;
+		goto out;
+	}
+
+	ret = __add_file(filename, &st, &file);
+	if (ret || !file)
+		goto out;
+
+	set_dbfile_update_flags(file, mtime, size);
+	if (file->inum != inum || file->subvolid != subvolid) {
+		/*
+		 * New inode/subvol, but same name. Delete the db
+		 * record and mark our filerec as needing an update so
+		 * the new information will be eventually put into the
+		 * database.
+		 */
+		file->flags |= FILEREC_NEEDS_SCAN|FILEREC_UPDATE_DB;
+		*delete = 1;
+	} else {
+		file->flags |= FILEREC_IN_DB;
+	}
+out:
 	return ret;
 }
 
@@ -317,13 +402,15 @@ static void run_pool(GThreadPool *pool)
 	printf("Using %u threads for file hashing phase\n", io_threads);
 
 	list_for_each_entry_safe(file, tmp, &filerec_list, rec_list) {
-		g_thread_pool_push(pool, file, &err);
-		if (err != NULL) {
-			fprintf(stderr,
+		if (file->flags & FILEREC_NEEDS_SCAN) {
+			g_thread_pool_push(pool, file, &err);
+			if (err != NULL) {
+				fprintf(stderr,
 					"g_thread_pool_push: %s\n",
 					err->message);
-			g_error_free(err);
-			err = NULL;
+				g_error_free(err);
+				err = NULL;
+			}
 		}
 	}
 
@@ -453,7 +540,7 @@ static void csum_whole_file_init(GMutex **mutex, void *location,
 }
 
 static void csum_whole_file(struct filerec *file,
-				struct thread_params *params)
+			    struct thread_params *params)
 {
 	uint64_t off = 0;
 	int ret = 0;
@@ -541,6 +628,10 @@ static void csum_whole_file(struct filerec *file,
 	params->num_files++;
 	params->num_hashes += nb_hash;
 	g_mutex_unlock(mutex);
+
+	file->flags &= ~(FILEREC_NEEDS_SCAN|FILEREC_UPDATE_DB);
+	/* Set 'IN_DB' flag *after* we call dbfile_write_hashes() */
+	file->flags |= FILEREC_IN_DB|FILEREC_RESCANNED;
 
 	filerec_close(file);
 	free(curr_block.buf);

@@ -49,6 +49,13 @@ static sqlite3_stmt *top_hashes_stmt = NULL;
 static sqlite3_stmt *files_count_stmt = NULL;
 static sqlite3_stmt *find_blocks_stmt = NULL;
 
+/* dirty hack so we don't have to add file_scan.o to hashstats */
+int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
+		uint64_t size, uint64_t mtime, int *delete)
+{
+	return 0;
+}
+
 static int prepare_statements(void)
 {
 	int ret;
