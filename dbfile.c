@@ -87,7 +87,14 @@ int create_indexes(sqlite3 *db)
 #define	CREATE_DIGEST_INDEX						\
 "create index if not exists idx_digest on hashes(digest);"
 	ret = sqlite3_exec(db, CREATE_DIGEST_INDEX, NULL, NULL, NULL);
+	if (ret)
+		goto out;
 
+#define	CREATE_INO_INDEX						\
+"create index idx_inosub on files(ino, subvol);"
+	ret = sqlite3_exec(db, CREATE_INO_INDEX, NULL, NULL, NULL);
+
+out:
 	return ret;
 }
 
