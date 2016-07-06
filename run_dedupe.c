@@ -256,8 +256,7 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 	struct dedupe_ctxt *ctxt = NULL;
 	uint64_t len = dext->de_len;
 	OPEN_ONCE(open_files);
-	struct extent *prev = NULL;
-	struct extent *to_add;
+	struct extent *tgt_extent = NULL;
 
 	abort_on(dext->de_num_dupes < 2);
 
@@ -303,16 +302,16 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 			continue;
 		}
 
-		to_add = extent;
-
-		vprintf("[%p] Add extent for file \"%s\" at offset %s\n",
-			g_thread_self(), to_add->e_file->filename,
-			pretty_size(to_add->e_loff));
+		vprintf("[%p] Add extent for file \"%s\" at offset %s (%d)\n",
+			g_thread_self(), extent->e_file->filename,
+			pretty_size(extent->e_loff), extent->e_file->fd);
 
 		if (ctxt == NULL) {
+			if (tgt_extent == NULL)
+				tgt_extent = extent;
 			ctxt = new_dedupe_ctxt(dext->de_num_dupes,
-					       extent->e_loff, len,
-					       extent->e_file);
+					       tgt_extent->e_loff, len,
+					       tgt_extent->e_file);
 			if (ctxt == NULL) {
 				fprintf(stderr, "Out of memory while "
 					"allocating dedupe context.\n");
@@ -320,48 +319,28 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 				goto out;
 			}
 
-			if (!last) {
-				/*
-				 * We added our file already here via
-				 * new_dedupe_ctxt, so go to the next
-				 * loop iteration.
-				 */
-				continue;
-			}
-
 			/*
-			 * We started a new context, but only have one
-			 * extent left to dedupe (need at least
-			 * 2). This is pretty rare but instead of
-			 * leaving it not-deduped, we can pick the
-			 * most recent extent off the list and re-add
-			 * that. The old extent won't be deduped again
-			 * but this one will.
-			 *
-			 * This won't work if we haven't deduped
-			 * anything yet. If prev doesn't exist, we
-			 * skip this and let the dedupe code below
-			 * clean up for us.
+			 * If we just picked the target, it got added
+			 * with the new context. Otherwise fall
+			 * through to let other extents onto the
+			 * dedupe ctxt.
 			 */
-			if (prev == NULL)
-				goto run_dedupe;
-			to_add = prev; /* The ole' extent switcharoo */
+			if (tgt_extent == extent)
+				continue;
 		}
-		prev = extent; /* save previous extent for condition above */
 
-		rc = add_extent_to_dedupe(ctxt, to_add->e_loff, to_add->e_file);
+		rc = add_extent_to_dedupe(ctxt, extent->e_loff, extent->e_file);
 		if (rc) {
 			if (rc < 0) {
 				/* This can only be ENOMEM. */
 				fprintf(stderr, "%s: Request not queued.\n",
-					to_add->e_file->filename);
+					extent->e_file->filename);
 				ret = ENOMEM;
 				goto out;
 			}
 
-			if (last)
-				goto run_dedupe;
-			continue;
+			if (!last)
+				continue;
 		}
 
 run_dedupe:
@@ -397,6 +376,18 @@ run_dedupe:
 		filerec_close_open_list(&open_files);
 		free_dedupe_ctxt(ctxt);
 		ctxt = NULL;
+
+		if (!last) {
+			/* reopen target file as it got closed above */
+			ret = filerec_open_once(tgt_extent->e_file, target_rw,
+						&open_files);
+			if (ret) {
+				fprintf(stderr,
+					"%s: Could not re-open as target.\n",
+					extent->e_file->filename);
+				break;
+			}
+		}
 	}
 
 	abort_on(ctxt != NULL);
