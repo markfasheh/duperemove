@@ -71,7 +71,7 @@ static enum {
 } use_hashfile = H_UPDATE;
 static char *serialize_fname = ":memory:";
 unsigned int io_threads;
-int do_lookup_extents = 0;
+int do_lookup_extents = 1;
 
 int stdout_is_tty = 0;
 
