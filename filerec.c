@@ -487,9 +487,12 @@ int fiemap_iter_get_flags(struct fiemap_ctxt *ctxt, struct filerec *file,
 
 	if (ctxt->idx == -1) {
 		err = do_fiemap(fiemap, file, 0);
-		if (err || fiemap->fm_mapped_extents == 0)
+		if (err)
 			goto out_last_map;
-
+		if (fiemap->fm_mapped_extents == 0) {
+			*hole = 1;
+			return 0;
+		}
 		ctxt->idx = 0;
 	}
 
