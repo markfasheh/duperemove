@@ -506,10 +506,16 @@ check:
 		return 0;
 	}
 
+	/*
+	 * No more extents for us to look for
+	 * Let's assume - that all following data is a hole
+	 */
+	if (extent->fe_flags & FIEMAP_EXTENT_LAST) {
+		*hole = 1;
+		return 0;
+	}
+
 	err = 0;
-	/* No more extents for us to look for */
-	if (extent->fe_flags & FIEMAP_EXTENT_LAST)
-		goto out_last_map;
 
 	ctxt->idx++;
 	if (ctxt->idx == fiemap->fm_mapped_extents) {
