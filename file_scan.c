@@ -398,7 +398,7 @@ static inline int csum_next_block(struct csum_block *data, uint64_t *off,
 			if (skip_zeroes && fieflags & FIEMAP_EXTENT_UNWRITTEN)
 				return 3;
 			if (hole)
-				data->flags |= FILE_BLOCK_HOLE;
+				return 3;
 			if (fieflags & FIEMAP_SKIP_FLAGS)
 				data->flags |= FILE_BLOCK_SKIP_COMPARE;
 			if (fieflags & FIEMAP_DEDUPED_FLAGS)
