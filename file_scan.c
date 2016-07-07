@@ -313,6 +313,30 @@ static void run_pool(GThreadPool *pool)
 	g_thread_pool_free(pool, FALSE, TRUE);
 }
 
+static inline int is_block_zeroed(void *buf, ssize_t buf_size)
+{
+	/*
+	 * If buf is block aligned check for zeroes may be accelerated
+	 * By checks block by CPU word size
+	 */
+	if (buf_size%sizeof(ssize_t) == 0) {
+		ssize_t *buf_start = buf;
+		ssize_t *buf_end = buf+buf_size;
+		for (ssize_t *ptr = buf_start; ptr < buf_end; ptr++) {
+			if (*ptr != 0)
+				return 0;
+		}
+	} else {
+		char *buf_start = buf;
+		char *buf_end = buf+buf_size;
+		for (char *ptr = buf_start; ptr < buf_end; ptr++) {
+			if (*ptr != 0)
+				return 0;
+		}
+	}
+	return 1;
+}
+
 struct csum_block {
 	ssize_t bytes;
 	unsigned int flags;
@@ -379,6 +403,9 @@ static inline int csum_next_block(struct csum_block *data, uint64_t *off,
 				data->flags |= FILE_BLOCK_DEDUPED;
 		}
 	}
+
+	if (skip_zeroes && is_block_zeroed(data->buf, data->bytes))
+		return 3;
 
 	checksum_block(data->buf, data->bytes, data->digest);
 	if (data->flags & FILE_BLOCK_PARTIAL)
@@ -448,6 +475,13 @@ static void csum_whole_file(struct filerec *file,
 
 		if (ret == -1) /* Err */
 			goto err;
+
+		if (ret == 3) { /* Skip block */
+			off += curr_block.bytes;
+			curr_block.bytes = 0;
+			continue;
+		}
+
 
 		retp = realloc(hashes, sizeof(struct block) * (nb_hash + 1));
 		if (!retp) {

@@ -58,6 +58,7 @@ unsigned int blocksize = DEFAULT_BLOCKSIZE;
 int run_dedupe = 0;
 int recurse_dirs = 0;
 int one_file_system = 0;
+int skip_zeroes = 0;
 
 int target_rw = 1;
 static int version_only = 0;
@@ -92,6 +93,7 @@ static void usage(const char *prog)
 	printf("\t-r\t\tEnable recursive dir traversal.\n");
 	printf("\t-d\t\tDe-dupe the results - only works on btrfs.\n");
 	printf("\t-h\t\tPrint numbers in human-readable format.\n");
+	printf("\t--skip-zeroes\tdon't dedup zeroed blocks.\n");
 	printf("\t--hashfile=FILE\tUse a file instead of memory for storing hashes.\n");
 	printf("\t--help\t\tPrints this help text.\n");
 	printf("\nPlease see the duperemove(8) manpage for more options.\n");
@@ -117,6 +119,7 @@ enum {
 	LOOKUP_EXTENTS_OPTION,
 	ONE_FILESYSTEM_OPTION,
 	HASH_OPTION,
+	SKIP_ZEROES_OPTION,
 	FDUPES_OPTION,
 };
 
@@ -183,6 +186,7 @@ static int parse_options(int argc, char **argv)
 		{ "lookup-extents", 1, NULL, LOOKUP_EXTENTS_OPTION },
 		{ "one-file-system", 0, NULL, ONE_FILESYSTEM_OPTION },
 		{ "hash", 1, NULL, HASH_OPTION },
+		{ "skip-zeroes", 0, NULL, SKIP_ZEROES_OPTION },
 		{ "fdupes", 0, NULL, FDUPES_OPTION },
 		{ NULL, 0, NULL, 0}
 	};
@@ -253,6 +257,9 @@ static int parse_options(int argc, char **argv)
 			break;
 		case HASH_OPTION:
 			user_hash = optarg;
+			break;
+		case SKIP_ZEROES_OPTION:
+			skip_zeroes = 1;
 			break;
 		case FDUPES_OPTION:
 			fdupes_mode = 1;
