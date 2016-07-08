@@ -85,6 +85,11 @@ Run in \fBfdupes\fR mode. With this option you can pipe the output of
 recieving a file list in this manner, duperemove will skip the hashing phase.
 
 .TP
+\fB\--skip-zeroes\fR
+Read data blocks and skip any zeroed blocks, useful for speedup duperemove,
+but can prevent deduplication of zeroed files.
+
+.TP
 \fB\-x\fR
 Don't cross filesystem boundaries.
 
