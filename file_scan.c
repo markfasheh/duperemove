@@ -322,14 +322,16 @@ static inline int is_block_zeroed(void *buf, ssize_t buf_size)
 	if (buf_size%sizeof(ssize_t) == 0) {
 		ssize_t *buf_start = buf;
 		ssize_t *buf_end = buf+buf_size;
-		for (ssize_t *ptr = buf_start; ptr < buf_end; ptr++) {
+		ssize_t *ptr = buf_start;
+		for (; ptr < buf_end; ptr++) {
 			if (*ptr != 0)
 				return 0;
 		}
 	} else {
 		char *buf_start = buf;
 		char *buf_end = buf+buf_size;
-		for (char *ptr = buf_start; ptr < buf_end; ptr++) {
+		char *ptr = buf_start;
+		for (; ptr < buf_end; ptr++) {
 			if (*ptr != 0)
 				return 0;
 		}
