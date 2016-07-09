@@ -198,6 +198,10 @@ int add_file(const char *name, int dirfd)
 	if (st.st_size < blocksize) {
 		vprintf("Skipping small file %s\n", path);
 		goto out;
+	} else {
+		expected_hash_count += st.st_size/blocksize;
+		if (st.st_size%blocksize)
+			expected_hash_count++;
 	}
 
 	ret = faccessat(dirfd, name, R_OK, 0);

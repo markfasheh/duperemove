@@ -155,7 +155,19 @@ Deprecated, see \fB--io-threads\fR above.
 
 .TP
 \fB\--hash=alg\fR
-Supported alg: sha256, xxhash, murmur3
+Supported alg: auto (default), sha256, xxhash, murmur3.
+
+\fBxxhash\fR
+64-bit fastest, weak on large data set.
+
+\fBmurmur3\fR
+128-bit fast.
+
+\fBsha256\fR
+256-bit the slowest.
+
+\fBauto\fR
+choice hash alg by expected block count.
 
 .SH "FAQ"
 

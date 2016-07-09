@@ -74,6 +74,7 @@ int do_lookup_extents = 0;
 
 int stdout_is_tty = 0;
 
+unsigned long long expected_hash_count = 0;
 static char *user_hash = DEFAULT_HASH_STR;
 
 static void usage(const char *prog)
@@ -323,6 +324,28 @@ static int parse_options(int argc, char **argv)
 	 * command line are bad. */
 	if (list_empty(&filerec_list))
 		return EINVAL;
+
+	/*
+	 * Auto choice best of hash functions, for tradeoff
+	 * chance of collision between cpu usage
+	 *
+	 * Rule of thumb.
+	 * if chance of collision for this count of block > 1
+	 * move to a bit stronger hash function
+	 */
+	if (!strcmp(user_hash, "auto")) {
+		unsigned long long xxhash_threshold = 6000000;
+		unsigned long long murmur3_threshold = 20000000000000ULL;
+		if (expected_hash_count < xxhash_threshold) {
+			user_hash = "xxhash";
+		} else {
+			if (expected_hash_count < murmur3_threshold)
+				user_hash = "murmur3";
+			else
+				user_hash = "sha256";
+		}
+
+	}
 
 out_nofiles:
 
