@@ -59,7 +59,7 @@ int run_dedupe = 0;
 int recurse_dirs = 0;
 int one_file_system = 0;
 int block_dedupe = 0;
-int dedupe_same_file = 0;
+int dedupe_same_file = 1;
 
 int target_rw = 1;
 static int version_only = 0;
@@ -108,6 +108,53 @@ static int parse_yesno_option(char *arg, int default_val)
 	return default_val;
 }
 
+/* adapted from ocfs2-tools */
+static int parse_dedupe_opts(const char *opts)
+{
+	char *options, *token, *next, *p, *arg;
+	int print_usage = 0;
+	int invert, ret = 0;
+
+	options = strdup(opts);
+
+	for (token = options; token && *token; token = next) {
+		p = strchr(token, ',');
+		next = NULL;
+		invert = 0;
+
+		if (p) {
+			*p = '\0';
+			next = p + 1;
+		}
+
+		arg = strstr(token, "no");
+		if (arg == token) {
+			invert = 1;
+			token += strlen("no");
+		}
+
+		if (strcmp(token, "same") == 0) {
+			dedupe_same_file = !invert;
+		} else if (strcmp(token, "block") == 0) {
+			block_dedupe = !invert;
+		} else {
+			print_usage = 1;
+			break;
+		}
+	}
+
+	if (print_usage) {
+		fprintf(stderr, "Bad dedupe options specified. Valid dedupe "
+			"options are:\n"
+			"\t[no]same\n"
+			"\t[no]block\n");
+		ret = EINVAL;
+	}
+
+	free(options);
+	return ret;
+}
+
 enum {
 	DEBUG_OPTION = CHAR_MAX + 1,
 	HELP_OPTION,
@@ -120,6 +167,7 @@ enum {
 	ONE_FILESYSTEM_OPTION,
 	HASH_OPTION,
 	FDUPES_OPTION,
+	DEDUPE_OPTS_OPTION,
 };
 
 static int files_from_stdin(int fdupes)
@@ -186,6 +234,7 @@ static int parse_options(int argc, char **argv)
 		{ "one-file-system", 0, NULL, ONE_FILESYSTEM_OPTION },
 		{ "hash", 1, NULL, HASH_OPTION },
 		{ "fdupes", 0, NULL, FDUPES_OPTION },
+		{ "dedupe-options=", 1, NULL, DEDUPE_OPTS_OPTION },
 		{ NULL, 0, NULL, 0}
 	};
 
@@ -258,6 +307,10 @@ static int parse_options(int argc, char **argv)
 			break;
 		case FDUPES_OPTION:
 			fdupes_mode = 1;
+			break;
+		case DEDUPE_OPTS_OPTION:
+			if (parse_dedupe_opts(optarg))
+				return EINVAL;
 			break;
 		case HELP_OPTION:
 		case '?':
