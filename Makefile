@@ -10,10 +10,10 @@ HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
 	btrfs-ioctl.h filerec.h btrfs-util.h debug.h util.h \
 	memstats.h file_scan.h find_dupes.h run_dedupe.h xxhash.h \
 	sha256.h sha256-config.h bswap.h d_tree.h dbfile.h \
-	interval_tree.h interval_tree_generic.h rbtree_augmented.h
+	interval_tree.h interval_tree_generic.h rbtree_augmented.h list_sort.h
 CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
 	btrfs-util.c util.c memstats.c file_scan.c find_dupes.c \
-	run_dedupe.c csum.c d_tree.c dbfile.c interval_tree.c
+	run_dedupe.c csum.c d_tree.c dbfile.c interval_tree.c list_sort.c
 hash_CFILES=csum-xxhash.c xxhash.c csum-murmur3.c csum-sha256.c sha256.c
 
 CFILES += $(hash_CFILES)
@@ -34,7 +34,7 @@ objects = $(CFILES:.c=.o)
 
 hash_obj=$(hash_CFILES:.c=.o)
 hashstats_obj = $(hash_obj) rbtree.o hash-tree.o filerec.o util.o \
-	 results-tree.o csum.o d_tree.o dbfile.o interval_tree.o
+	 results-tree.o csum.o d_tree.o dbfile.o interval_tree.o list_sort.o
 show_shared_obj = rbtree.o util.o
 csum_test_obj = $(hash_obj) util.o csum.o
 
