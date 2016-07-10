@@ -34,6 +34,7 @@
 #include "hash-tree.h"
 #include "debug.h"
 #include "memstats.h"
+#include "list_sort.h"
 
 declare_alloc_tracking(file_block);
 declare_alloc_tracking(dupe_blocks_list);
@@ -262,8 +263,8 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 
 		memcpy(d->dl_hash, digest, digest_len);
 		rb_init_node(&d->dl_node);
-		rb_init_node(&d->dl_by_size);
 		INIT_LIST_HEAD(&d->dl_list);
+		INIT_LIST_HEAD(&d->dl_size_list);
 		d->dl_files_root = RB_ROOT;
 
 		insert_block_list(tree, d);
@@ -287,6 +288,8 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 	file->num_blocks++;
 
 	d->dl_num_elem++;
+	if (d->dl_num_elem > 1 && list_empty(&d->dl_size_list))
+		list_add(&d->dl_size_list, &tree->size_list);
 	list_add_tail(&e->b_list, &d->dl_list);
 
 	tree->num_blocks++;
@@ -317,6 +320,7 @@ static void remove_hashed_block(struct hash_tree *tree,
 	blocklist->dl_num_elem--;
 	if (blocklist->dl_num_elem == 0) {
 		rb_erase(&blocklist->dl_node, &tree->root);
+		list_del(&blocklist->dl_size_list);
 		tree->num_hashes--;
 
 		free_dupe_blocks_list(blocklist);
@@ -359,8 +363,29 @@ void clear_all_seen_blocks(void)
 	seen_counter++;
 }
 
+static int cmp_by_size(void *priv, struct list_head *a, struct list_head *b)
+{
+	struct dupe_blocks_list *dla, *dlb;
+
+	dla = list_entry(a, struct dupe_blocks_list, dl_size_list);
+	dlb = list_entry(b, struct dupe_blocks_list, dl_size_list);
+
+	/* largest first */
+	if (dla->dl_num_elem > dlb->dl_num_elem)
+		return -1;
+	else if (dla->dl_num_elem < dlb->dl_num_elem)
+		return 1;
+	return 0;
+}
+
+void sort_hashes_by_size(struct hash_tree *tree)
+{
+	list_sort(tree, &tree->size_list, cmp_by_size);
+}
+
 void init_hash_tree(struct hash_tree *tree)
 {
 	tree->root = RB_ROOT;
 	tree->num_blocks = tree->num_hashes = 0;
+	INIT_LIST_HEAD(&tree->size_list);
 }

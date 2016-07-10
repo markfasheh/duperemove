@@ -66,6 +66,8 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 		  struct filerec *recs[2], uint64_t startoff[2],
 		  uint64_t endoff[2]);
 
+int insert_one_result(struct results_tree *res, unsigned char *digest,
+		      struct filerec *file, uint64_t startoff, uint64_t len);
 void remove_overlapping_extents(struct results_tree *res, struct filerec *file);
 
 void init_results_tree(struct results_tree *res);

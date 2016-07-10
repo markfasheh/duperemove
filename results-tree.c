@@ -215,6 +215,33 @@ static struct dupe_extents *dupe_extents_new(struct results_tree *res,
 	return dext;
 }
 
+/*
+ * This does not do all the work of insert_result(), just enough for
+ * the dedupe phase of block-dedupe to work properly.
+ */
+int insert_one_result(struct results_tree *res, unsigned char *digest,
+		      struct filerec *file, uint64_t startoff, uint64_t len)
+{
+	struct extent *extent = alloc_extent(file, startoff);
+	struct dupe_extents *dext;
+
+	if (!extent)
+		return ENOMEM;
+
+	dext = find_dupe_extents(res, digest, len);
+	if (!dext) {
+		dext = dupe_extents_new(res, digest, len);
+		if (!dext)
+			return ENOMEM;
+	}
+
+	abort_on(dext->de_len != len);
+
+	insert_extent_list_free(dext, &extent);
+
+	return 0;
+}
+
 int insert_result(struct results_tree *res, unsigned char *digest,
 		  struct filerec *recs[2], uint64_t startoff[2],
 		  uint64_t endoff[2])

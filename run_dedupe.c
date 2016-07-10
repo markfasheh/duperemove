@@ -41,6 +41,8 @@
 
 #include "run_dedupe.h"
 
+extern int block_dedupe;
+
 static GMutex mutex;
 static GMutex console_mutex;
 static struct results_tree *results_tree;
@@ -178,6 +180,9 @@ static void clean_deduped(struct dupe_extents **ret_dext)
 	struct extent *inner_extent, *outer_extent;
 
 	if (!dext || dext->de_num_dupes == 0)
+		return;
+
+	if (block_dedupe)
 		return;
 
 	outer = rb_first(&dext->de_extents_root);
@@ -428,14 +433,12 @@ struct dedupe_counts {
 	uint64_t	fiemap_bytes;
 };
 
-static int dedupe_worker(struct dupe_extents *dext,
-			 struct dedupe_counts *counts)
+static int extent_dedupe_worker(struct dupe_extents *dext,
+				uint64_t *fiemap_bytes, uint64_t *kern_bytes)
 {
 	int ret;
-	uint64_t fiemap_bytes = 0ULL;
-	uint64_t kern_bytes = 0ULL;
 
-	ret = dedupe_extent_list(dext, &fiemap_bytes, &kern_bytes);
+	ret = dedupe_extent_list(dext, fiemap_bytes, kern_bytes);
 	if (ret) {
 		if (ret == DEDUPE_EXTENTS_CLEANED)
 			return 0;
@@ -449,43 +452,92 @@ static int dedupe_worker(struct dupe_extents *dext,
 		g_mutex_unlock(&mutex);
 	}
 
+	return 0;
+}
+
+/*
+ * This is very straight-forward. We walk the dupe blocks list and insert into
+ * the result tree then run that through dedupe_extent_list().
+ */
+static int block_dedupe_worker(struct dupe_blocks_list *dups,
+			       uint64_t *fiemap_bytes, uint64_t *kern_bytes)
+{
+	int ret;
+	struct results_tree res;
+	struct dupe_extents *dext = NULL;
+	struct file_block *block;
+
+	init_results_tree(&res);
+
+	list_for_each_entry(block, &dups->dl_list, b_list) {
+		ret = insert_one_result(&res, dups->dl_hash, block->b_file,
+					block->b_loff, blocksize);
+		if (ret)
+			goto out;
+	}
+
+	dext = rb_entry(rb_first(&res.root), struct dupe_extents, de_node);
+	abort_on(!dext);
+
+	if (dext->de_num_dupes >= 2) {
+		ret = dedupe_extent_list(dext, fiemap_bytes, kern_bytes);
+		if (ret == DEDUPE_EXTENTS_CLEANED)
+			ret = 0;
+	}
+
+out:
+	dext = rb_entry(rb_first(&res.root), struct dupe_extents, de_node);
+	if (dext)
+		dupe_extents_free(dext, &res);
+
+	return ret;
+}
+
+static int dedupe_worker(void *priv, struct dedupe_counts *counts)
+{
+	int ret;
+	uint64_t fiemap_bytes = 0ULL;
+	uint64_t kern_bytes = 0ULL;
+
+	if (block_dedupe)
+		ret = block_dedupe_worker(priv, &fiemap_bytes, &kern_bytes);
+	else
+		ret = extent_dedupe_worker(priv, &fiemap_bytes, &kern_bytes);
+
 	g_mutex_lock(&dedupe_counts_mutex);
 	counts->fiemap_bytes += fiemap_bytes;
 	counts->kern_bytes += kern_bytes;
 	g_mutex_unlock(&dedupe_counts_mutex);
 
-	return 0;
+	return ret;
 }
 
 static GThreadPool *dedupe_pool = NULL;
 
-void dedupe_results(struct results_tree *res)
+static int push_blocks(struct hash_tree *hashes)
+{
+	struct dupe_blocks_list *dups;
+	GError *err = NULL;
+
+	list_for_each_entry(dups, &hashes->size_list, dl_size_list) {
+		g_thread_pool_push(dedupe_pool, dups, &err);
+		if (err) {
+			fprintf(stderr, "Fatal error while deduping: %s\n",
+				err->message);
+			g_error_free(err);
+			return 1;
+		}
+	}
+	return 0;
+}
+
+/* Errors from this function are fatal. */
+static int push_extents(struct results_tree *res)
 {
 	struct rb_root *root = &res->root;
 	struct rb_node *node = rb_first(root);
 	struct dupe_extents *dext;
-	struct dedupe_counts counts = { 0ULL, };
 	GError *err = NULL;
-
-	results_tree = res;
-
-	print_dupes_table(res);
-
-	if (RB_EMPTY_ROOT(root)) {
-		printf("Nothing to dedupe.\n");
-		return;
-	}
-
-	printf("Using %u threads for dedupe phase\n", io_threads);
-
-	dedupe_pool = g_thread_pool_new((GFunc) dedupe_worker, &counts,
-					io_threads, TRUE, &err);
-	if (err) {
-		fprintf(stderr, "Unable to create dedupe thread pool: %s\n",
-			err->message);
-		g_error_free(err);
-		return;
-	}
 
 	while (node) {
 		dext = rb_entry(node, struct dupe_extents, de_node);
@@ -506,15 +558,58 @@ void dedupe_results(struct results_tree *res)
 			fprintf(stderr, "Fatal error while deduping: %s\n",
 				err->message);
 			g_error_free(err);
-			break;
+			return 1;
 		}
+	}
+	return 0;
+}
+
+void dedupe_results(struct results_tree *res, struct hash_tree *hashes)
+{
+	int ret;
+	struct dedupe_counts counts = { 0ULL, };
+	GError *err = NULL;
+
+	if (!block_dedupe) {
+		results_tree = res;
+
+		print_dupes_table(res);
+
+		if (RB_EMPTY_ROOT(&res->root)) {
+			printf("Nothing to dedupe.\n");
+			return;
+		}
+	}
+
+	printf("Using %u threads for dedupe phase\n", io_threads);
+
+	dedupe_pool = g_thread_pool_new((GFunc) dedupe_worker, &counts,
+					io_threads, TRUE, &err);
+	if (err) {
+		fprintf(stderr, "Unable to create dedupe thread pool: %s\n",
+			err->message);
+		g_error_free(err);
+		return;
+	}
+
+	if (block_dedupe)
+		ret = push_blocks(hashes);
+	else
+		ret = push_extents(res);
+
+	if (ret) {
+		fprintf(stderr, "Fatal error while deduping: %s\n",
+			err->message);
+		g_error_free(err);
 	}
 
 	g_thread_pool_free(dedupe_pool, FALSE, TRUE);
 
-	printf("Kernel processed data (excludes target files): %s\nComparison "
-	       "of extent info shows a net change in shared extents of: %s\n",
-	       pretty_size(counts.kern_bytes), pretty_size(counts.fiemap_bytes));
+	if (ret == 0)
+		printf("Kernel processed data (excludes target files): "
+		       "%s\nComparison of extent info shows a net change in "
+		       "shared extents of: %s\n",pretty_size(counts.kern_bytes),
+		       pretty_size(counts.fiemap_bytes));
 }
 
 int fdupes_dedupe(void)

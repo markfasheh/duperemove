@@ -58,6 +58,7 @@ unsigned int blocksize = DEFAULT_BLOCKSIZE;
 int run_dedupe = 0;
 int recurse_dirs = 0;
 int one_file_system = 0;
+int block_dedupe = 0;
 
 int target_rw = 1;
 static int version_only = 0;
@@ -333,7 +334,6 @@ int main(int argc, char **argv)
 {
 	int ret;
 	struct results_tree res;
-	struct filerec *file;
 
 	init_filerec();
 	init_results_tree(&res);
@@ -433,21 +433,20 @@ int main(int argc, char **argv)
 	if (ret)
 		goto out;
 
+	/*
+	 * Only error for this is enomem so we continue in the hopes
+	 * that something might get deduped.
+	 */
 	ret = find_all_dupes(&dups_tree, &res);
 
-	if (debug) {
-		print_dupes_table(&res);
+	if (run_dedupe) {
+		dedupe_results(&res, &dups_tree);
+	} else {
+		if (block_dedupe)
+			debug_print_hash_tree(&dups_tree);
+		else
+			print_dupes_table(&res);
 	}
-
-	vprintf("Removing overlapping extents\n");
-	list_for_each_entry(file, &filerec_list, rec_list) {
-		remove_overlapping_extents(&res, file);
-	}
-
-	if (run_dedupe)
-		dedupe_results(&res);
-	else
-		print_dupes_table(&res);
 
 	free_all_filerecs();
 out:

@@ -19,15 +19,16 @@ extern unsigned int blocksize;
 
 struct hash_tree {
 	struct rb_root	root;
+	struct list_head size_list; /* This is for sorting by dl_num_elem  */
 	uint64_t	num_blocks;
 	uint64_t	num_hashes;
 };
 
 struct dupe_blocks_list {
-	struct rb_node	dl_node; /* sorted by hash */
-	struct rb_node	dl_by_size; /* hashstats re-sorts by dl_num_elem */
+	struct rb_node		dl_node; /* sorted by hash */
+	struct list_head	dl_size_list; /* sorted by dl_num_elem */
 
-	unsigned int	dl_num_elem;
+	unsigned int		dl_num_elem;
 	struct list_head	dl_list;
 
 	unsigned int		dl_num_files;
@@ -77,6 +78,7 @@ static inline unsigned long block_len(struct file_block *block)
 int insert_hashed_block(struct hash_tree *tree, unsigned char *digest,
 			struct filerec *file, uint64_t loff, unsigned int flags);
 void remove_hashed_blocks(struct hash_tree *tree, struct filerec *file);
+void sort_hashes_by_size(struct hash_tree *tree);
 
 /*
  * Stores a list of blocks with the same hash / filerec

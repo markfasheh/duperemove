@@ -37,6 +37,8 @@
 
 #include "find_dupes.h"
 
+extern int block_dedupe;
+
 static void record_match(struct results_tree *res, unsigned char *digest,
 			 struct filerec *orig, struct filerec *walk,
 			 struct file_block **start, struct file_block **end)
@@ -309,7 +311,8 @@ static void clear_extent_search_status(unsigned long long processed,
 	fflush(stdout);
 }
 
-int find_all_dupes(struct hash_tree *tree, struct results_tree *res)
+static int find_all_dupes_filewise(struct hash_tree *tree,
+				   struct results_tree *res)
 {
 	int ret = 0;
 	struct rb_root *root = &tree->root;
@@ -344,4 +347,24 @@ out:
 
 	clear_extent_search_status(processed, ret);
 	return ret;
+}
+
+int find_all_dupes(struct hash_tree *tree, struct results_tree *res)
+{
+	int ret;
+	struct filerec *file;
+
+	if (block_dedupe) {
+		sort_hashes_by_size(tree);
+		return 0;
+	} else {
+
+		ret = find_all_dupes_filewise(tree, res);
+
+		vprintf("Removing overlapping extents\n");
+		list_for_each_entry(file, &filerec_list, rec_list)
+			remove_overlapping_extents(res, file);
+
+		return ret;
+	}
 }
