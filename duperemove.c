@@ -59,6 +59,7 @@ int run_dedupe = 0;
 int recurse_dirs = 0;
 int one_file_system = 0;
 int block_dedupe = 0;
+int dedupe_same_file = 0;
 
 int target_rw = 1;
 static int version_only = 0;

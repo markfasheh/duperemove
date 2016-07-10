@@ -42,6 +42,7 @@
 #include "run_dedupe.h"
 
 extern int block_dedupe;
+extern int dedupe_same_file;
 
 static GMutex mutex;
 static GMutex console_mutex;
@@ -456,27 +457,40 @@ static int extent_dedupe_worker(struct dupe_extents *dext,
 }
 
 /*
- * This is very straight-forward. We walk the dupe blocks list and insert into
+ * tgt_file/tgt_off here are used only when we are asked not to dedupe
+ * within the same file - see block_dedupe_nosame(). Otherwise this is
+ * very straight-forward. We walk the dupe blocks list and insert into
  * the result tree then run that through dedupe_extent_list().
  */
-static int block_dedupe_worker(struct dupe_blocks_list *dups,
-			       uint64_t *fiemap_bytes, uint64_t *kern_bytes)
+static int __block_dedupe(struct dupe_blocks_list *dups,
+			  struct results_tree *res,
+			  struct filerec *tgt_file,
+			  uint64_t tgt_off,
+			  uint64_t *fiemap_bytes,
+			  uint64_t *kern_bytes)
 {
 	int ret;
-	struct results_tree res;
 	struct dupe_extents *dext = NULL;
 	struct file_block *block;
 
-	init_results_tree(&res);
-
+	if (tgt_file) {
+		/* Insert this first so it gets picked as target. */
+		ret = insert_one_result(res, dups->dl_hash, tgt_file,
+					tgt_off, blocksize);
+		if (ret)
+			return ret;
+	}
 	list_for_each_entry(block, &dups->dl_list, b_list) {
-		ret = insert_one_result(&res, dups->dl_hash, block->b_file,
+		if (block->b_file == tgt_file)
+				continue;
+
+		ret = insert_one_result(res, dups->dl_hash, block->b_file,
 					block->b_loff, blocksize);
 		if (ret)
 			goto out;
 	}
 
-	dext = rb_entry(rb_first(&res.root), struct dupe_extents, de_node);
+	dext = rb_entry(rb_first(&res->root), struct dupe_extents, de_node);
 	abort_on(!dext);
 
 	if (dext->de_num_dupes >= 2) {
@@ -486,11 +500,91 @@ static int block_dedupe_worker(struct dupe_blocks_list *dups,
 	}
 
 out:
-	dext = rb_entry(rb_first(&res.root), struct dupe_extents, de_node);
+	dext = rb_entry(rb_first(&res->root), struct dupe_extents, de_node);
 	if (dext)
-		dupe_extents_free(dext, &res);
+		dupe_extents_free(dext, res);
 
 	return ret;
+}
+
+/*
+ * Newer kernels (Linux v4.2+) support dedupe of the target file
+ * (dedupe with a file). We don't have a way of testing that yet so
+ * for now assume we can't dedupe with the same file. Extent dedupe
+ * handles this by never comparing a file to itself. We don't have
+ * that luxury.
+ *
+ * Walk the dupe list once until we find two files which are
+ * different. This is dumb but easy on memory and probably fast
+ * enough.
+ */
+static void pick_target_files(struct dupe_blocks_list *dups,
+			      struct filerec **tgt1, uint64_t *loff1,
+			      struct filerec **tgt2, uint64_t *loff2)
+{
+	struct filerec *file1, *file2;
+	uint64_t off1, off2;
+	struct file_block *block;
+
+	file1 = file2 = NULL;
+	off1 = off2 = 0;
+	list_for_each_entry(block, &dups->dl_list, b_list) {
+		if (!file1) {
+			file1 = block->b_file;
+			off1 = block->b_loff;
+		} else if (file1 != block->b_file) {
+			file2 = block->b_file;
+			off2 = block->b_loff;
+		}
+
+		if (file1 && file2)
+			break;
+	}
+
+	*tgt1 = file1;
+	*tgt2 = file2;
+	*loff1 = off1;
+	*loff2 = off2;
+	return;
+}
+
+/* for kernels without same file dedupe (< v4.2) */
+static int block_dedupe_nosame(struct dupe_blocks_list *dups,
+			       struct results_tree *res, uint64_t *fiemap_bytes,
+			       uint64_t *kern_bytes)
+{
+	int ret;
+	struct filerec *tgt_file1, *tgt_file2;
+	uint64_t tgt_off1, tgt_off2;
+
+	tgt_off1 = tgt_off2 = 0;
+
+	pick_target_files(dups, &tgt_file1, &tgt_off1, &tgt_file2, &tgt_off2);
+
+	if (!tgt_file2) /* Can't dedupe this */
+		return 0;
+
+	ret = __block_dedupe(dups, res, tgt_file1, tgt_off1, fiemap_bytes,
+			     kern_bytes);
+	if (!ret)
+		ret = __block_dedupe(dups, res, tgt_file2, tgt_off2,
+				     fiemap_bytes, kern_bytes);
+
+	return ret;
+}
+
+static int block_dedupe_worker(struct dupe_blocks_list *dups,
+			       uint64_t *fiemap_bytes, uint64_t *kern_bytes)
+{
+	struct results_tree res;
+
+	init_results_tree(&res);
+
+	if (!dedupe_same_file)
+		return block_dedupe_nosame(dups, &res, fiemap_bytes,
+					   kern_bytes);
+
+	return __block_dedupe(dups, &res, NULL, 0, fiemap_bytes, kern_bytes);
 }
 
 static int dedupe_worker(void *priv, struct dedupe_counts *counts)

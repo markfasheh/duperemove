@@ -38,6 +38,7 @@
 #include "find_dupes.h"
 
 extern int block_dedupe;
+extern int dedupe_same_file;
 
 static void record_match(struct results_tree *res, unsigned char *digest,
 			 struct filerec *orig, struct filerec *walk,
@@ -239,10 +240,16 @@ static int walk_dupe_hashes(struct dupe_blocks_list *dups,
 		file2 = file1;/* start from file1 for list iter */
 		list_for_each_entry_safe_continue(file2, tmp2, &cmp_files,
 						  tmp_list) {
+			int skip;
+
 			if (filerecs_compared(file1, file2))
 				continue;
 
-			if (file1 != file2) {
+			skip = 0;
+			if (!dedupe_same_file && file1 != file2)
+				skip = 1;
+
+			if (!skip) {
 				vprintf("[%u] Compare files \"%s\" and "
 					"\"%s\"\n", cmp_tot, file1->filename,
 					file2->filename);
