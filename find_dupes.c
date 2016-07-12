@@ -240,16 +240,10 @@ static int walk_dupe_hashes(struct dupe_blocks_list *dups,
 		file2 = file1;/* start from file1 for list iter */
 		list_for_each_entry_safe_continue(file2, tmp2, &cmp_files,
 						  tmp_list) {
-			int skip;
-
 			if (filerecs_compared(file1, file2))
 				continue;
 
-			skip = 0;
-			if (!dedupe_same_file && file1 != file2)
-				skip = 1;
-
-			if (!skip) {
+			if (dedupe_same_file || file1 != file2) {
 				vprintf("[%u] Compare files \"%s\" and "
 					"\"%s\"\n", cmp_tot, file1->filename,
 					file2->filename);
