@@ -32,4 +32,7 @@
 	const typeof( ((type *)0)->member ) *__mptr = (ptr);	\
 	(type *)( (char *)__mptr - offsetof(type,member) );})
 
+#define	WRITE_ONCE(dest, src)	(dest) = (src)
+#define	READ_ONCE(a)	(a)
+
 #endif
