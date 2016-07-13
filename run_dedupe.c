@@ -456,13 +456,19 @@ static int extent_dedupe_worker(struct dupe_extents *dext,
 	return 0;
 }
 
+struct block_dedupe_list
+{
+	unsigned char		bd_hash[DIGEST_LEN_MAX];
+	struct list_head	bd_block_list;
+};
+
 /*
  * tgt_file/tgt_off here are used only when we are asked not to dedupe
  * within the same file - see block_dedupe_nosame(). Otherwise this is
  * very straight-forward. We walk the dupe blocks list and insert into
  * the result tree then run that through dedupe_extent_list().
  */
-static int __block_dedupe(struct dupe_blocks_list *dups,
+static int __block_dedupe(struct block_dedupe_list *bdl,
 			  struct results_tree *res,
 			  struct filerec *tgt_file,
 			  uint64_t tgt_off,
@@ -475,16 +481,16 @@ static int __block_dedupe(struct dupe_blocks_list *dups,
 
 	if (tgt_file) {
 		/* Insert this first so it gets picked as target. */
-		ret = insert_one_result(res, dups->dl_hash, tgt_file,
-					tgt_off, blocksize);
+		ret = insert_one_result(res, bdl->bd_hash, tgt_file, tgt_off,
+					blocksize);
 		if (ret)
 			return ret;
 	}
-	list_for_each_entry(block, &dups->dl_list, b_list) {
+	list_for_each_entry(block, &bdl->bd_block_list, b_list) {
 		if (block->b_file == tgt_file)
 				continue;
 
-		ret = insert_one_result(res, dups->dl_hash, block->b_file,
+		ret = insert_one_result(res, bdl->bd_hash, block->b_file,
 					block->b_loff, blocksize);
 		if (ret)
 			goto out;
@@ -518,7 +524,7 @@ out:
  * different. This is dumb but easy on memory and probably fast
  * enough.
  */
-static void pick_target_files(struct dupe_blocks_list *dups,
+static void pick_target_files(struct block_dedupe_list *bdl,
 			      struct filerec **tgt1, uint64_t *loff1,
 			      struct filerec **tgt2, uint64_t *loff2)
 {
@@ -528,7 +534,7 @@ static void pick_target_files(struct dupe_blocks_list *dups,
 
 	file1 = file2 = NULL;
 	off1 = off2 = 0;
-	list_for_each_entry(block, &dups->dl_list, b_list) {
+	list_for_each_entry(block, &bdl->bd_block_list, b_list) {
 		if (!file1) {
 			file1 = block->b_file;
 			off1 = block->b_loff;
@@ -549,7 +555,7 @@ static void pick_target_files(struct dupe_blocks_list *dups,
 }
 
 /* for kernels without same file dedupe (< v4.2) */
-static int block_dedupe_nosame(struct dupe_blocks_list *dups,
+static int block_dedupe_nosame(struct block_dedupe_list *bdl,
 			       struct results_tree *res, uint64_t *fiemap_bytes,
 			       uint64_t *kern_bytes)
 {
@@ -559,21 +565,29 @@ static int block_dedupe_nosame(struct dupe_blocks_list *dups,
 
 	tgt_off1 = tgt_off2 = 0;
 
-	pick_target_files(dups, &tgt_file1, &tgt_off1, &tgt_file2, &tgt_off2);
+	pick_target_files(bdl, &tgt_file1, &tgt_off1, &tgt_file2, &tgt_off2);
 
-	if (!tgt_file2) /* Can't dedupe this */
+	if (!tgt_file2) {
+		/* Can't dedupe this in nosame mode */
+		if (verbose) {
+			printf("[%p] Can not dedupe hash ", g_thread_self());
+			debug_print_digest_short(stdout, bdl->bd_hash);
+			printf(" in nosame mode - all hashes belong to %s.\n",
+			       tgt_file1->filename);
+		}
 		return 0;
+	}
 
-	ret = __block_dedupe(dups, res, tgt_file1, tgt_off1, fiemap_bytes,
+	ret = __block_dedupe(bdl, res, tgt_file1, tgt_off1, fiemap_bytes,
 			     kern_bytes);
 	if (!ret)
-		ret = __block_dedupe(dups, res, tgt_file2, tgt_off2,
+		ret = __block_dedupe(bdl, res, tgt_file2, tgt_off2,
 				     fiemap_bytes, kern_bytes);
 
 	return ret;
 }
 
-static int block_dedupe_worker(struct dupe_blocks_list *dups,
+static int block_dedupe_worker(struct block_dedupe_list *bdl,
 			       uint64_t *fiemap_bytes, uint64_t *kern_bytes)
 {
 	struct results_tree res;
@@ -581,10 +595,10 @@ static int block_dedupe_worker(struct dupe_blocks_list *dups,
 	init_results_tree(&res);
 
 	if (!dedupe_same_file)
-		return block_dedupe_nosame(dups, &res, fiemap_bytes,
+		return block_dedupe_nosame(bdl, &res, fiemap_bytes,
 					   kern_bytes);
 
-	return __block_dedupe(dups, &res, NULL, 0, fiemap_bytes, kern_bytes);
+	return __block_dedupe(bdl, &res, NULL, 0, fiemap_bytes, kern_bytes);
 }
 
 static int dedupe_worker(void *priv, struct dedupe_counts *counts)
@@ -608,19 +622,130 @@ static int dedupe_worker(void *priv, struct dedupe_counts *counts)
 
 static GThreadPool *dedupe_pool = NULL;
 
+struct block_dedupe_list *alloc_bdl(struct dupe_blocks_list *dups)
+{
+	struct block_dedupe_list *bdl = malloc(sizeof(*bdl));
+
+	if (bdl) {
+		INIT_LIST_HEAD(&bdl->bd_block_list);
+		memcpy(&bdl->bd_hash, &dups->dl_hash, DIGEST_LEN_MAX);
+	}
+	return bdl;
+}
+
+static void free_bdl(struct block_dedupe_list *bdl)
+{
+	struct file_block *block, *tmp;
+
+	if (bdl) {
+		list_for_each_entry_safe(block, tmp, &bdl->bd_block_list, b_list) {
+			list_del(&block->b_list);
+			file_block_free(block);
+		}
+		free(bdl);
+	}
+}
+
+static int push_bdl(struct block_dedupe_list *bdl)
+{
+	GError *err = NULL;
+
+	g_thread_pool_push(dedupe_pool, bdl, &err);
+	if (err) {
+		fprintf(stderr, "Fatal error while deduping: %s\n",
+			err->message);
+		g_error_free(err);
+		return 1;
+	}
+	return 0;
+}
+
+/*
+ * Don't queue more than DEDUPE_MAX dedupes on any one thread. We want
+ * this because large lists (in the multiple millions) can wind up
+ * taking longer on one thread than all the other lists. This happens
+ * because a common pattern is only one or two extremely large buckets
+ * (think zeros) with the rest having a drastically smaller number of
+ * duplicates.
+ */
+#define	DEDUPE_MAX	(1000000)
+static int __push_blocks(struct dupe_blocks_list *dups)
+{
+	int i, j, ret = 0;
+	struct block_dedupe_list *bdl = alloc_bdl(dups);
+	struct file_block *block;
+
+	if (dups->dl_num_elem < DEDUPE_MAX) {
+		/* the easy way */
+		bdl = alloc_bdl(dups);
+		if (!bdl) {
+			fprintf(stderr, "Fatal: out of memory while deduping\n");
+			ret = ENOMEM;
+			goto out;
+		}
+
+		list_splice_init(&dups->dl_list, &bdl->bd_block_list);
+		if (push_bdl(bdl))
+			goto out;
+	} else {
+		unsigned int smax = dups->dl_num_elem / io_threads;
+		if (verbose) {
+			printf("Hash ");
+			debug_print_digest_short(stdout, dups->dl_hash);
+			printf(" has %u elements. It will be spread amongst "
+			       "all dedupe threads.\n", dups->dl_num_elem);
+		}
+
+		for (i = 0; i < io_threads; i++) {
+			j = 0;
+			list_for_each_entry(block, &dups->dl_list, b_list) {
+				j++;
+
+				/*
+				 * Give the last thread any leftovers
+				 * even if that goes above our soft
+				 * max.
+				 */
+				if (list_is_last(&block->b_list, &dups->dl_list)
+				    || (j == smax && i != (io_threads - 1))) {
+					bdl = alloc_bdl(dups);
+					if (!bdl) {
+						fprintf(stderr,
+							"Fatal: out of memory"
+							" while deduping\n");
+						ret = ENOMEM;
+						goto out;
+					}
+
+					list_cut_position(&bdl->bd_block_list,
+							  &dups->dl_list,
+							  &block->b_list);
+
+					if (push_bdl(bdl))
+						goto out;
+					bdl = NULL;
+					break;
+				}
+			}
+		}
+	}
+
+	bdl = NULL; /* freed by thread */
+out:
+	free_bdl(bdl);
+	return ret;
+}
+
 static int push_blocks(struct hash_tree *hashes)
 {
 	struct dupe_blocks_list *dups;
-	GError *err = NULL;
 
 	list_for_each_entry(dups, &hashes->size_list, dl_size_list) {
-		g_thread_pool_push(dedupe_pool, dups, &err);
-		if (err) {
-			fprintf(stderr, "Fatal error while deduping: %s\n",
-				err->message);
-			g_error_free(err);
+		if (dups->dl_num_elem < 2)
+			continue;
+
+		if (__push_blocks(dups))
 			return 1;
-		}
 	}
 	return 0;
 }

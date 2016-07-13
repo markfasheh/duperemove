@@ -111,4 +111,6 @@ void init_hash_tree(struct hash_tree *tree);
 void debug_print_block(struct file_block *e);
 void debug_print_hash_tree(struct hash_tree *tree);
 
+void file_block_free(struct file_block *b);
+
 #endif /* __HASH_TREE__ */

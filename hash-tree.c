@@ -42,6 +42,17 @@ declare_alloc_tracking(dupe_blocks_list);
 extern unsigned int blocksize;
 
 /*
+ * This is hacky, we should rework the declare_alloc_tracking macros
+ * to optionally create nonstatic versions, then add a
+ * declare_alloc_tracking_headers macro for those times where we want
+ * to export the alloc functions.
+ */
+void file_block_free(struct file_block *b)
+{
+	free_file_block(b);
+}
+
+/*
  * Management of filerec->block_tree rb tree. This is simple - ordered
  * by loff. So that the code in find_dupes.c can walk them in logical
  * order. We use a tree for this so that our dbfile backend is free to
