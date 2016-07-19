@@ -403,8 +403,6 @@ static inline int csum_next_block(struct csum_block *data, uint64_t *off,
 				return 3;
 			if (fieflags & FIEMAP_SKIP_FLAGS)
 				data->flags |= FILE_BLOCK_SKIP_COMPARE;
-			if (fieflags & FIEMAP_DEDUPED_FLAGS)
-				data->flags |= FILE_BLOCK_DEDUPED;
 		}
 	}
 

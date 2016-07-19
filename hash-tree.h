@@ -38,8 +38,6 @@ struct dupe_blocks_list {
 
 /* Fiemap flags that would cause us to skip comparison of the block */
 #define FIEMAP_SKIP_FLAGS	(FIEMAP_EXTENT_DATA_INLINE|FIEMAP_EXTENT_UNWRITTEN)
-/* Fiemap flags that indicate the extent may have already been deduped */
-#define FIEMAP_DEDUPED_FLAGS	(FIEMAP_EXTENT_SHARED)
 
 #define FILE_BLOCK_SKIP_COMPARE	0x0001
 #define FILE_BLOCK_DEDUPED	0x0002
