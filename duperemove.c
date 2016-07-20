@@ -450,7 +450,9 @@ int main(int argc, char **argv)
 		goto out;
 	}
 
-	create_indexes(dbfile_get_handle());
+	ret = create_indexes(dbfile_get_handle());
+	if (ret)
+		goto out;
 
 	/*
 	 * File scan from above can cause quite a bit of output, flush
