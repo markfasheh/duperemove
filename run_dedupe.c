@@ -461,6 +461,7 @@ struct block_dedupe_list
 	unsigned char		bd_hash[DIGEST_LEN_MAX];
 	struct list_head	bd_block_list;
 };
+static void free_bdl(struct block_dedupe_list *bdl);
 
 /*
  * tgt_file/tgt_off here are used only when we are asked not to dedupe
@@ -590,15 +591,19 @@ static int block_dedupe_nosame(struct block_dedupe_list *bdl,
 static int block_dedupe_worker(struct block_dedupe_list *bdl,
 			       uint64_t *fiemap_bytes, uint64_t *kern_bytes)
 {
+	int ret;
 	struct results_tree res;
 
 	init_results_tree(&res);
 
 	if (!dedupe_same_file)
-		return block_dedupe_nosame(bdl, &res, fiemap_bytes,
-					   kern_bytes);
-
-	return __block_dedupe(bdl, &res, NULL, 0, fiemap_bytes, kern_bytes);
+		ret = block_dedupe_nosame(bdl, &res, fiemap_bytes,
+					  kern_bytes);
+	else
+		ret = __block_dedupe(bdl, &res, NULL, 0, fiemap_bytes,
+				     kern_bytes);
+	free_bdl(bdl);
+	return ret;
 }
 
 static int dedupe_worker(void *priv, struct dedupe_counts *counts)
