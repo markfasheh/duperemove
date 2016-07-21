@@ -122,13 +122,17 @@ int dbfile_create(char *filename)
 	int ret;
 	sqlite3 *db = NULL;
 
-	ret = unlink(filename);
-	if (ret && errno != ENOENT) {
-		ret = errno;
-		fprintf(stderr,
-			"Error %d while unlinking old db file \"%s\": %s",
-			ret, filename, strerror(ret));
-		return ret;
+	if (!filename) {
+		filename = ":memory:";
+	} else {
+		ret = unlink(filename);
+		if (ret && errno != ENOENT) {
+			ret = errno;
+			fprintf(stderr,
+				"Error %d while unlinking old db file \"%s\": %s",
+				ret, filename, strerror(ret));
+			return ret;
+		}
 	}
 
 #define OPEN_FLAGS	(SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE|SQLITE_OPEN_NOMUTEX)

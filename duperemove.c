@@ -70,7 +70,7 @@ static enum {
 	H_WRITE,
 	H_UPDATE,
 } use_hashfile = H_UPDATE;
-static char *serialize_fname = ":memory:";
+static char *serialize_fname = NULL;
 unsigned int io_threads;
 int do_lookup_extents = 0;
 
