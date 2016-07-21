@@ -10,7 +10,7 @@ extern int recurse_dirs;
 extern unsigned int blocksize;
 extern int do_lookup_extents;
 extern unsigned int io_threads;
-
+extern int skip_zeroes;
 /*
  * Returns nonzero on fatal errors only
  */

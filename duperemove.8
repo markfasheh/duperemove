@@ -85,6 +85,11 @@ Run in \fBfdupes\fR mode. With this option you can pipe the output of
 recieving a file list in this manner, duperemove will skip the hashing phase.
 
 .TP
+\fB\--skip-zeroes\fR
+Read data blocks and skip any zeroed blocks, useful for speedup duperemove,
+but can prevent deduplication of zeroed files.
+
+.TP
 \fB\-x\fR
 Don't cross filesystem boundaries.
 
@@ -108,26 +113,8 @@ Prints help text.
 
 .TP
 \fB\--lookup-extents=[yes|no]\fR
-Defaults to no. While checksumming a file, duperemove can optionally
-lookup file extent state to see whether a given file block is already
-shared. This information can later be used to optimize the search for
-duplicate extents. There are some caveats to this, so please read
-below.
-
-On btrfs, extents which have been snapshotted are reported as shared,
-as more than one inode points to them. A deduped extent also gets
-reported as shared for the same reasons. Internally duperemove can not
-yet make the distinction between the two. If \fB--lookup-extents\fR is
-turned on, duperemove will consider a shared extent to have already
-been deduped. On a snapshotted file system this might cause all or
-most of the extents to be skipped for dedupe.
-
-If you are not making snapshots on the fs you are deduping, this
-option will allow duperemove to make better decisions on which extents
-to dedupe.
-
-A future version of duperemove will remove this restriction, allowing
-us to default this option to on.
+Defaults to yes. Allows duperemove to skip checksumming some blocks by
+checking their extent state.
 
 .TP
 \fB\--read-hashes=hashfile\fR

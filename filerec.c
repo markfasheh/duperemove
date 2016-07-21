@@ -411,7 +411,18 @@ struct fiemap_ctxt {
 	struct fiemap		*fiemap;
 	char			buf[FIEMAP_BUF_SIZE];
 	int			idx;
+
+	unsigned int		last_flags;
+	unsigned int		last_hole;
 };
+
+static inline void fc_set_last(struct fiemap_ctxt *fc, unsigned int flags,
+				 unsigned int hole)
+{
+	fc->last_flags = flags;
+	fc->last_hole = hole;
+	fc->fiemap = NULL;
+}
 
 struct fiemap_ctxt *alloc_fiemap_ctxt(void)
 {
@@ -420,17 +431,9 @@ struct fiemap_ctxt *alloc_fiemap_ctxt(void)
 	if (ctxt) {
 		ctxt->fiemap = (struct fiemap *) ctxt->buf;
 		ctxt->idx = -1;
+		ctxt->last_flags = ctxt->last_hole = 0;
 	}
 	return ctxt;
-}
-
-static inline int block_contained(uint64_t blkno,
-				  struct fiemap_extent *extent)
-{
-	if (blkno >= extent->fe_logical &&
-	    blkno < (extent->fe_logical + extent->fe_length))
-		return 1;
-	return 0;
 }
 
 static int do_fiemap(struct fiemap *fiemap, struct filerec *file,
@@ -465,12 +468,15 @@ static int do_fiemap(struct fiemap *fiemap, struct filerec *file,
 	return 0;
 }
 
+/*
+ * Assumes that we always call with blkno in ascending order
+ */
 int fiemap_iter_get_flags(struct fiemap_ctxt *ctxt, struct filerec *file,
 			  uint64_t blkno, unsigned int *flags,
 			  unsigned int *hole)
 {
 	int err;
-	uint64_t new_start;
+	uint64_t fiestart = 0;
 	struct fiemap *fiemap;
 	struct fiemap_extent *extent;
 
@@ -480,52 +486,77 @@ int fiemap_iter_get_flags(struct fiemap_ctxt *ctxt, struct filerec *file,
 	if (ctxt == NULL)
 		return 0;
 	/* we had a previous error or have no more extents to look up */
-	if (ctxt->fiemap == NULL)
+	if (ctxt->fiemap == NULL) {
+		*hole = ctxt->last_hole;
+		*flags = ctxt->last_flags;
 		return 0;
+	}
 
 	fiemap = ctxt->fiemap;
 
 	if (ctxt->idx == -1) {
-		err = do_fiemap(fiemap, file, 0);
-		if (err || fiemap->fm_mapped_extents == 0)
-			goto out_last_map;
-
+		err = do_fiemap(fiemap, file, fiestart);
+		if (err) {
+			fc_set_last(ctxt, 0, 0);
+			return err;
+		}
+		if (fiemap->fm_mapped_extents == 0) {
+			*hole = 1;
+			fc_set_last(ctxt, 0, 1);
+			return 0;
+		}
 		ctxt->idx = 0;
 	}
 
-check:
+	/* Find first extent that ends past blkno */
 	extent = &fiemap->fm_extents[ctxt->idx];
-	if (block_contained(blkno, extent)) {
-		*flags = extent->fe_flags;
-		return 0;
+	while ((extent->fe_logical + extent->fe_length) <= blkno) {
+		if (extent->fe_flags & FIEMAP_EXTENT_LAST)
+			break;
+
+		ctxt->idx++;
+
+		if (ctxt->idx == fiemap->fm_mapped_extents) {
+			fiestart = extent->fe_logical + extent->fe_length;
+			err = do_fiemap(fiemap, file, fiestart);
+			if (err) {
+				fc_set_last(ctxt, 0, 0);
+				return err;
+			}
+			if (fiemap->fm_mapped_extents == 0) {
+				*hole = 1;
+				fc_set_last(ctxt, 0, 1);
+				return 0;
+			}
+			ctxt->idx = 0;
+		}
+		extent = &fiemap->fm_extents[ctxt->idx];
 	}
 
-	/* blkno is in a hole, no need to move forward an extent yet */
 	if (blkno < extent->fe_logical) {
+		/*
+		 * Extent starts after blkno. Don't have to worry
+		 * about EXTENT_LAST here, we'll hit this extent on a
+		 * future call.
+		 */
 		*hole = 1;
 		return 0;
 	}
 
-	err = 0;
-	/* No more extents for us to look for */
-	if (extent->fe_flags & FIEMAP_EXTENT_LAST)
-		goto out_last_map;
-
-	ctxt->idx++;
-	if (ctxt->idx == fiemap->fm_mapped_extents) {
-		/* fiemap again to get more extents */
-		new_start = extent->fe_logical + extent->fe_length;
-		err = do_fiemap(fiemap, file, new_start);
-		if (err ||  fiemap->fm_mapped_extents == 0)
-			goto out_last_map;
-
-		ctxt->idx = 0;
+	/*
+	 * No more extents for us to look for
+	 * Let's assume - that all following data is a hole
+	 */
+	if (extent->fe_flags & FIEMAP_EXTENT_LAST
+	    && blkno >= (extent->fe_logical + extent->fe_length)) {
+		*hole = 1;
+		fc_set_last(ctxt, 0, 1);
+		return 0;
 	}
-	goto check;
 
-out_last_map:
-	ctxt->fiemap = NULL;
-	return err;
+	*flags = extent->fe_flags;
+
+	return 0;
 }
 
 #ifdef FILEREC_TEST
@@ -739,6 +770,49 @@ static char *fiemap_flags_str(unsigned long long flags)
 
 int debug = 1;	/* Want prints from filerec_count_shared */
 
+#ifdef	TEST_FIEMAP_ITER
+static int get_size(struct filerec *file)
+{
+	int ret;
+	struct stat st;
+
+	ret = stat(file->filename, &st);
+	if (ret == -1)
+		return errno;
+
+	file->size = st.st_size;
+	return 0;
+}
+
+static int test_iter(struct filerec *file)
+{
+	int ret, bs = 128*1024;
+	struct fiemap_ctxt *fc = alloc_fiemap_ctxt();
+	unsigned int flags, hole;
+	uint64_t blkno;
+
+	if (!fc)
+		return ENOMEM;
+
+	ret = get_size(file);
+	if (ret)
+		goto out;
+
+	for(blkno = 0; blkno < file->size; blkno += bs) {
+		ret = fiemap_iter_get_flags(fc, file, blkno, &flags, &hole);
+		if (ret)
+			return ret;
+
+		printf("(test_iter) %s: block: %"PRIu64" hole: %d flags: %s\n",
+		       file->filename, blkno, hole, fiemap_flags_str(flags));
+	}
+
+out:
+	free(fc);
+	return ret;
+}
+#endif	/* TEST_FIEMAP_ITER */
+
 int main(int argc, char **argv)
 {
 	int ret, i;
@@ -763,6 +837,10 @@ int main(int argc, char **argv)
 		if (ret)
 			goto out;
 
+#ifdef	TEST_FIEMAP_ITER
+		test_iter(file);
+#else
+
 		shared = 0;
 		ret = filerec_count_shared(file, 0, -1ULL, &shared, NULL, NULL);
 		filerec_close(file);
@@ -772,6 +850,7 @@ int main(int argc, char **argv)
 		}
 
 		printf("%s: %"PRIu64" shared bytes\n", file->filename, shared);
+#endif
 		filerec_free(file);
 		file = NULL;
 	}
