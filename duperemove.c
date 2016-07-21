@@ -342,16 +342,17 @@ static int parse_options(int argc, char **argv)
 				"file list argument\n");
 			return 1;
 		}
-		if (fdupes_mode) {
+		goto out_nofiles;
+	}
+
+	if (fdupes_mode) {
+		if (read_hashes || write_hashes || update_hashes) {
 			fprintf(stderr,
 				"Error: cannot mix hashfile option with "
 				"--fdupes option\n");
 			return 1;
 		}
-		goto out_nofiles;
-	}
 
-	if (fdupes_mode) {
 		if (numfiles) {
 			fprintf(stderr,
 				"Error: fdupes option does not take a file "
