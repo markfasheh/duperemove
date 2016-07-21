@@ -255,7 +255,8 @@ int add_file(const char *name, int dirfd)
 	close(fd);
 
 	walked_size += st.st_size;
-	file = filerec_new(path, st.st_ino, subvolid, st.st_size);
+	file = filerec_new(path, st.st_ino, subvolid, st.st_size,
+			   timespec_to_nano(&st.st_mtim));
 	if (file == NULL) {
 		fprintf(stderr, "Out of memory while allocating file record "
 			"for: %s\n", path);

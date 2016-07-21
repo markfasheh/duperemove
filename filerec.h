@@ -17,6 +17,7 @@
 #define __FILEREC__
 
 #include <stdint.h>
+#include <time.h>
 #include "rbtree.h"
 #include "list.h"
 #include "interval_tree.h"
@@ -48,6 +49,8 @@ struct filerec {
 #ifdef	ITDEBUG
 	uint64_t		num_extents;
 #endif
+	/* mtime in nanoseconds */
+	uint64_t		mtime;
 };
 
 void init_filerec(void);
@@ -55,7 +58,7 @@ void free_all_filerecs(void);
 void debug_print_filerecs(void);
 
 struct filerec *filerec_new(const char *filename, uint64_t inum,
-			    uint64_t subvolid, uint64_t size);
+			    uint64_t subvolid, uint64_t size, uint64_t mtime);
 struct filerec *filerec_find(uint64_t inum, uint64_t subvolid);
 void filerec_free(struct filerec *file);
 int filerec_open(struct filerec *file, int write);
@@ -102,4 +105,17 @@ void fiemap_ctxt_init(struct fiemap_ctxt *ctxt);
 int fiemap_iter_get_flags(struct fiemap_ctxt *ctxt, struct filerec *file,
 			  uint64_t blkno, unsigned int *flags,
 			  unsigned int *hole);
+
+#define	NANOSECONDS	1000000000
+static inline uint64_t timespec_to_nano(struct timespec *t)
+{
+	return (uint64_t)t->tv_nsec + t->tv_sec * NANOSECONDS;
+}
+
+static inline void nano_to_timespec(uint64_t nanosecs, struct timespec *t)
+{
+	t->tv_sec = nanosecs / NANOSECONDS;
+	t->tv_nsec = nanosecs % NANOSECONDS;
+}
+
 #endif /* __FILEREC__ */

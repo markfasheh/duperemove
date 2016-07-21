@@ -66,7 +66,7 @@ static int create_tables(sqlite3 *db)
 
 #define	CREATE_TABLE_FILES	\
 "CREATE TABLE files(filename TEXT PRIMARY KEY NOT NULL, ino INTEGER, "\
-"subvol INTEGER, size INTEGER, blocks INTEGER);"
+"subvol INTEGER, size INTEGER, blocks INTEGER, mtime INTEGER);"
 	ret = sqlite3_exec(db, CREATE_TABLE_FILES, NULL, NULL, NULL);
 	if (ret)
 		goto out;
@@ -426,18 +426,10 @@ static int dbfile_check_version(sqlite3 *db)
 	return 0;
 }
 
-int dbfile_write_file_info(sqlite3 *db, struct filerec *file)
+static int __dbfile_write_file_info(sqlite3 *db, sqlite3_stmt *stmt,
+				    struct filerec *file)
 {
 	int ret;
-	sqlite3_stmt *stmt = NULL;
-
-#define	WRITE_FILE							\
-"INSERT INTO files (ino, subvol, filename, size, blocks) VALUES (?1, ?2, ?3, ?4, ?5);"
-	ret = sqlite3_prepare_v2(db, WRITE_FILE, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing filerec insert statement");
-		goto out_error;
-	}
 
 	ret = sqlite3_bind_int64(stmt, 1, file->inum);
 	if (ret)
@@ -459,6 +451,10 @@ int dbfile_write_file_info(sqlite3 *db, struct filerec *file)
 	if (ret)
 		goto bind_error;
 
+	ret = sqlite3_bind_int64(stmt, 6, file->mtime);
+	if (ret)
+		goto bind_error;
+
 	ret = sqlite3_step(stmt);
 	if (ret != SQLITE_DONE) {
 		perror_sqlite(ret, "executing sql");
@@ -470,6 +466,23 @@ bind_error:
 	if (ret)
 		perror_sqlite(ret, "binding values");
 out_error:
+	return ret;
+}
+
+int dbfile_write_file_info(sqlite3 *db, struct filerec *file)
+{
+	int ret;
+	sqlite3_stmt *stmt = NULL;
+
+#define	WRITE_FILE							\
+"insert into files (ino, subvol, filename, size, blocks, mtime) VALUES (?1, ?2, ?3, ?4, ?5, ?6);"
+	ret = sqlite3_prepare_v2(db, WRITE_FILE, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing filerec insert statement");
+		return ret;
+	}
+
+	ret = __dbfile_write_file_info(db, stmt, file);
 
 	sqlite3_finalize(stmt);
 	return ret;
@@ -547,23 +560,22 @@ bind_error:
 	if (ret)
 		perror_sqlite(ret, "binding values");
 out_error:
-
-	sqlite3_finalize(stmt);
 	return ret;
 }
 
-static int dbfile_load_filerec(sqlite3 *db, uint64_t ino, uint64_t subvol,
-			       struct filerec **file)
+static int dbfile_load_one_filerec(sqlite3 *db, uint64_t ino, uint64_t subvol,
+				   struct filerec **file)
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
 	const unsigned char *filename;
 	uint64_t size;
+	uint64_t mtime;
 
 	*file = NULL;
 
-#define	LOAD_FILEREC	"select filename, size from files where ino = ?1 and "\
-			"subvol = ?2;"
+#define LOAD_FILEREC	"select filename, size, mtime from files where ino = "\
+			"?1 and subvol = ?2;"
 
 	ret = sqlite3_prepare_v2(db, LOAD_FILEREC, -1, &stmt, NULL);
 	if (ret) {
@@ -595,8 +607,9 @@ static int dbfile_load_filerec(sqlite3 *db, uint64_t ino, uint64_t subvol,
 
 	filename = sqlite3_column_text(stmt, 0);
 	size = sqlite3_column_int64(stmt, 1);
+	mtime = sqlite3_column_int64(stmt, 2);
 
-	*file = filerec_new((const char *)filename, ino, subvol, size);
+	*file = filerec_new((const char *)filename, ino, subvol, size, mtime);
 	if (!*file)
 		ret = ENOMEM;
 out:
@@ -643,7 +656,7 @@ int dbfile_load_hashes(struct hash_tree *hash_tree)
 
 		file = filerec_find(ino, subvol);
 		if (!file) {
-			ret = dbfile_load_filerec(db, ino, subvol, &file);
+			ret = dbfile_load_one_filerec(db, ino, subvol, &file);
 			if (ret) {
 				fprintf(stderr, "Error loading filerec (%"
 					PRIu64",%"PRIu64") from db\n",
