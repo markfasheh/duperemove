@@ -173,7 +173,7 @@ enum {
 	DEDUPE_OPTS_OPTION,
 };
 
-static int files_from_stdin(int fdupes)
+static int add_files_from_stdin(int fdupes)
 {
 	int ret = 0;
 	char *path = NULL;
@@ -214,12 +214,26 @@ static int files_from_stdin(int fdupes)
 	return 0;
 }
 
+static int add_files_from_cmdline(int numfiles, char **files)
+{
+	int i;
+
+	for (i = 0; i < numfiles; i++) {
+		const char *name = files[i];
+
+		if (add_file(name, AT_FDCWD))
+			return 1;
+	}
+
+	return 0;
+}
+
 /*
  * Ok this is doing more than just parsing options.
  */
 static int parse_options(int argc, char **argv)
 {
-	int i, c, numfiles;
+	int c, numfiles;
 	int read_hashes = 0;
 	int write_hashes = 0;
 	int update_hashes = 0;
@@ -371,15 +385,11 @@ static int parse_options(int argc, char **argv)
 	}
 
 	if (numfiles == 1 && strcmp(argv[optind], "-") == 0) {
-		if (files_from_stdin(0))
+		if (add_files_from_stdin(0))
 			return 1;
 	} else {
-		for (i = 0; i < numfiles; i++) {
-			const char *name = argv[i + optind];
-
-			if (add_file(name, AT_FDCWD))
-				return 1;
-		}
+		if (add_files_from_cmdline(numfiles, &argv[optind]))
+			return 1;
 	}
 
 	/* This can happen if for example, all files passed in on
@@ -413,7 +423,7 @@ int main(int argc, char **argv)
 	}
 
 	if (fdupes_mode)
-		return files_from_stdin(1);
+		return add_files_from_stdin(1);
 
 	ret = init_csum_module(user_hash);
 	if (ret) {
