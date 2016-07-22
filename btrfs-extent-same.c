@@ -106,7 +106,7 @@ int main(int argc, char **argv)
 	for (i = 0; i < same->dest_count; i++) {
 		destf = argv[4 + (i * 2)];
 
-		ret = open(destf, O_RDONLY);
+		ret = open(destf, O_WRONLY);
 		if (ret < 0) {
 			ret = errno;
 			fprintf(stderr, "Could not open file %s: (%d) %s\n",
