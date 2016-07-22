@@ -140,19 +140,106 @@ out:
 	return ret;
 }
 
+static int __add_file(const char *name, struct stat *st,
+		      struct filerec **ret_file)
+{
+	int ret;
+	int fd;
+	int on_btrfs = 0;
+	struct filerec *file;
+	uint64_t subvolid;
+
+	if (S_ISDIR(st->st_mode))
+		goto out;
+
+	if (!S_ISREG(st->st_mode)) {
+		vprintf("Skipping non-regular file %s\n", name);
+		goto out;
+	}
+
+	if (st->st_size < blocksize) {
+		vprintf("Skipping small file %s\n", name);
+		goto out;
+	}
+
+	ret = access(name, R_OK);
+	if (ret) {
+		fprintf(stderr, "Error %d: %s while accessing file %s. "
+			"Skipping.\n",
+			errno, strerror(errno), name);
+		goto out;
+	}
+
+	fd = open(name, O_RDONLY);
+	if (fd == -1) {
+		ret = errno;
+		fprintf(stderr, "Error %d: %s while opening file \"%s\". "
+			"Skipping.\n", ret, strerror(ret), name);
+		goto out;
+	}
+
+	ret = check_file_btrfs(fd, &on_btrfs);
+	if (ret) {
+		close(fd);
+		fprintf(stderr, "Skip file \"%s\" due to errors\n", name);
+		goto out;
+	}
+
+	if (run_dedupe && !on_btrfs) {
+		close(fd);
+		fprintf(stderr, "\"%s\": Can only dedupe files on btrfs\n",
+			name);
+		return ENOSYS;
+	}
+
+	if (on_btrfs) {
+		/*
+		 * Inodes between subvolumes on a btrfs file system
+		 * can have the same i_ino. Get the subvolume id of
+		 * our file so hard link detection works.
+		 */
+		ret = lookup_btrfs_subvolid(fd, &subvolid);
+		if (ret) {
+			close(fd);
+			fprintf(stderr,
+				"Error %d: %s while finding subvolid for file "
+				"\"%s\". Skipping.\n", ret, strerror(ret),
+				name);
+			goto out;
+		}
+	} else {
+		subvolid = st->st_dev;
+	}
+
+//	printf("\"%s\", ino: %llu, subvolid: %"PRIu64"\n", name,
+//	       (unsigned long long)st->st_ino, subvolid);
+
+	close(fd);
+
+	walked_size += st->st_size;
+	file = filerec_new(name, st->st_ino, subvolid, st->st_size,
+			   timespec_to_nano(&st->st_mtim));
+	if (file == NULL) {
+		fprintf(stderr, "Out of memory while allocating file record "
+			"for: %s\n", name);
+		return ENOMEM;
+	}
+	if (ret_file)
+		*ret_file = file;
+out:
+	return 0;
+}
+
 /*
  * Returns nonzero on fatal errors only
  */
 int add_file(const char *name, int dirfd)
 {
 	int ret, len = strlen(name);
-	int fd;
-	int on_btrfs = 0;
 	struct stat st;
 	char *pathtmp;
-	struct filerec *file;
-	uint64_t subvolid;
 	dev_t dev;
+	struct filerec *file = NULL;
 
 	if (len > (path_max - pathp)) {
 		fprintf(stderr, "Path max exceeded: %s %s\n", path, name);
@@ -190,82 +277,11 @@ int add_file(const char *name, int dirfd)
 		goto out;
 	}
 
-	if (!S_ISREG(st.st_mode)) {
-		vprintf("Skipping non-regular file %s\n", path);
-		goto out;
-	}
-
-	if (st.st_size < blocksize) {
-		vprintf("Skipping small file %s\n", path);
-		goto out;
-	}
-
-	ret = faccessat(dirfd, name, R_OK, 0);
-	if (ret) {
-		fprintf(stderr, "Error %d: %s while accessing file %s. "
-			"Skipping.\n",
-			errno, strerror(errno), path);
-		goto out;
-	}
-
-	fd = open(path, O_RDONLY);
-	if (fd == -1) {
-		ret = errno;
-		fprintf(stderr, "Error %d: %s while opening file \"%s\". "
-			"Skipping.\n", ret, strerror(ret), path);
-		goto out;
-	}
-
-	ret = check_file_btrfs(fd, &on_btrfs);
-	if (ret) {
-		close(fd);
-		fprintf(stderr, "Skip file \"%s\" due to errors\n", path);
-		goto out;
-	}
-
-	if (run_dedupe && !on_btrfs) {
-		close(fd);
-		fprintf(stderr, "\"%s\": Can only dedupe files on btrfs\n",
-			path);
-		return ENOSYS;
-	}
-
-	if (on_btrfs) {
-		/*
-		 * Inodes between subvolumes on a btrfs file system
-		 * can have the same i_ino. Get the subvolume id of
-		 * our file so hard link detection works.
-		 */
-		ret = lookup_btrfs_subvolid(fd, &subvolid);
-		if (ret) {
-			close(fd);
-			fprintf(stderr,
-				"Error %d: %s while finding subvolid for file "
-				"\"%s\". Skipping.\n", ret, strerror(ret),
-				path);
-			goto out;
-		}
-	} else {
-		subvolid = st.st_dev;
-	}
-
-//	printf("\"%s\", ino: %llu, subvolid: %"PRIu64"\n", path,
-//	       (unsigned long long)st.st_ino, subvolid);
-
-	close(fd);
-
-	walked_size += st.st_size;
-	file = filerec_new(path, st.st_ino, subvolid, st.st_size,
-			   timespec_to_nano(&st.st_mtim));
-	if (file == NULL) {
-		fprintf(stderr, "Out of memory while allocating file record "
-			"for: %s\n", path);
-		return ENOMEM;
-	}
+	ret = __add_file(path, &st, &file);
 
 out:
 	pathp = pathtmp;
-	return 0;
+	return ret;
 }
 
 static GThreadPool *setup_pool(void *location, GMutex *mutex,
