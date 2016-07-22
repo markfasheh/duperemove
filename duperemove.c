@@ -397,6 +397,12 @@ out_nofiles:
 	return 0;
 }
 
+static void print_header(void)
+{
+	printf("Using %uK blocks\n", blocksize / 1024);
+	printf("Using hash: %s\n", csum_mod->name);
+}
+
 int main(int argc, char **argv)
 {
 	int ret, filelist_idx = 0;
@@ -433,15 +439,21 @@ int main(int argc, char **argv)
 	if (isatty(STDOUT_FILENO))
 		stdout_is_tty = 1;
 
-	printf("Using %uK blocks\n", blocksize / 1024);
-	printf("Using hash: %s\n", csum_mod->name);
-
 	switch (use_hashfile) {
 	case H_UPDATE:
 	case H_WRITE:
 		ret = dbfile_create(serialize_fname, &dbfile_is_new);
 		if (ret)
 			break;
+
+		if (!dbfile_is_new) {
+			ret = dbfile_get_config(&blocksize, NULL, NULL, NULL,
+						NULL);
+			if (ret)
+				return ret;
+		}
+
+		print_header();
 
 		if (stdin_filelist)
 			ret = add_files_from_stdin(0);
@@ -474,6 +486,8 @@ int main(int argc, char **argv)
 		 * extent-find and dedupe stages
 		 */
 		ret = dbfile_get_config(&blocksize, NULL, NULL, NULL, NULL);
+
+		print_header();
 		break;
 	default:
 		abort_lineno();
