@@ -60,8 +60,9 @@ De-dupe the results - only works on \fIbtrfs\fR.
 
 .TP
 \fB\-A\fR
-Opens files readonly when deduping. Primarily for use by privileged
-users on readonly snapshots.
+Opens files readonly when deduping; currently requires root privileges
+(and is enabled by default for root). Allows use on readonly snapshots
+or when the file might be open for exec.
 
 .TP
 \fB\-h\fR

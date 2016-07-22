@@ -406,6 +406,8 @@ int main(int argc, char **argv)
 #else
 	io_threads = sysconf(_SC_NPROCESSORS_ONLN);
 #endif
+	if (!geteuid())
+		target_rw = 0;
 
 	if (parse_options(argc, argv)) {
 		usage(argv[0]);
