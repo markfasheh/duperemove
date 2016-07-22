@@ -1,4 +1,7 @@
 *.o
 duperemove
 btrfs-extent-same
+csum-test
+hashstats
+show-shared-extents
 *~
