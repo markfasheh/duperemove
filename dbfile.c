@@ -196,7 +196,7 @@ int __dbfile_sync_config(sqlite3 *db, unsigned int block_size)
 	sqlite3_stmt *stmt = NULL;
 
 	ret = sqlite3_prepare_v2(db,
-				 "INSERT INTO config VALUES (?1, ?2)", -1,
+				 "insert or replace into config VALUES (?1, ?2)", -1,
 				 &stmt, NULL);
 	if (ret) {
 		perror_sqlite(ret, "preparing statement");
@@ -475,7 +475,7 @@ int dbfile_write_file_info(sqlite3 *db, struct filerec *file)
 	sqlite3_stmt *stmt = NULL;
 
 #define	WRITE_FILE							\
-"insert into files (ino, subvol, filename, size, blocks, mtime) VALUES (?1, ?2, ?3, ?4, ?5, ?6);"
+"insert or replace into files (ino, subvol, filename, size, blocks, mtime) VALUES (?1, ?2, ?3, ?4, ?5, ?6);"
 	ret = sqlite3_prepare_v2(db, WRITE_FILE, -1, &stmt, NULL);
 	if (ret) {
 		perror_sqlite(ret, "preparing filerec insert statement");
