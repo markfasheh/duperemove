@@ -240,6 +240,7 @@ int add_file(const char *name, int dirfd)
 	char *pathtmp;
 	dev_t dev;
 	struct filerec *file = NULL;
+	char abspath[PATH_MAX];
 
 	if (len > (path_max - pathp)) {
 		fprintf(stderr, "Path max exceeded: %s %s\n", path, name);
@@ -277,7 +278,21 @@ int add_file(const char *name, int dirfd)
 		goto out;
 	}
 
-	ret = __add_file(path, &st, &file);
+	/*
+	 * Sanitize the file name and get absolute path. This avoids:
+	 *
+	 * - needless filerec writes to the db when we have
+	 *   effectively the same filename but the components have extra '/'
+	 *
+	 * - Absolute path allows the user to re-run this hash from
+	 *   any directory.
+	 */
+	if (realpath(path, abspath) == NULL) {
+		ret = errno;
+		goto out;
+	}
+
+	ret = __add_file(abspath, &st, &file);
 	/*
 	 * We run the file scan before the database. Mark each file as
 	 * needing a db update plus rescan. Later, when we run the DB
