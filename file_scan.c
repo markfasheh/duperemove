@@ -58,6 +58,27 @@ struct thread_params {
 	int num_hashes;          /* Total number of hashes we hashed */
 };
 
+void fs_set_onefs(dev_t dev, uint64_t fsid)
+{
+	if (dev || fsid) {
+		one_file_system = 1;
+		if (dev)
+			one_fs_dev = dev;
+		else if (fsid)
+			one_fs_btrfs = fsid;
+	}
+}
+
+dev_t fs_onefs_dev(void)
+{
+	return one_fs_dev;
+}
+
+uint64_t fs_onefs_id(void)
+{
+	return one_fs_btrfs;
+}
+
 static int get_dirent_type(struct dirent *entry, int fd)
 {
 	int ret;

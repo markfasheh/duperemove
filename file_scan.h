@@ -28,6 +28,11 @@ int add_file(const char *name, int dirfd);
 int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 		uint64_t size, uint64_t mtime, int *delete);
 
+/* Set/get onefs state, info is gathered from our config table */
+void fs_set_onefs(dev_t dev, uint64_t fsid);
+dev_t fs_onefs_dev(void);
+uint64_t fs_onefs_id(void);
+
 int populate_tree();
 
 /* For dbfile.c */

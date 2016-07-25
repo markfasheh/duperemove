@@ -9,10 +9,12 @@ int dbfile_create(char *filename, int *dbfile_is_new);
 int dbfile_open(char *filename);
 void dbfile_close(void);
 
-int dbfile_get_config(unsigned int *block_size,
-		      uint64_t *num_hashes, uint64_t *num_files,
-		      int *major, int *minor);
-int dbfile_sync_config(unsigned int block_size);
+/* TODO: Clean up this ridiculous prototype. */
+int dbfile_get_config(unsigned int *block_size, uint64_t *num_hashes,
+		      uint64_t *num_files, dev_t *onefs_dev,
+		      uint64_t *onefs_fsid, int *major, int *minor);
+int dbfile_sync_config(unsigned int block_size, dev_t onefs_dev,
+		       uint64_t onefs_fsid);
 
 struct hash_tree;
 struct hash_file_header;

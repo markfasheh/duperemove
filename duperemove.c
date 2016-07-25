@@ -449,10 +449,14 @@ int main(int argc, char **argv)
 			break;
 
 		if (!dbfile_is_new) {
-			ret = dbfile_get_config(&blocksize, NULL, NULL, NULL,
-						NULL);
+			dev_t dev;
+			uint64_t fsid;
+
+			ret = dbfile_get_config(&blocksize, NULL, NULL, &dev,
+						&fsid, NULL, NULL);
 			if (ret)
 				return ret;
+			fs_set_onefs(dev, fsid);
 		}
 
 		print_header();
@@ -487,7 +491,8 @@ int main(int argc, char **argv)
 		 * Skips the file scan, used to isolate the
 		 * extent-find and dedupe stages
 		 */
-		ret = dbfile_get_config(&blocksize, NULL, NULL, NULL, NULL);
+		ret = dbfile_get_config(&blocksize, NULL, NULL, NULL, NULL,
+					NULL, NULL);
 
 		print_header();
 		break;
@@ -517,7 +522,8 @@ int main(int argc, char **argv)
 		if (ret)
 			goto out;
 
-		ret = dbfile_sync_config(blocksize);
+		ret = dbfile_sync_config(blocksize, fs_onefs_dev(),
+					 fs_onefs_id());
 		if (ret)
 			goto out;
 		if (use_hashfile == H_WRITE) {

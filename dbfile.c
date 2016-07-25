@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include <stddef.h>
+#include <sys/types.h>
 
 #include "csum.h"
 #include "filerec.h"
@@ -44,6 +45,7 @@ sqlite3 *dbfile_get_handle(void)
 
 static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 			       uint64_t *num_hashes, uint64_t *num_files,
+			       dev_t *onefs_dev, uint64_t *onefs_fsid,
 			       int *major, int *minor);
 
 #if 0
@@ -159,8 +161,8 @@ reopen:
 			return ret;
 		}
 	} else {
-		ret = __dbfile_get_config(db, NULL, NULL, NULL, &vmajor,
-					  &vminor);
+		ret = __dbfile_get_config(db, NULL, NULL, NULL, NULL, NULL,
+					  &vmajor, &vminor);
 		if (ret) {
 			perror_sqlite(ret, "reading initial db config");
 			sqlite3_close(db);
@@ -237,10 +239,12 @@ void dbfile_close(void)
 	gdb = NULL;
 }
 
-int __dbfile_sync_config(sqlite3 *db, unsigned int block_size)
+int __dbfile_sync_config(sqlite3 *db, unsigned int block_size, dev_t onefs_dev,
+			 uint64_t onefs_fsid)
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
+	unsigned int onefs_major, onefs_minor;
 
 	ret = sqlite3_prepare_v2(db,
 				 "insert or replace into config VALUES (?1, ?2)", -1,
@@ -294,6 +298,41 @@ int __dbfile_sync_config(sqlite3 *db, unsigned int block_size)
 		goto out;
 	sqlite3_reset(stmt);
 
+	onefs_major = major(onefs_dev);
+	ret = sqlite3_bind_text(stmt, 1, "onefs_dev_major", -1, SQLITE_STATIC);
+	if (ret)
+		goto out;
+	ret = sqlite3_bind_int(stmt, 2, onefs_major);
+	if (ret)
+		goto out;
+	ret = sqlite3_step(stmt);
+	if (ret != SQLITE_DONE)
+		goto out;
+	sqlite3_reset(stmt);
+
+	onefs_minor = minor(onefs_dev);
+	ret = sqlite3_bind_text(stmt, 1, "onefs_dev_minor", -1, SQLITE_STATIC);
+	if (ret)
+		goto out;
+	ret = sqlite3_bind_int(stmt, 2, onefs_minor);
+	if (ret)
+		goto out;
+	ret = sqlite3_step(stmt);
+	if (ret != SQLITE_DONE)
+		goto out;
+	sqlite3_reset(stmt);
+
+	ret = sqlite3_bind_text(stmt, 1, "onefs_fsid", -1, SQLITE_STATIC);
+	if (ret)
+		goto out;
+	ret = sqlite3_bind_int64(stmt, 2, onefs_fsid);
+	if (ret)
+		goto out;
+	ret = sqlite3_step(stmt);
+	if (ret != SQLITE_DONE)
+		goto out;
+	sqlite3_reset(stmt);
+
 	ret = 0;
 out:
 	sqlite3_finalize(stmt);
@@ -305,7 +344,8 @@ out:
 	return ret;
 }
 
-int dbfile_sync_config(unsigned int block_size)
+int dbfile_sync_config(unsigned int block_size, dev_t onefs_dev,
+		       uint64_t onefs_fsid)
 {
 	sqlite3 *db;
 	int ret;
@@ -314,7 +354,7 @@ int dbfile_sync_config(unsigned int block_size)
 	if (!db)
 		return ENOENT;
 
-	ret = __dbfile_sync_config(db, block_size);
+	ret = __dbfile_sync_config(db, block_size, onefs_dev, onefs_fsid);
 
 	return ret;
 }
@@ -402,12 +442,40 @@ static int get_config_int(sqlite3_stmt *stmt, const char *name, int *val)
 	return 0;
 }
 
+static int get_config_int64(sqlite3_stmt *stmt, const char *name, uint64_t *val)
+{
+	int ret;
+
+	if (!val)
+		return 0;
+
+	ret = sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
+	if (ret) {
+		perror_sqlite(ret, "retrieving row from config table (bind)");
+		return ret;
+	}
+
+	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
+		*val = sqlite3_column_int64(stmt, 0);
+	}
+	if (ret != SQLITE_DONE) {
+		perror_sqlite(ret, "retrieving row from config table (step)");
+		return ret;
+	}
+
+	sqlite3_reset(stmt);
+
+	return 0;
+}
+
 static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 			       uint64_t *num_hashes, uint64_t *num_files,
-			       int *major, int *minor)
+			       dev_t *onefs_dev, uint64_t *onefs_fsid,
+			       int *ver_major, int *ver_minor)
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
+	unsigned int onefs_major, onefs_minor;
 
 #define SELECT_CONFIG "select keyval from config where keyname=?1;"
 	ret = sqlite3_prepare_v2(db, SELECT_CONFIG, -1, &stmt, NULL);
@@ -420,11 +488,27 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 	if (ret)
 		goto out;
 
-	ret = get_config_int(stmt, "version_major", major);
+	ret = get_config_int(stmt, "version_major", ver_major);
 	if (ret)
 		goto out;
 
-	ret = get_config_int(stmt, "version_minor", minor);
+	ret = get_config_int(stmt, "version_minor", ver_minor);
+	if (ret)
+		goto out;
+
+	if (onefs_dev) {
+		ret = get_config_int(stmt, "onefs_dev_major", (int *)&onefs_major);
+		if (ret)
+			goto out;
+
+		ret = get_config_int(stmt, "onefs_dev_minor", (int *)&onefs_minor);
+		if (ret)
+			goto out;
+
+		*onefs_dev = makedev(onefs_major, onefs_minor);
+	}
+
+	ret = get_config_int64(stmt, "onefs_fsid", onefs_fsid);
 	if (ret)
 		goto out;
 
@@ -442,12 +526,13 @@ out:
 }
 
 int dbfile_get_config(unsigned int *block_size, uint64_t *num_hashes,
-		      uint64_t *num_files, int *major, int *minor)
+		      uint64_t *num_files, dev_t *onefs_dev,
+		      uint64_t *onefs_fsid, int *ver_major, int *ver_minor)
 {
 	int ret;
 
-	ret = __dbfile_get_config(gdb, block_size, num_hashes, num_files, major,
-				  minor);
+	ret = __dbfile_get_config(gdb, block_size, num_hashes, num_files,
+				  onefs_dev, onefs_fsid, ver_major, ver_minor);
 
 	return ret;
 }
@@ -455,16 +540,17 @@ int dbfile_get_config(unsigned int *block_size, uint64_t *num_hashes,
 static int dbfile_check_version(sqlite3 *db)
 {
 	int ret;
-	int major, minor;
+	int ver_major, ver_minor;
 
-	ret = __dbfile_get_config(db, NULL, NULL, NULL, &major, &minor);
+	ret = __dbfile_get_config(db, NULL, NULL, NULL, NULL, NULL, &ver_major,
+				  &ver_minor);
 	if (ret)
 		return ret;
 
-	if (major > DB_FILE_MAJOR) {
+	if (ver_major > DB_FILE_MAJOR) {
 		fprintf(stderr,
 			"Hash db version mismatch (mine: %d.%d, file: %d.%d)\n",
-			DB_FILE_MAJOR, DB_FILE_MINOR, major, minor);
+			DB_FILE_MAJOR, DB_FILE_MINOR, ver_major, ver_minor);
 		return EIO;
 	}
 
