@@ -66,6 +66,7 @@ int target_rw = 1;
 static int version_only = 0;
 static int fdupes_mode = 0;
 static int stdin_filelist = 0;
+static unsigned int list_only_opt = 0;
 
 static enum {
 	H_READ,
@@ -79,6 +80,30 @@ int do_lookup_extents = 1;
 int stdout_is_tty = 0;
 
 static char *user_hash = DEFAULT_HASH_STR;
+
+static void print_file(char *filename, char *ino, char *subvol)
+{
+	if (verbose)
+		printf("%s\t%s\t%s\n", filename, ino, subvol);
+	else
+		printf("%s\n", filename);
+}
+
+static int list_db_files(char *filename)
+{
+	int ret;
+
+	ret = dbfile_open(filename);
+	if (ret) {
+		fprintf(stderr, "Error: Could not open \"%s\"\n", filename);
+		return ret;
+	}
+
+	ret = dbfile_iter_files(dbfile_get_handle(), &print_file);
+
+	dbfile_close();
+	return ret;
+}
 
 static void usage(const char *prog)
 {
@@ -260,7 +285,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 	if (argc < 2)
 		return 1;
 
-	while ((c = getopt_long(argc, argv, "Ab:vdDrh?x", long_ops, NULL))
+	while ((c = getopt_long(argc, argv, "Ab:vdDrh?xL", long_ops, NULL))
 	       != -1) {
 		switch (c) {
 		case 'A':
@@ -334,6 +359,9 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			if (parse_dedupe_opts(optarg))
 				return EINVAL;
 			break;
+		case 'L':
+			list_only_opt = 1;
+			break;
 		case HELP_OPTION:
 		case '?':
 		default:
@@ -392,6 +420,20 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		*filelist_idx = optind;
 	}
 
+	if (list_only_opt) {
+		if (!serialize_fname || use_hashfile == H_WRITE) {
+			fprintf(stderr,	"Error: --hashfile= option is required "
+				"with '-L'.\n");
+			return 1;
+		}
+
+		if (numfiles) {
+			fprintf(stderr, "Error: -L option does not take a file "
+				"list argument\n");
+			return 1;
+		}
+	}
+
 out_nofiles:
 
 	return 0;
@@ -438,6 +480,9 @@ int main(int argc, char **argv)
 
 	if (isatty(STDOUT_FILENO))
 		stdout_is_tty = 1;
+
+	if (list_only_opt)
+		return list_db_files(serialize_fname);
 
 	switch (use_hashfile) {
 	case H_UPDATE:

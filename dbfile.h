@@ -43,4 +43,11 @@ int dbfile_write_file_info(sqlite3 *db, struct filerec *file);
 int dbfile_write_hashes(sqlite3 *db, struct filerec *file,
 			uint64_t nb_hash, struct block *hashes);
 
+/*
+ * This is used for printing so we can get away with chars from sqlite
+ * for now.
+ */
+typedef void (*iter_files_func)(char *filename, char *ino, char *subvol);
+int dbfile_iter_files(sqlite3 *db, iter_files_func func);
+
 #endif	/* __DBFILE_H__ */

@@ -1104,3 +1104,26 @@ out:
 
 	return ret;
 }
+
+static int iter_cb(void *priv, int argc, char **argv, char **column)
+{
+	iter_files_func func = priv;
+
+	abort_on(argc != 3);
+	func(argv[0], argv[1], argv[2]);
+	return 0;
+}
+
+int dbfile_iter_files(sqlite3 *db, iter_files_func func)
+{
+	int ret;
+
+#define	LIST_FILES	"select filename, ino, subvol from files;"
+	ret = sqlite3_exec(db, LIST_FILES, iter_cb, func, NULL);
+	if (ret) {
+		perror_sqlite(ret, "Running sql to list files.");
+		return ret;
+	}
+
+	return 0;
+}

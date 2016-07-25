@@ -79,6 +79,11 @@ A future enhancement will allow duperemove to reuse the data inside
 hashfiles to optimize the file scan by skipping unchanged files.
 
 .TP
+\fB\-L\fR
+Print all files in the hashfile and exit. Requires the \fB\--hashfile\fR option.
+Will print additional information about each file when run with \fB\-v\fR.
+
+.TP
 \fB\--fdupes\fR
 Run in \fBfdupes\fR mode. With this option you can pipe the output of
 \fBfdupes\fR to duperemove to dedupe any duplicate files found. When
