@@ -90,8 +90,9 @@ Read data blocks and skip any zeroed blocks, useful for speedup duperemove,
 but can prevent deduplication of zeroed files.
 
 .TP
-\fB\-x [yes|no]\fR
-Don't cross filesystem boundaries. Defaults to yes.
+\fB\-x\fR
+Don't cross filesystem boundaries, this is the default behavior since
+duperemove v0.11. The option is kept for backwards compatibility.
 
 .TP
 \fB\-b size\fR
