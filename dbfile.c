@@ -239,6 +239,67 @@ void dbfile_close(void)
 	gdb = NULL;
 }
 
+static int sync_config_text(sqlite3_stmt *stmt, const char *key, char *val,
+			    int len)
+{
+	int ret;
+
+	ret = sqlite3_bind_text(stmt, 1, key, -1, SQLITE_STATIC);
+	if (ret)
+		goto out;
+	ret = sqlite3_bind_text(stmt, 2, val, len, SQLITE_TRANSIENT);
+	if (ret)
+		goto out;
+	ret = sqlite3_step(stmt);
+	if (ret != SQLITE_DONE)
+		goto out;
+	sqlite3_reset(stmt);
+
+	ret = 0;
+out:
+	return ret;
+}
+
+static int sync_config_int(sqlite3_stmt *stmt, const char *key, int val)
+{
+	int ret;
+
+	ret = sqlite3_bind_text(stmt, 1, key, -1, SQLITE_STATIC);
+	if (ret)
+		goto out;
+	ret = sqlite3_bind_int(stmt, 2, val);
+	if (ret)
+		goto out;
+	ret = sqlite3_step(stmt);
+	if (ret != SQLITE_DONE)
+		goto out;
+	sqlite3_reset(stmt);
+
+	ret = 0;
+out:
+	return ret;
+}
+
+static int sync_config_int64(sqlite3_stmt *stmt, const char *key, uint64_t val)
+{
+	int ret;
+
+	ret = sqlite3_bind_text(stmt, 1, key, -1, SQLITE_STATIC);
+	if (ret)
+		goto out;
+	ret = sqlite3_bind_int64(stmt, 2, val);
+	if (ret)
+		goto out;
+	ret = sqlite3_step(stmt);
+	if (ret != SQLITE_DONE)
+		goto out;
+	sqlite3_reset(stmt);
+
+	ret = 0;
+out:
+	return ret;
+}
+
 int __dbfile_sync_config(sqlite3 *db, unsigned int block_size, dev_t onefs_dev,
 			 uint64_t onefs_fsid)
 {
@@ -254,84 +315,35 @@ int __dbfile_sync_config(sqlite3 *db, unsigned int block_size, dev_t onefs_dev,
 		return ret;
 	}
 
-	ret = sqlite3_bind_text(stmt, 1, "version_major", -1, SQLITE_STATIC);
+	ret = sync_config_int(stmt, "version_major", DB_FILE_MAJOR);
 	if (ret)
 		goto out;
-	ret = sqlite3_bind_int(stmt, 2, DB_FILE_MAJOR);
-	if (ret)
-		goto out;
-	ret = sqlite3_step(stmt);
-	if (ret != SQLITE_DONE)
-		goto out;
-	sqlite3_reset(stmt);
 
-	ret = sqlite3_bind_text(stmt, 1, "version_minor", -1, SQLITE_STATIC);
+	ret = sync_config_int(stmt, "version_minor", DB_FILE_MINOR);
 	if (ret)
 		goto out;
-	ret = sqlite3_bind_int(stmt, 2, DB_FILE_MINOR);
-	if (ret)
-		goto out;
-	ret = sqlite3_step(stmt);
-	if (ret != SQLITE_DONE)
-		goto out;
-	sqlite3_reset(stmt);
 
-	ret = sqlite3_bind_text(stmt, 1, "hash_type", -1, SQLITE_STATIC);
+	ret = sync_config_text(stmt, "hash_type", hash_type, 8);
 	if (ret)
 		goto out;
-	ret = sqlite3_bind_text(stmt, 2, hash_type, 8, SQLITE_TRANSIENT);
-	if (ret)
-		goto out;
-	ret = sqlite3_step(stmt);
-	if (ret != SQLITE_DONE)
-		goto out;
-	sqlite3_reset(stmt);
 
-	ret = sqlite3_bind_text(stmt, 1, "block_size", -1, SQLITE_STATIC);
+	ret = sync_config_int(stmt, "block_size", block_size);
 	if (ret)
 		goto out;
-	ret = sqlite3_bind_int(stmt, 2, block_size);
-	if (ret)
-		goto out;
-	ret = sqlite3_step(stmt);
-	if (ret != SQLITE_DONE)
-		goto out;
-	sqlite3_reset(stmt);
 
 	onefs_major = major(onefs_dev);
-	ret = sqlite3_bind_text(stmt, 1, "onefs_dev_major", -1, SQLITE_STATIC);
+	ret = sync_config_int(stmt, "onefs_dev_major", onefs_major);
 	if (ret)
 		goto out;
-	ret = sqlite3_bind_int(stmt, 2, onefs_major);
-	if (ret)
-		goto out;
-	ret = sqlite3_step(stmt);
-	if (ret != SQLITE_DONE)
-		goto out;
-	sqlite3_reset(stmt);
 
 	onefs_minor = minor(onefs_dev);
-	ret = sqlite3_bind_text(stmt, 1, "onefs_dev_minor", -1, SQLITE_STATIC);
+	ret = sync_config_int(stmt, "onefs_dev_minor", onefs_minor);
 	if (ret)
 		goto out;
-	ret = sqlite3_bind_int(stmt, 2, onefs_minor);
-	if (ret)
-		goto out;
-	ret = sqlite3_step(stmt);
-	if (ret != SQLITE_DONE)
-		goto out;
-	sqlite3_reset(stmt);
 
-	ret = sqlite3_bind_text(stmt, 1, "onefs_fsid", -1, SQLITE_STATIC);
+	ret = sync_config_int64(stmt, "onefs_fsid", onefs_fsid);
 	if (ret)
 		goto out;
-	ret = sqlite3_bind_int64(stmt, 2, onefs_fsid);
-	if (ret)
-		goto out;
-	ret = sqlite3_step(stmt);
-	if (ret != SQLITE_DONE)
-		goto out;
-	sqlite3_reset(stmt);
 
 	ret = 0;
 out:
