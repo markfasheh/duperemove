@@ -18,5 +18,12 @@
 
 int check_file_btrfs(int fd, int *btrfs);
 int lookup_btrfs_subvolid(int fd, uint64_t *rootid);
+/*
+ * Figure out if we're btrfs. If we are, get the fsid. Otherwise
+ * put 0 in *ret_fsid.
+ *
+ * Returns nonzero on error.
+ */
+int check_btrfs_get_fsid(char *name, struct stat *st, uint64_t *ret_fsid);
 
 #endif	/* __BTRFS_UTIL__ */

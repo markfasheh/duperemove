@@ -48,6 +48,7 @@ static char path[PATH_MAX] = { 0, };
 static char *pathp = path;
 static char *path_max = &path[PATH_MAX - 1];
 static dev_t one_fs_dev;
+static uint64_t one_fs_btrfs;
 
 static uint64_t walked_size;
 static GMutex io_mutex; /* locks db writes */
@@ -241,6 +242,7 @@ int add_file(const char *name, int dirfd)
 	dev_t dev;
 	struct filerec *file = NULL;
 	char abspath[PATH_MAX];
+	uint64_t btrfs_fsid;
 
 	if (len > (path_max - pathp)) {
 		fprintf(stderr, "Path max exceeded: %s %s\n", path, name);
@@ -254,30 +256,6 @@ int add_file(const char *name, int dirfd)
 		ret = sprintf(pathp, "/%s", name);
 	pathp += ret;
 
-	ret = fstatat(dirfd, name, &st, 0);
-	if (ret) {
-		fprintf(stderr, "Error %d: %s while stating file %s. "
-			"Skipping.\n",
-			errno, strerror(errno), path);
-		goto out;
-	}
-
-	dev = st.st_dev;
-	if (one_file_system) {
-		if (!one_fs_dev)
-			one_fs_dev = dev;
-		if (one_fs_dev != dev) {
-			vprintf("Skipping file %s because of -x\n", path);
-			goto out;
-		}
-	}
-
-	if (S_ISDIR(st.st_mode)) {
-		if (walk_dir(name))
-			return 1;
-		goto out;
-	}
-
 	/*
 	 * Sanitize the file name and get absolute path. This avoids:
 	 *
@@ -289,6 +267,51 @@ int add_file(const char *name, int dirfd)
 	 */
 	if (realpath(path, abspath) == NULL) {
 		ret = errno;
+		goto out;
+	}
+
+	ret = stat(abspath, &st);
+	if (ret) {
+		fprintf(stderr, "Error %d: %s while stating file %s. "
+			"Skipping.\n",
+			errno, strerror(errno), abspath);
+		goto out;
+	}
+
+	if (S_ISDIR(st.st_mode)) {
+		dev = st.st_dev;
+		/*
+		 * Device doesn't work for btrfs as it changes between
+		 * subvolumes. We know how to get a unique fsid though
+		 * so use that in the case where we are on btrfs.
+		 */
+		ret = check_btrfs_get_fsid(abspath, &st, &btrfs_fsid);
+		if (ret) {
+			vprintf("Skipping directory %s due to error %d: %s\n",
+				abspath, ret, strerror(ret));
+			goto out;
+		}
+
+		if (one_file_system) {
+			abort_on(one_fs_dev && one_fs_btrfs);
+
+			if (!one_fs_dev && !one_fs_btrfs) {
+				if (btrfs_fsid)
+					one_fs_btrfs = btrfs_fsid;
+				else
+					one_fs_dev = dev;
+			}
+
+			if ((one_fs_dev && (one_fs_dev != dev)) ||
+			    (one_fs_btrfs && (btrfs_fsid != one_fs_btrfs))) {
+				vprintf("Skipping file %s because of -x\n",
+					abspath);
+				goto out;
+			}
+		}
+
+		if (walk_dir(name))
+			return 1;
 		goto out;
 	}
 

@@ -57,7 +57,7 @@ unsigned int blocksize = DEFAULT_BLOCKSIZE;
 
 int run_dedupe = 0;
 int recurse_dirs = 0;
-int one_file_system = 0;
+int one_file_system = 1;
 int block_dedupe = 0;
 int dedupe_same_file = 0;
 int skip_zeroes = 0;
@@ -260,7 +260,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 	if (argc < 2)
 		return 1;
 
-	while ((c = getopt_long(argc, argv, "Ab:vdDrh?x", long_ops, NULL))
+	while ((c = getopt_long(argc, argv, "Ab:vdDrh?x::", long_ops, NULL))
 	       != -1) {
 		switch (c) {
 		case 'A':
@@ -320,6 +320,8 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		case ONE_FILESYSTEM_OPTION:
 		case 'x':
 			one_file_system = 1;
+			if (optarg)
+				one_file_system = parse_yesno_option(optarg, 1);
 			break;
 		case HASH_OPTION:
 			user_hash = optarg;
