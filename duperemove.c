@@ -300,7 +300,7 @@ static int parse_options(int argc, char **argv)
 			}
 			break;
 		case LOOKUP_EXTENTS_OPTION:
-			do_lookup_extents = parse_yesno_option(optarg, 0);
+			do_lookup_extents = parse_yesno_option(optarg, 1);
 			break;
 		case ONE_FILESYSTEM_OPTION:
 		case 'x':
