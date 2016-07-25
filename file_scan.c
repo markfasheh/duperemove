@@ -351,16 +351,6 @@ out:
 	return ret;
 }
 
-static inline void set_dbfile_update_flags(struct filerec *file, uint64_t mtime,
-					   uint64_t size)
-{
-	file->flags &= ~(FILEREC_NEEDS_SCAN|FILEREC_UPDATE_DB);
-	if (mtime != file->mtime)
-		file->flags |= FILEREC_NEEDS_SCAN|FILEREC_UPDATE_DB;
-	else if (size != file->size) /* size change alone means no alloc */
-		file->flags |= FILEREC_UPDATE_DB;
-}
-
 /*
  * Add filerec from a db record.
  *
@@ -380,38 +370,49 @@ static inline void set_dbfile_update_flags(struct filerec *file, uint64_t mtime,
 int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 		uint64_t size, uint64_t mtime, int *delete)
 {
-	int ret;
+	int found, ret = 0;
 	struct filerec *file = filerec_find(inum, subvolid);
 	struct stat st;
 
 	*delete = 0;
+	found = !!file;
 
 	dprintf("Lookup/stat file \"%s\" from hashdb\n", filename);
 
-	if (file) {
-		/* We already have it from a stat() */
-		set_dbfile_update_flags(file, mtime, size);
+	if (!file) {
+		/* Go to disk and look up by filename */
+		ret = stat(filename, &st);
+		if (ret == -1 && errno == ENOENT) {
+			vprintf("File path %s no longer exists. Skipping.\n",
+				filename);
+			*delete = 1;
+			return 0;
+		} else if (ret == -1) {
+			ret = errno;
+			return ret;
+		}
+
+		ret = __add_file(filename, &st, &file);
+		if (ret)
+			return ret;
+		if (!file)
+			return ENOMEM;
+	}
+
+	file->flags &= ~(FILEREC_NEEDS_SCAN|FILEREC_UPDATE_DB);
+	if (mtime != file->mtime)
+		file->flags |= FILEREC_NEEDS_SCAN|FILEREC_UPDATE_DB;
+	else if (size != file->size) /* size change alone means no alloc */
+		file->flags |= FILEREC_UPDATE_DB;
+
+	if (found) {
+		/* We implicitly matched inode, subvol */
 		if (strcmp(filename, file->filename))
 			file->flags |= FILEREC_UPDATE_DB;
 		file->flags |= FILEREC_IN_DB;
 		return 0;
 	}
 
-	/* Go to disk and look up by filename */
-	ret = stat(filename, &st);
-	if (ret == -1 && errno == ENOENT) {
-		*delete = 1;
-		return 0;
-	} else if (ret == -1) {
-		ret = errno;
-		goto out;
-	}
-
-	ret = __add_file(filename, &st, &file);
-	if (ret || !file)
-		goto out;
-
-	set_dbfile_update_flags(file, mtime, size);
 	if (file->inum != inum || file->subvolid != subvolid) {
 		/*
 		 * New inode/subvol, but same name. Delete the db
@@ -424,8 +425,8 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 	} else {
 		file->flags |= FILEREC_IN_DB;
 	}
-out:
-	return ret;
+
+	return 0;
 }
 
 static GThreadPool *setup_pool(void *location, GMutex *mutex,
