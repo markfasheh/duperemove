@@ -51,12 +51,31 @@ static dev_t one_fs_dev;
 static uint64_t one_fs_btrfs;
 
 static uint64_t walked_size;
+static unsigned long long files_to_scan;
 static GMutex io_mutex; /* locks db writes */
 
 struct thread_params {
 	int num_files;           /* Total number of files we hashed */
 	int num_hashes;          /* Total number of hashes we hashed */
 };
+
+static void set_filerec_scan_flags(struct filerec *file)
+{
+	if (!(file->flags & FILEREC_NEEDS_SCAN)) {
+		file->flags |= FILEREC_NEEDS_SCAN;
+		files_to_scan++;
+	}
+	file->flags |= FILEREC_UPDATE_DB;
+}
+
+static void clear_filerec_scan_flags(struct filerec *file)
+{
+	if (file->flags & FILEREC_NEEDS_SCAN) {
+		file->flags &= ~FILEREC_NEEDS_SCAN;
+		files_to_scan--;
+	}
+	file->flags &= ~FILEREC_UPDATE_DB;
+}
 
 void fs_set_onefs(dev_t dev, uint64_t fsid)
 {
@@ -344,7 +363,7 @@ int add_file(const char *name, int dirfd)
 	 * inodes.
 	 */
 	if (file)
-		file->flags |= FILEREC_UPDATE_DB|FILEREC_NEEDS_SCAN;
+		set_filerec_scan_flags(file);
 
 out:
 	pathp = pathtmp;
@@ -399,9 +418,9 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 			return ENOMEM;
 	}
 
-	file->flags &= ~(FILEREC_NEEDS_SCAN|FILEREC_UPDATE_DB);
+	clear_filerec_scan_flags(file);
 	if (mtime != file->mtime)
-		file->flags |= FILEREC_NEEDS_SCAN|FILEREC_UPDATE_DB;
+		set_filerec_scan_flags(file);
 	else if (size != file->size) /* size change alone means no alloc */
 		file->flags |= FILEREC_UPDATE_DB;
 
@@ -420,7 +439,7 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 		 * the new information will be eventually put into the
 		 * database.
 		 */
-		file->flags |= FILEREC_NEEDS_SCAN|FILEREC_UPDATE_DB;
+		set_filerec_scan_flags(file);
 		*delete = 1;
 	} else {
 		file->flags |= FILEREC_IN_DB;
@@ -582,13 +601,13 @@ static inline int csum_next_block(struct csum_block *data, uint64_t *off,
 static void csum_whole_file_init(GMutex **mutex, void *location,
 				struct filerec *file, struct fiemap_ctxt **fc)
 {
-	static long long unsigned cur_num_filerecs;
+	static long long unsigned cur_scan_files;
 	*mutex = g_dataset_get_data(location, "mutex");
 
-	__sync_add_and_fetch(&cur_num_filerecs, 1);
+	__sync_add_and_fetch(&cur_scan_files, 1);
 	printf("csum: %s \t[%llu/%llu] (%.2f%%)\n", file->filename,
-	       cur_num_filerecs, num_filerecs,
-		(double)cur_num_filerecs / (double)num_filerecs * 100);
+	       cur_scan_files, files_to_scan,
+	       (double)cur_scan_files / (double)files_to_scan * 100);
 
 	if (do_lookup_extents) {
 		*fc = alloc_fiemap_ctxt();
