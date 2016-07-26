@@ -108,7 +108,7 @@ static void process_dedupe_results(struct dedupe_ctxt *ctxt,
 		 * confusion.
 		 */
 		if (target_status == 0 ||
-		    (target_status = -EINVAL && f == ctxt->ioctl_file))
+		    (target_status == -EINVAL && f == ctxt->ioctl_file))
 			continue;
 
 		if (target_status == BTRFS_SAME_DATA_DIFFERS)
