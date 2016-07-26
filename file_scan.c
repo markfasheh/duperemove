@@ -31,6 +31,8 @@
 #include <linux/limits.h>
 #include <linux/fiemap.h>
 #include <inttypes.h>
+#include <linux/magic.h>
+#include <sys/statfs.h>
 
 #include <glib.h>
 
@@ -43,6 +45,11 @@
 #include "file_scan.h"
 #include "d_tree.h"
 #include "dbfile.h"
+
+/* This is not in linux/magic.h */
+#ifndef	XFS_SB_MAGIC
+#define	XFS_SB_MAGIC		0x58465342	/* 'XFSB' */
+#endif
 
 static char path[PATH_MAX] = { 0, };
 static char *pathp = path;
@@ -186,9 +193,9 @@ static int __add_file(const char *name, struct stat *st,
 {
 	int ret;
 	int fd;
-	int on_btrfs = 0;
 	struct filerec *file;
 	uint64_t subvolid;
+	struct statfs fs;
 
 	if (S_ISDIR(st->st_mode))
 		goto out;
@@ -219,21 +226,24 @@ static int __add_file(const char *name, struct stat *st,
 		goto out;
 	}
 
-	ret = check_file_btrfs(fd, &on_btrfs);
+	ret = fstatfs(fd, &fs);
 	if (ret) {
 		close(fd);
-		fprintf(stderr, "Skip file \"%s\" due to errors\n", name);
+		fprintf(stderr, "Error %d: %s while doing fs stat on \"%s\". "
+			"Skipping.\n", ret, strerror(ret), name);
 		goto out;
 	}
 
-	if (run_dedupe && !on_btrfs) {
+	if (run_dedupe &&
+	    ((fs.f_type != BTRFS_SUPER_MAGIC &&
+	      fs.f_type != XFS_SB_MAGIC))) {
 		close(fd);
-		fprintf(stderr, "\"%s\": Can only dedupe files on btrfs\n",
-			name);
+		fprintf(stderr,	"\"%s\": Can only dedupe files on btrfs or xfs "
+			"(experimental)\n", name);
 		return ENOSYS;
 	}
 
-	if (on_btrfs) {
+	if (fs.f_type == BTRFS_SUPER_MAGIC) {
 		/*
 		 * Inodes between subvolumes on a btrfs file system
 		 * can have the same i_ino. Get the subvolume id of

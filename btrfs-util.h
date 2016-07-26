@@ -16,7 +16,6 @@
 #ifndef	__BTRFS_UTIL__
 #define	__BTRFS_UTIL__
 
-int check_file_btrfs(int fd, int *btrfs);
 int lookup_btrfs_subvolid(int fd, uint64_t *rootid);
 /*
  * Figure out if we're btrfs. If we are, get the fsid. Otherwise

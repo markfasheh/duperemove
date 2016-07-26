@@ -60,23 +60,6 @@ int lookup_btrfs_subvolid(int fd, uint64_t *subvolid)
 	return 0;
 }
 
-int check_file_btrfs(int fd, int *btrfs)
-{
-	int ret;
-	struct statfs fs;
-
-	*btrfs = 0;
-
-	ret = fstatfs(fd, &fs);
-	if (ret)
-		return errno;
-
-	if (fs.f_type == BTRFS_SUPER_MAGIC)
-		*btrfs = 1;
-
-	return ret;
-}
-
 static uint64_t get_btrfs_fsid(fsid_t in_statfs_fsid, uint64_t subvolid,
 			       fsid_t *out_fsid)
 {
