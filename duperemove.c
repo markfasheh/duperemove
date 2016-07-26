@@ -612,12 +612,13 @@ int main(int argc, char **argv)
 		if (ret)
 			return ret;
 
-		if (!dbfile_is_new)
+		if (!dbfile_is_new) {
 			printf("Adding files from database for hashing.\n");
 
-		ret = dbfile_scan_files();
-		if (ret)
-			break;
+			ret = dbfile_scan_files();
+			if (ret)
+				break;
+		}
 
 		if (list_empty(&filerec_list)) {
 			fprintf(stderr, "No dedupe candidates found.\n");
@@ -625,42 +626,22 @@ int main(int argc, char **argv)
 		}
 
 		ret = populate_tree();
-		break;
-	case H_READ:
-		ret = dbfile_open(serialize_fname);
+		if (ret) {
+			fprintf(stderr,	"Error while populating extent tree!\n");
+			goto out;
+		}
+
+		ret = create_indexes(dbfile_get_handle());
 		if (ret)
-			break;
+			goto out;
+
 		/*
-		 * Skips the file scan, used to isolate the
-		 * extent-find and dedupe stages
+		 * File scan from above can cause quite a bit of output, flush
+		 * here in case of logfile.
 		 */
-		ret = dbfile_get_config(&blocksize, NULL, NULL, NULL, NULL,
-					NULL, NULL);
+		if (stdout_is_tty)
+			fflush(stdout);
 
-		print_header();
-		break;
-	default:
-		abort_lineno();
-		break;
-	}
-
-	if (ret) {
-		fprintf(stderr, "Error while populating extent tree!\n");
-		goto out;
-	}
-
-	ret = create_indexes(dbfile_get_handle());
-	if (ret)
-		goto out;
-
-	/*
-	 * File scan from above can cause quite a bit of output, flush
-	 * here in case of logfile.
-	 */
-	if (stdout_is_tty)
-		fflush(stdout);
-
-	if (use_hashfile == H_WRITE || use_hashfile == H_UPDATE) {
 		ret = dbfile_sync_files(dbfile_get_handle());
 		if (ret)
 			goto out;
@@ -669,6 +650,7 @@ int main(int argc, char **argv)
 					 fs_onefs_id());
 		if (ret)
 			goto out;
+
 		if (use_hashfile == H_WRITE) {
 			/*
 			 * This option is for isolating the file scan
@@ -678,6 +660,30 @@ int main(int argc, char **argv)
 			       serialize_fname);
 			goto out;
 		}
+		break;
+	case H_READ:
+		ret = dbfile_open(serialize_fname);
+		if (ret) {
+			fprintf(stderr, "Error: Could not open dbfile %s.\n",
+				serialize_fname);
+			goto out;
+		}
+
+		/*
+		 * Skips the file scan, used to isolate the
+		 * extent-find and dedupe stages
+		 */
+		ret = dbfile_get_config(&blocksize, NULL, NULL, NULL, NULL,
+					NULL, NULL);
+		if (ret) {
+			fprintf(stderr, "Error: initializing dbfile config\n");
+			goto out;
+		}
+		print_header();
+		break;
+	default:
+		abort_lineno();
+		break;
 	}
 
 	/* We will now reread the serialized file, and create a new
