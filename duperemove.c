@@ -200,20 +200,22 @@ static void usage(const char *prog)
 	if (version_only)
 		return;
 
-	printf("Find duplicate extents and print them to stdout\n\n");
-	printf("Usage: %s [-r] [-d] [-h] [--debug] [--hashfile=hashfile]"
-	       " OBJECTS\n", prog);
+	printf("Find duplicate extents and optionally dedupe them.\n\n");
+	printf("Basic usage: %s [-r] [-d] [-h] [-v] [-A] "
+	       "[--hashfile=hashfile] OBJECTS\n", prog);
 	printf("\n\"OBJECTS\" is a list of files (or directories) which we\n");
 	printf("want to find duplicate extents in. If a directory is \n");
 	printf("specified, all regular files inside of it will be scanned.\n");
 	printf("\n\t<switches>\n");
 	printf("\t-r\t\tEnable recursive dir traversal.\n");
-	printf("\t-d\t\tDe-dupe the results - only works on btrfs.\n");
+	printf("\t-d\t\tDe-dupe the results (must run on a supported fs).\n");
+	printf("\t--hashfile=FILE\tStore hashes in this file.\n");
+	printf("\t-A\t\tOpen files for dedupe in read-only mode.\n");
 	printf("\t-h\t\tPrint numbers in human-readable format.\n");
-	printf("\t--skip-zeroes\tdon't dedup zeroed blocks.\n");
-	printf("\t--hashfile=FILE\tUse a file instead of memory for storing hashes.\n");
+	printf("\t-v\t\tPrint extra information (verbose).\n");
 	printf("\t--help\t\tPrints this help text.\n");
-	printf("\nPlease see the duperemove(8) manpage for more options.\n");
+	printf("\n\nPlease see the duperemove(8) manpage for a complete list "
+	       "of options.\n");
 }
 
 static int parse_yesno_option(char *arg, int default_val)
