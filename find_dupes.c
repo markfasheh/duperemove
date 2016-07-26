@@ -219,7 +219,7 @@ static int walk_dupe_hashes(struct dupe_blocks_list *dups,
 	vprintf("Gather files from hash: ");
 	if (verbose)
 		debug_print_digest_short(stdout, dups->dl_hash);
-	vprintf(" (%u identical extents)\n", dups->dl_num_elem);
+	vprintf(" (%llu identical extents)\n", dups->dl_num_elem);
 
 #define SKIP_FLAGS	(FILE_BLOCK_SKIP_COMPARE|FILE_BLOCK_HOLE)
 	list_for_each_entry(block, &dups->dl_list, b_list) {

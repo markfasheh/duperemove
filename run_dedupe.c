@@ -693,7 +693,8 @@ static int push_bdl(struct block_dedupe_list *bdl)
 #define	DEDUPE_MAX	(1000000)
 static int __push_blocks(struct dupe_blocks_list *dups)
 {
-	int i, j, ret = 0;
+	int i, ret = 0;
+	unsigned long long j;
 	struct block_dedupe_list *bdl = alloc_bdl(dups);
 	struct file_block *block;
 
@@ -710,11 +711,11 @@ static int __push_blocks(struct dupe_blocks_list *dups)
 		if (push_bdl(bdl))
 			goto out;
 	} else {
-		unsigned int smax = dups->dl_num_elem / io_threads;
+		unsigned long long smax = dups->dl_num_elem / io_threads;
 		if (verbose) {
 			printf("Hash ");
 			debug_print_digest_short(stdout, dups->dl_hash);
-			printf(" has %u elements. It will be spread amongst "
+			printf(" has %llu elements. It will be spread amongst "
 			       "all dedupe threads.\n", dups->dl_num_elem);
 		}
 

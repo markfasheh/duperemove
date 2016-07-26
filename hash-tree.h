@@ -28,7 +28,7 @@ struct dupe_blocks_list {
 	struct rb_node		dl_node; /* sorted by hash */
 	struct list_head	dl_size_list; /* sorted by dl_num_elem */
 
-	unsigned int		dl_num_elem;
+	unsigned long long	dl_num_elem;
 	struct list_head	dl_list;
 
 	unsigned int		dl_num_files;
