@@ -138,6 +138,11 @@ int dbfile_create(char *filename, int *dbfile_is_new)
 
 	if (!filename) {
 		inmem = 1;
+		/*
+		 * Set this so main() doesn't try to get config, etc
+		 * from a memory file.
+		 */
+		newfile = 1;
 		filename = ":memory:";
 	} else {
 		ret = access(filename, R_OK|W_OK);
