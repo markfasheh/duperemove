@@ -476,7 +476,7 @@ static int __block_dedupe(struct block_dedupe_list *bdl,
 			  uint64_t *fiemap_bytes,
 			  uint64_t *kern_bytes)
 {
-	int ret, skip_old;
+	int ret, skip_old = 0;
 	struct dupe_extents *dext = NULL;
 	struct file_block *block;
 
@@ -486,11 +486,11 @@ static int __block_dedupe(struct block_dedupe_list *bdl,
 					blocksize);
 		if (ret)
 			return ret;
+
+		if (!(tgt_file->flags & FILEREC_RESCANNED))
+			skip_old = 1;
 	}
 
-	skip_old = 0;
-	if (!(tgt_file->flags & FILEREC_RESCANNED))
-		skip_old = 1;
 	list_for_each_entry(block, &bdl->bd_block_list, b_list) {
 		if (block->b_file == tgt_file)
 				continue;
