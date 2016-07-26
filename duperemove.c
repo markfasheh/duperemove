@@ -67,6 +67,7 @@ static int version_only = 0;
 static int fdupes_mode = 0;
 static int stdin_filelist = 0;
 static unsigned int list_only_opt = 0;
+static unsigned int rm_only_opt = 0;
 
 static enum {
 	H_READ,
@@ -103,6 +104,94 @@ static int list_db_files(char *filename)
 
 	dbfile_close();
 	return ret;
+}
+
+struct rm_file {
+	char *filename;
+	struct list_head list;
+};
+static LIST_HEAD(rm_files_list);
+
+static void add_rm_file(const char *filename)
+{
+	struct rm_file *rm = malloc(sizeof(*rm));
+	if (rm) {
+		rm->filename = strdup(filename);
+		list_add_tail(&rm->list, &rm_files_list);
+	}
+}
+
+static void free_rm_file(struct rm_file *rm)
+{
+	if (rm) {
+		list_del(&rm->list);
+		free(rm->filename);
+		free(rm);
+	}
+}
+
+static void add_rm_db_files_from_stdin(void)
+{
+	char *path = NULL;
+	size_t pathlen = 0;
+	ssize_t readlen;
+
+	while ((readlen = getline(&path, &pathlen, stdin)) != -1) {
+		if (readlen == 0)
+			continue;
+
+		if (readlen > 0 && path[readlen - 1] == '\n') {
+			path[--readlen] = '\0';
+		}
+
+		if (readlen > PATH_MAX - 1) {
+			fprintf(stderr, "Path max exceeded: %s\n", path);
+			continue;
+		}
+
+		add_rm_file(path);
+	}
+
+	if (path != NULL)
+		free(path);
+}
+
+static int rm_db_files(char *dbfilename)
+{
+	int ret, err = 0;
+	struct rm_file *rm, *tmp;
+
+	ret = dbfile_open(dbfilename);
+	if (ret) {
+		fprintf(stderr, "Error: Could not open \"%s\"\n", dbfilename);
+		return ret;
+	}
+
+restart:
+	list_for_each_entry_safe(rm, tmp, &rm_files_list, list) {
+		if (strlen(rm->filename) == 1 && rm->filename[0] == '-') {
+			add_rm_db_files_from_stdin();
+			free_rm_file(rm);
+			/*
+			 * We may have added to the end of the list
+			 * which messes up the next-entry condition
+			 * for list_for_each_entry_safe()
+			 */
+			goto restart;
+		}
+		ret = dbfile_remove_file(dbfile_get_handle(), rm->filename);
+		if (ret == 0)
+			vprintf("Removed \"%s\" from hashfile.\n",
+				rm->filename);
+		if (ret && ret != ENOENT && !err)
+			err = ret;
+
+		free_rm_file(rm);
+	}
+
+	dbfile_close();
+
+	return err;
 }
 
 static void usage(const char *prog)
@@ -285,7 +374,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 	if (argc < 2)
 		return 1;
 
-	while ((c = getopt_long(argc, argv, "Ab:vdDrh?xL", long_ops, NULL))
+	while ((c = getopt_long(argc, argv, "Ab:vdDrh?xLR:", long_ops, NULL))
 	       != -1) {
 		switch (c) {
 		case 'A':
@@ -362,6 +451,10 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		case 'L':
 			list_only_opt = 1;
 			break;
+		case 'R':
+			rm_only_opt = 1;
+			add_rm_file(optarg);
+			break;
 		case HELP_OPTION:
 		case '?':
 		default:
@@ -420,16 +513,21 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		*filelist_idx = optind;
 	}
 
-	if (list_only_opt) {
+	if (list_only_opt && rm_only_opt) {
+		fprintf(stderr, "Error: Can not mix '-L' and '-R' options.\n");
+		return 1;
+	}
+
+	if (list_only_opt || rm_only_opt) {
 		if (!serialize_fname || use_hashfile == H_WRITE) {
 			fprintf(stderr,	"Error: --hashfile= option is required "
-				"with '-L'.\n");
+				"with '-L' or -R.\n");
 			return 1;
 		}
 
 		if (numfiles) {
-			fprintf(stderr, "Error: -L option does not take a file "
-				"list argument\n");
+			fprintf(stderr, "Error: -L and -R options do not take "
+				"a file list argument\n");
 			return 1;
 		}
 	}
@@ -483,6 +581,8 @@ int main(int argc, char **argv)
 
 	if (list_only_opt)
 		return list_db_files(serialize_fname);
+	else if (rm_only_opt)
+		return rm_db_files(serialize_fname);
 
 	switch (use_hashfile) {
 	case H_UPDATE:

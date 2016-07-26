@@ -50,4 +50,6 @@ int dbfile_write_hashes(sqlite3 *db, struct filerec *file,
 typedef void (*iter_files_func)(char *filename, char *ino, char *subvol);
 int dbfile_iter_files(sqlite3 *db, iter_files_func func);
 
+int dbfile_remove_file(sqlite3 *db, const char *filename);
+
 #endif	/* __DBFILE_H__ */

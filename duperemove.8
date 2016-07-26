@@ -84,6 +84,12 @@ Print all files in the hashfile and exit. Requires the \fB\--hashfile\fR option.
 Will print additional information about each file when run with \fB\-v\fR.
 
 .TP
+\fB\-R [file]\fR
+Remove file from the db and exit. Can be specified multiple
+times. Duperemove will read the list from standard input if a hyphen
+(-) is provided. Requires the \fB\--hashfile\fR option.
+
+.TP
 \fB\--fdupes\fR
 Run in \fBfdupes\fR mode. With this option you can pipe the output of
 \fBfdupes\fR to duperemove to dedupe any duplicate files found. When

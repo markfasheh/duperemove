@@ -911,7 +911,7 @@ static int dbfile_del_orphans(struct sqlite3 *db, struct list_head *orphans)
 	}
 
 	list_for_each_entry_safe(o, tmp, orphans, list) {
-		dprintf("Remove orphaned file \"%s\" from the db\n",
+		dprintf("Remove file \"%s\" from the db\n",
 			o->filename);
 
 		ret = __dbfile_remove_file_hashes(hashes_stmt, o->ino, o->subvol);
@@ -1126,4 +1126,56 @@ int dbfile_iter_files(sqlite3 *db, iter_files_func func)
 	}
 
 	return 0;
+}
+
+int dbfile_remove_file(sqlite3 *db, const char *filename)
+{
+	int ret;
+	sqlite3_stmt *stmt = NULL;
+	uint64_t ino, subvol;
+	LIST_HEAD(orphans);
+	struct orphan_file *o = NULL;
+
+#define	ONE_FILE_INFO	"select ino, subvol from files where filename = ?1;"
+	ret = sqlite3_prepare_v2(db, ONE_FILE_INFO, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing files statement");
+		goto out;
+	}
+
+	ret = sqlite3_bind_text(stmt, 1, filename, -1, SQLITE_TRANSIENT);
+	if (ret) {
+		perror_sqlite(ret, "binding filename for sql");
+		goto out;
+	}
+
+	ret = sqlite3_step(stmt);
+	if (ret == SQLITE_DONE) {
+		ret = ENOENT;
+		goto out;
+	}
+	if (ret != SQLITE_ROW) {
+		perror_sqlite(ret, "finding file to remove");
+		goto out;
+	}
+
+	ino = sqlite3_column_int64(stmt, 0);
+	subvol = sqlite3_column_int64(stmt, 1);
+
+	o = alloc_orphan_file(filename, ino, subvol);
+	if (!o) {
+		ret = ENOMEM;
+		goto out;
+	}
+	list_add(&o->list, &orphans);
+
+	ret = dbfile_del_orphans(db, &orphans);
+
+out:
+	free_orphan_list(&orphans);
+
+	if (stmt)
+		sqlite3_finalize(stmt);
+
+	return ret;
 }
