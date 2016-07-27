@@ -12,7 +12,8 @@ void dbfile_close(void);
 /* TODO: Clean up this ridiculous prototype. */
 int dbfile_get_config(unsigned int *block_size, uint64_t *num_hashes,
 		      uint64_t *num_files, dev_t *onefs_dev,
-		      uint64_t *onefs_fsid, int *major, int *minor);
+		      uint64_t *onefs_fsid, int *major, int *minor,
+		      char *db_hash_type);
 int dbfile_sync_config(unsigned int block_size, dev_t onefs_dev,
 		       uint64_t onefs_fsid);
 

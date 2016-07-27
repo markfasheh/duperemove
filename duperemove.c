@@ -594,11 +594,23 @@ int main(int argc, char **argv)
 		if (!dbfile_is_new) {
 			dev_t dev;
 			uint64_t fsid;
+			char db_hash_type[8];
 
 			ret = dbfile_get_config(&blocksize, NULL, NULL, &dev,
-						&fsid, NULL, NULL);
+						&fsid, NULL, NULL, db_hash_type);
 			if (ret)
 				return ret;
+
+			if (strncasecmp(db_hash_type, hash_type, 8)) {
+				fprintf(stderr,
+					"Error: Hashfile %s uses %.*s. for "
+					"checksums but we are using %.*s.\n"
+					"Try running with --hash=%.*s\n",
+					serialize_fname, 8, db_hash_type, 8,
+					hash_type, 8, db_hash_type);
+				return EINVAL;
+			}
+
 			fs_set_onefs(dev, fsid);
 		}
 
@@ -674,7 +686,7 @@ int main(int argc, char **argv)
 		 * extent-find and dedupe stages
 		 */
 		ret = dbfile_get_config(&blocksize, NULL, NULL, NULL, NULL,
-					NULL, NULL);
+					NULL, NULL, NULL);
 		if (ret) {
 			fprintf(stderr, "Error: initializing dbfile config\n");
 			goto out;
