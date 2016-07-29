@@ -562,9 +562,10 @@ int main(int argc, char **argv)
 	io_threads = sysconf(_SC_NPROCESSORS_ONLN);
 #endif
 
-	if (parse_options(argc, argv, &filelist_idx)) {
+	ret = parse_options(argc, argv, &filelist_idx);
+	if (ret || version_only) {
 		usage(argv[0]);
-		return EINVAL;
+		return version_only ? 0 : EINVAL;
 	}
 
 	if (fdupes_mode)
