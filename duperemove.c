@@ -594,9 +594,10 @@ int main(int argc, char **argv)
 		if (!dbfile_is_new) {
 			dev_t dev;
 			uint64_t fsid;
+			unsigned db_blocksize;
 			char db_hash_type[8];
 
-			ret = dbfile_get_config(&blocksize, NULL, NULL, &dev,
+			ret = dbfile_get_config(&db_blocksize, NULL, NULL, &dev,
 						&fsid, NULL, NULL, db_hash_type);
 			if (ret)
 				return ret;
@@ -605,6 +606,12 @@ int main(int argc, char **argv)
 				printf("DB store hashes for %s.\n", db_hash_type);
 				printf("Abort.\n");
 				return EINVAL;
+			}
+
+			if (db_blocksize != blocksize) {
+				printf("Blocksize %uK -> %uK. DB store info about %uK blocks\n",
+				blocksize/1024, db_blocksize/1024, db_blocksize/1024);
+				blocksize = db_blocksize;
 			}
 
 			fs_set_onefs(dev, fsid);
