@@ -210,8 +210,11 @@ static void usage(const char *prog)
 	printf("\t-r\t\tEnable recursive dir traversal.\n");
 	printf("\t-d\t\tDe-dupe the results - only works on btrfs.\n");
 	printf("\t-h\t\tPrint numbers in human-readable format.\n");
-	printf("\t--skip-zeroes\tdon't dedup zeroed blocks.\n");
+	printf("\t-v\t\tBe verbose.\n");
+	printf("\t--skip-zeroes\tDon't dedup zeroed blocks.\n");
+	printf("\t--hash=alg\tDefault set to murmur3. Supported: xxhash, murmur3, sha256.\n");
 	printf("\t--hashfile=FILE\tUse a file instead of memory for storing hashes.\n");
+	printf("\t--io-threads=N\tUse N threads for I/O. Default set to number of cpus.\n");
 	printf("\t--help\t\tPrints this help text.\n");
 	printf("\nPlease see the duperemove(8) manpage for more options.\n");
 }
