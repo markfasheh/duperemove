@@ -594,11 +594,19 @@ int main(int argc, char **argv)
 		if (!dbfile_is_new) {
 			dev_t dev;
 			uint64_t fsid;
+			char db_hash_type[8];
 
 			ret = dbfile_get_config(&blocksize, NULL, NULL, &dev,
-						&fsid, NULL, NULL);
+						&fsid, NULL, NULL, db_hash_type);
 			if (ret)
 				return ret;
+
+			if (strcicmp(db_hash_type, user_hash)) {
+				printf("DB store hashes for %s.\n", db_hash_type);
+				printf("Abort.\n");
+				return EINVAL;
+			}
+
 			fs_set_onefs(dev, fsid);
 		}
 
@@ -674,7 +682,7 @@ int main(int argc, char **argv)
 		 * extent-find and dedupe stages
 		 */
 		ret = dbfile_get_config(&blocksize, NULL, NULL, NULL, NULL,
-					NULL, NULL);
+					NULL, NULL, NULL);
 		if (ret) {
 			fprintf(stderr, "Error: initializing dbfile config\n");
 			goto out;
