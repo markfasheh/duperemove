@@ -210,8 +210,11 @@ static void usage(const char *prog)
 	printf("\t-r\t\tEnable recursive dir traversal.\n");
 	printf("\t-d\t\tDe-dupe the results - only works on btrfs.\n");
 	printf("\t-h\t\tPrint numbers in human-readable format.\n");
-	printf("\t--skip-zeroes\tdon't dedup zeroed blocks.\n");
+	printf("\t-v\t\tBe verbose.\n");
+	printf("\t--skip-zeroes\tDon't dedup zeroed blocks.\n");
+	printf("\t--hash=alg\tDefault set to murmur3. Supported: xxhash, murmur3, sha256.\n");
 	printf("\t--hashfile=FILE\tUse a file instead of memory for storing hashes.\n");
+	printf("\t--io-threads=N\tUse N threads for I/O. Default set to number of cpus.\n");
 	printf("\t--help\t\tPrints this help text.\n");
 	printf("\nPlease see the duperemove(8) manpage for more options.\n");
 }
@@ -559,9 +562,10 @@ int main(int argc, char **argv)
 	io_threads = sysconf(_SC_NPROCESSORS_ONLN);
 #endif
 
-	if (parse_options(argc, argv, &filelist_idx)) {
+	ret = parse_options(argc, argv, &filelist_idx);
+	if (ret || version_only) {
 		usage(argv[0]);
-		return EINVAL;
+		return version_only ? 0 : EINVAL;
 	}
 
 	if (fdupes_mode)
@@ -594,11 +598,26 @@ int main(int argc, char **argv)
 		if (!dbfile_is_new) {
 			dev_t dev;
 			uint64_t fsid;
+			unsigned db_blocksize;
+			char db_hash_type[8];
 
-			ret = dbfile_get_config(&blocksize, NULL, NULL, &dev,
-						&fsid, NULL, NULL);
+			ret = dbfile_get_config(&db_blocksize, NULL, NULL, &dev,
+						&fsid, NULL, NULL, db_hash_type);
 			if (ret)
 				return ret;
+
+			if (strcicmp(db_hash_type, user_hash)) {
+				printf("DB store hashes for %s.\n", db_hash_type);
+				printf("Abort.\n");
+				return EINVAL;
+			}
+
+			if (db_blocksize != blocksize) {
+				printf("Blocksize %uK -> %uK. DB store info about %uK blocks\n",
+				blocksize/1024, db_blocksize/1024, db_blocksize/1024);
+				blocksize = db_blocksize;
+			}
+
 			fs_set_onefs(dev, fsid);
 		}
 
@@ -674,7 +693,7 @@ int main(int argc, char **argv)
 		 * extent-find and dedupe stages
 		 */
 		ret = dbfile_get_config(&blocksize, NULL, NULL, NULL, NULL,
-					NULL, NULL);
+					NULL, NULL, NULL);
 		if (ret) {
 			fprintf(stderr, "Error: initializing dbfile config\n");
 			goto out;

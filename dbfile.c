@@ -46,7 +46,7 @@ sqlite3 *dbfile_get_handle(void)
 static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 			       uint64_t *num_hashes, uint64_t *num_files,
 			       dev_t *onefs_dev, uint64_t *onefs_fsid,
-			       int *major, int *minor);
+			       int *major, int *minor, char *hash_type);
 
 #if 0
 static int debug_print_cb(void *priv, int argc, char **argv, char **column)
@@ -167,7 +167,7 @@ reopen:
 		}
 	} else {
 		ret = __dbfile_get_config(db, NULL, NULL, NULL, NULL, NULL,
-					  &vmajor, &vminor);
+					  &vmajor, &vminor, NULL);
 		if (ret) {
 			perror_sqlite(ret, "reading initial db config");
 			sqlite3_close(db);
@@ -485,10 +485,39 @@ static int get_config_int64(sqlite3_stmt *stmt, const char *name, uint64_t *val)
 	return 0;
 }
 
+static int get_config_text(sqlite3_stmt *stmt, const char *name, const unsigned char *val)
+{
+	int ret;
+	const unsigned char *local;
+
+	if (!val)
+		return 0;
+
+	ret = sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
+	if (ret) {
+		perror_sqlite(ret, "retrieving row from config table (bind)");
+		return ret;
+	}
+
+	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
+		local = sqlite3_column_text(stmt, 0);
+		strcpy((char *)val, (char *)local);
+	}
+
+	if (ret != SQLITE_DONE) {
+		perror_sqlite(ret, "retrieving row from config table (step)");
+		return ret;
+	}
+
+	sqlite3_reset(stmt);
+
+	return 0;
+}
+
 static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 			       uint64_t *num_hashes, uint64_t *num_files,
 			       dev_t *onefs_dev, uint64_t *onefs_fsid,
-			       int *ver_major, int *ver_minor)
+			       int *ver_major, int *ver_minor, char *hash_type)
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
@@ -502,6 +531,10 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 	}
 
 	ret = get_config_int(stmt, "block_size", (int *)block_size);
+	if (ret)
+		goto out;
+
+	ret = get_config_text(stmt, "hash_type", (const unsigned char *)hash_type);
 	if (ret)
 		goto out;
 
@@ -544,12 +577,12 @@ out:
 
 int dbfile_get_config(unsigned int *block_size, uint64_t *num_hashes,
 		      uint64_t *num_files, dev_t *onefs_dev,
-		      uint64_t *onefs_fsid, int *ver_major, int *ver_minor)
+		      uint64_t *onefs_fsid, int *ver_major, int *ver_minor, char *hash_type)
 {
 	int ret;
 
 	ret = __dbfile_get_config(gdb, block_size, num_hashes, num_files,
-				  onefs_dev, onefs_fsid, ver_major, ver_minor);
+				  onefs_dev, onefs_fsid, ver_major, ver_minor, hash_type);
 
 	return ret;
 }
@@ -560,7 +593,7 @@ static int dbfile_check_version(sqlite3 *db)
 	int ver_major, ver_minor;
 
 	ret = __dbfile_get_config(db, NULL, NULL, NULL, NULL, NULL, &ver_major,
-				  &ver_minor);
+				  &ver_minor, NULL);
 	if (ret)
 		return ret;
 
