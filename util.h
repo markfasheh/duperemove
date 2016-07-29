@@ -49,4 +49,5 @@ struct elapsed_time {
 void record_start(struct elapsed_time *e, const char *name);
 void record_end_print(struct elapsed_time *e);
 
+int strcicmp(char const *a, char const *b);
 #endif	/* __UTIL_H__ */

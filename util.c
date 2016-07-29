@@ -156,3 +156,20 @@ void record_end_print(struct elapsed_time *e)
 	record_end(e);
 	printf("%s took %fs\n", e->name, e->elapsed);
 }
+
+int strcicmp(char const *a, char const *b)
+{
+	int d;
+	if (!a || !b)
+		return -1;
+
+	while (*a && *b) {
+		d = tolower(*a) - tolower(*b);
+		if (d != 0 || !*a)
+			return d;
+		a++;
+		b++;
+    }
+
+	return 0;
+}
