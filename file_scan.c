@@ -317,6 +317,9 @@ int add_file(const char *name, int dirfd)
 	 */
 	if (realpath(path, abspath) == NULL) {
 		ret = errno;
+		fprintf(stderr, "Error %d: %s while getting path to file %s. "
+			"Skipping.\n",
+			errno, strerror(errno), path);
 		goto out;
 	}
 
