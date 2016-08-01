@@ -316,7 +316,6 @@ int add_file(const char *name, int dirfd)
 	 *   any directory.
 	 */
 	if (realpath(path, abspath) == NULL) {
-		ret = errno;
 		fprintf(stderr, "Error %d: %s while getting path to file %s. "
 			"Skipping.\n",
 			errno, strerror(errno), path);
@@ -369,6 +368,9 @@ int add_file(const char *name, int dirfd)
 	}
 
 	ret = __add_file(abspath, &st, &file);
+	if (ret)
+		return ret;
+
 	/*
 	 * We run the file scan before the database. Mark each file as
 	 * needing a db update plus rescan. Later, when we run the DB
@@ -380,7 +382,7 @@ int add_file(const char *name, int dirfd)
 
 out:
 	pathp = pathtmp;
-	return ret;
+	return 0;
 }
 
 /*
