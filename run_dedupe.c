@@ -313,8 +313,19 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 			pretty_size(extent->e_loff), extent->e_file->fd);
 
 		if (ctxt == NULL) {
-			if (tgt_extent == NULL)
+			if (tgt_extent == NULL) {
+				/*
+				 * We had some errors adding files
+				 * previously and are down to the last
+				 * dedupe candidate. Proceed only if
+				 * we can guarantee two extents for
+				 * dedupe (target, and this file).
+				 */
+				if (last)
+					goto close_files;
+
 				tgt_extent = extent;
+			}
 			ctxt = new_dedupe_ctxt(dext->de_num_dupes,
 					       tgt_extent->e_loff, len,
 					       tgt_extent->e_file);
@@ -378,7 +389,7 @@ run_dedupe:
 					ret, strerror(ret));
 			}
 		}
-
+close_files:
 		filerec_close_open_list(&open_files);
 		free_dedupe_ctxt(ctxt);
 		ctxt = NULL;
