@@ -487,7 +487,7 @@ static int __block_dedupe(struct block_dedupe_list *bdl,
 			  uint64_t *fiemap_bytes,
 			  uint64_t *kern_bytes)
 {
-	int ret, skip_old = 0;
+	int ret, one_old = 0;
 	struct dupe_extents *dext = NULL;
 	struct file_block *block;
 
@@ -499,7 +499,7 @@ static int __block_dedupe(struct block_dedupe_list *bdl,
 			return ret;
 
 		if (filerec_deduped(tgt_file))
-			skip_old = 1;
+			one_old = 1;
 	}
 
 	list_for_each_entry(block, &bdl->bd_block_list, b_list) {
@@ -508,15 +508,14 @@ static int __block_dedupe(struct block_dedupe_list *bdl,
 
 		if (filerec_deduped(block->b_file)) {
 			/*
-			 * Take at least one old result to dedupe
-			 * from. That way we don't get into a
-			 * situation where we've thrown out all blocks
-			 * except a single rescanned one.
+			 * Take one old result to dedupe from. That
+			 * way we don't get into a situation where
+			 * we've thrown out all blocks except a single
+			 * rescanned one.
 			 */
-			if (!skip_old) {
-				skip_old = 1;
+			if (one_old)
 				continue;
-			}
+			one_old = 1;
 		}
 
 		ret = insert_one_result(res, bdl->bd_hash, block->b_file,
