@@ -498,7 +498,7 @@ static int __block_dedupe(struct block_dedupe_list *bdl,
 		if (ret)
 			return ret;
 
-		if (!(tgt_file->flags & FILEREC_RESCANNED))
+		if (filerec_deduped(tgt_file))
 			skip_old = 1;
 	}
 
@@ -506,7 +506,7 @@ static int __block_dedupe(struct block_dedupe_list *bdl,
 		if (block->b_file == tgt_file)
 				continue;
 
-		if (!(block->b_file->flags & FILEREC_RESCANNED)) {
+		if (filerec_deduped(block->b_file)) {
 			/*
 			 * Take at least one old result to dedupe
 			 * from. That way we don't get into a

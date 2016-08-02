@@ -599,7 +599,8 @@ int main(int argc, char **argv)
 			char db_hash_type[8];
 
 			ret = dbfile_get_config(&db_blocksize, NULL, NULL, &dev,
-						&fsid, NULL, NULL, db_hash_type);
+						&fsid, NULL, NULL, db_hash_type,
+						&dedupe_seq);
 			if (ret)
 				return ret;
 
@@ -668,7 +669,7 @@ int main(int argc, char **argv)
 			goto out;
 
 		ret = dbfile_sync_config(blocksize, fs_onefs_dev(),
-					 fs_onefs_id());
+					 fs_onefs_id(), dedupe_seq);
 		if (ret)
 			goto out;
 
@@ -695,7 +696,7 @@ int main(int argc, char **argv)
 		 * extent-find and dedupe stages
 		 */
 		ret = dbfile_get_config(&blocksize, NULL, NULL, NULL, NULL,
-					NULL, NULL, NULL);
+					NULL, NULL, NULL, &dedupe_seq);
 		if (ret) {
 			fprintf(stderr, "Error: initializing dbfile config\n");
 			goto out;
@@ -728,6 +729,18 @@ int main(int argc, char **argv)
 
 	if (run_dedupe) {
 		dedupe_results(&res, &dups_tree);
+
+		/*
+		 * Bump dedupe_seq, this effectively marks the files
+		 * in our hashfile as having been through dedupe.
+		 */
+		dedupe_seq++;
+
+		/* Sync to get new dedupe_seq written. */
+		ret = dbfile_sync_config(blocksize, fs_onefs_dev(),
+					 fs_onefs_id(), dedupe_seq);
+		if (ret)
+			goto out;
 	} else {
 		if (block_dedupe)
 			debug_print_hash_tree(&dups_tree);

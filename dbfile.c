@@ -46,7 +46,8 @@ sqlite3 *dbfile_get_handle(void)
 static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 			       uint64_t *num_hashes, uint64_t *num_files,
 			       dev_t *onefs_dev, uint64_t *onefs_fsid,
-			       int *major, int *minor, char *db_hash_type);
+			       int *major, int *minor, char *db_hash_type,
+			       unsigned int *db_dedupe_seq);
 
 #if 0
 static int debug_print_cb(void *priv, int argc, char **argv, char **column)
@@ -73,7 +74,7 @@ static int create_tables(sqlite3 *db)
 
 #define	CREATE_TABLE_FILES	\
 "CREATE TABLE files(filename TEXT PRIMARY KEY NOT NULL, ino INTEGER, "\
-"subvol INTEGER, size INTEGER, blocks INTEGER, mtime INTEGER);"
+"subvol INTEGER, size INTEGER, blocks INTEGER, mtime INTEGER, dedupe_seq INTEGER);"
 	ret = sqlite3_exec(db, CREATE_TABLE_FILES, NULL, NULL, NULL);
 	if (ret)
 		goto out;
@@ -167,7 +168,7 @@ reopen:
 		}
 	} else {
 		ret = __dbfile_get_config(db, NULL, NULL, NULL, NULL, NULL,
-					  &vmajor, &vminor, NULL);
+					  &vmajor, &vminor, NULL, NULL);
 		if (ret) {
 			perror_sqlite(ret, "reading initial db config");
 			sqlite3_close(db);
@@ -306,7 +307,7 @@ out:
 }
 
 int __dbfile_sync_config(sqlite3 *db, unsigned int block_size, dev_t onefs_dev,
-			 uint64_t onefs_fsid)
+			 uint64_t onefs_fsid, unsigned int seq)
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
@@ -350,6 +351,10 @@ int __dbfile_sync_config(sqlite3 *db, unsigned int block_size, dev_t onefs_dev,
 	if (ret)
 		goto out;
 
+	ret = sync_config_int(stmt, "dedupe_sequence", seq);
+	if (ret)
+		goto out;
+
 	ret = 0;
 out:
 	sqlite3_finalize(stmt);
@@ -362,7 +367,7 @@ out:
 }
 
 int dbfile_sync_config(unsigned int block_size, dev_t onefs_dev,
-		       uint64_t onefs_fsid)
+		       uint64_t onefs_fsid, unsigned int seq)
 {
 	sqlite3 *db;
 	int ret;
@@ -371,7 +376,7 @@ int dbfile_sync_config(unsigned int block_size, dev_t onefs_dev,
 	if (!db)
 		return ENOENT;
 
-	ret = __dbfile_sync_config(db, block_size, onefs_dev, onefs_fsid);
+	ret = __dbfile_sync_config(db, block_size, onefs_dev, onefs_fsid, seq);
 
 	return ret;
 }
@@ -518,7 +523,7 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 			       uint64_t *num_hashes, uint64_t *num_files,
 			       dev_t *onefs_dev, uint64_t *onefs_fsid,
 			       int *ver_major, int *ver_minor,
-			       char *db_hash_type)
+			       char *db_hash_type, unsigned int *db_dedupe_seq)
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
@@ -564,6 +569,10 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 	if (ret)
 		goto out;
 
+	ret = get_config_int(stmt, "dedupe_sequence", (int *)db_dedupe_seq);
+	if (ret)
+		goto out;
+
 	sqlite3_finalize(stmt);
 	stmt = NULL;
 
@@ -580,13 +589,13 @@ out:
 int dbfile_get_config(unsigned int *block_size, uint64_t *num_hashes,
 		      uint64_t *num_files, dev_t *onefs_dev,
 		      uint64_t *onefs_fsid, int *ver_major, int *ver_minor,
-		      char *db_hash_type)
+		      char *db_hash_type, unsigned int *db_dedupe_seq)
 {
 	int ret;
 
 	ret = __dbfile_get_config(gdb, block_size, num_hashes, num_files,
 				  onefs_dev, onefs_fsid, ver_major, ver_minor,
-				  db_hash_type);
+				  db_hash_type, db_dedupe_seq);
 
 	return ret;
 }
@@ -597,7 +606,7 @@ static int dbfile_check_version(sqlite3 *db)
 	int ver_major, ver_minor;
 
 	ret = __dbfile_get_config(db, NULL, NULL, NULL, NULL, NULL, &ver_major,
-				  &ver_minor, NULL);
+				  &ver_minor, NULL, NULL);
 	if (ret)
 		return ret;
 
@@ -642,6 +651,10 @@ static int __dbfile_write_file_info(sqlite3 *db, sqlite3_stmt *stmt,
 	if (ret)
 		goto bind_error;
 
+	ret = sqlite3_bind_int(stmt, 7, file->dedupe_seq);
+	if (ret)
+		goto bind_error;
+
 	ret = sqlite3_step(stmt);
 	if (ret != SQLITE_DONE) {
 		perror_sqlite(ret, "executing sql");
@@ -662,7 +675,7 @@ int dbfile_write_file_info(sqlite3 *db, struct filerec *file)
 	sqlite3_stmt *stmt = NULL;
 
 #define	WRITE_FILE							\
-"insert or replace into files (ino, subvol, filename, size, blocks, mtime) VALUES (?1, ?2, ?3, ?4, ?5, ?6);"
+"insert or replace into files (ino, subvol, filename, size, blocks, mtime, dedupe_seq) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);"
 	ret = sqlite3_prepare_v2(db, WRITE_FILE, -1, &stmt, NULL);
 	if (ret) {
 		perror_sqlite(ret, "preparing filerec insert statement");
@@ -886,8 +899,9 @@ static int dbfile_load_files(struct sqlite3 *db, struct list_head *orphans)
 	sqlite3_stmt *stmt = NULL;
 	const char *filename;
 	uint64_t size, mtime, ino, subvol;
+	unsigned int dedupe_seq;
 
-#define	LOAD_ALL_FILERECS	"select filename, ino, subvol, size, mtime from files;"
+#define	LOAD_ALL_FILERECS	"select filename, ino, subvol, size, mtime, dedupe_seq from files;"
 
 	ret = sqlite3_prepare_v2(db, LOAD_ALL_FILERECS, -1, &stmt, NULL);
 	if (ret) {
@@ -901,8 +915,10 @@ static int dbfile_load_files(struct sqlite3 *db, struct list_head *orphans)
 		subvol = sqlite3_column_int64(stmt, 2);
 		size = sqlite3_column_int64(stmt, 3);
 		mtime = sqlite3_column_int64(stmt, 4);
+		dedupe_seq = sqlite3_column_int(stmt, 5);
 
-		ret = add_file_db(filename, ino, subvol, size, mtime, &del_rec);
+		ret = add_file_db(filename, ino, subvol, size, mtime,
+				  dedupe_seq, &del_rec);
 		if (ret)
 			goto out;
 
@@ -1035,11 +1051,12 @@ static int dbfile_load_one_filerec(sqlite3 *db, uint64_t ino, uint64_t subvol,
 	const unsigned char *filename;
 	uint64_t size;
 	uint64_t mtime;
+	unsigned int seq;
 
 	*file = NULL;
 
-#define LOAD_FILEREC	"select filename, size, mtime from files where ino = "\
-			"?1 and subvol = ?2;"
+#define LOAD_FILEREC	"select filename, size, mtime, dedupe_seq from files " \
+			"where ino = ?1 and subvol = ?2;"
 
 	ret = sqlite3_prepare_v2(db, LOAD_FILEREC, -1, &stmt, NULL);
 	if (ret) {
@@ -1072,10 +1089,13 @@ static int dbfile_load_one_filerec(sqlite3 *db, uint64_t ino, uint64_t subvol,
 	filename = sqlite3_column_text(stmt, 0);
 	size = sqlite3_column_int64(stmt, 1);
 	mtime = sqlite3_column_int64(stmt, 2);
+	seq = sqlite3_column_int(stmt, 3);
 
 	*file = filerec_new((const char *)filename, ino, subvol, size, mtime);
 	if (!*file)
 		ret = ENOMEM;
+	(*file)->dedupe_seq = seq;
+
 out:
 	sqlite3_finalize(stmt);
 	return ret;

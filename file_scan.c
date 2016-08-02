@@ -402,7 +402,7 @@ out:
  * Otherwise a filerec gets added based on the stat'd information.
  */
 int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
-		uint64_t size, uint64_t mtime, int *delete)
+		uint64_t size, uint64_t mtime, unsigned int seq, int *delete)
 {
 	int found, ret = 0;
 	struct filerec *file = filerec_find(inum, subvolid);
@@ -432,6 +432,11 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 		if (!file)
 			return ENOMEM;
 	}
+	/*
+	 * Set dedupe_seq from the db record. It will be updated if we
+	 * mark the file for rescan.
+	 */
+	file->dedupe_seq = seq;
 
 	clear_filerec_scan_flags(file);
 	if (mtime != file->mtime)
@@ -705,6 +710,8 @@ static void csum_whole_file(struct filerec *file,
 
 	g_mutex_lock(&io_mutex);
 	file->num_blocks = nb_hash;
+	/* Make sure that we'll check this file on any future dedupe passes */
+	filerec_clear_deduped(file);
 	ret = dbfile_write_file_info(db, file);
 	if (ret) {
 		g_mutex_unlock(&io_mutex);
@@ -725,7 +732,7 @@ static void csum_whole_file(struct filerec *file,
 
 	file->flags &= ~(FILEREC_NEEDS_SCAN|FILEREC_UPDATE_DB);
 	/* Set 'IN_DB' flag *after* we call dbfile_write_hashes() */
-	file->flags |= FILEREC_IN_DB|FILEREC_RESCANNED;
+	file->flags |= FILEREC_IN_DB;
 
 	filerec_close(file);
 	free(curr_block.buf);

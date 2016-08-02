@@ -26,7 +26,7 @@ int add_file(const char *name, int dirfd);
  * * The filerec is marked for rehash if mtime changed.
  */
 int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
-		uint64_t size, uint64_t mtime, int *delete);
+		uint64_t size, uint64_t mtime, unsigned int seq, int *delete);
 
 /* Set/get onefs state, info is gathered from our config table */
 void fs_set_onefs(dev_t dev, uint64_t fsid);

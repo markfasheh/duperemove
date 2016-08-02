@@ -46,6 +46,7 @@ static GMutex filerec_fd_mutex;
 struct list_head filerec_list;
 static struct rb_root filerec_by_inum = RB_ROOT;
 unsigned long long num_filerecs = 0ULL;
+unsigned int dedupe_seq = 0;
 
 declare_alloc_tracking(filerec);
 declare_alloc_tracking(filerec_token);

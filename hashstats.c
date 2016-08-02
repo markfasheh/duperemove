@@ -351,7 +351,7 @@ int main(int argc, char **argv)
 		return ret;
 
 	ret = dbfile_get_config(&disk_blocksize, &disk_hashes, &disk_files,
-				NULL, NULL, &major, &minor, NULL);
+				NULL, NULL, &major, &minor, NULL, NULL);
 	if (ret)
 		return ret;
 

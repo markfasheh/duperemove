@@ -24,6 +24,8 @@
 
 extern struct list_head filerec_list;
 extern unsigned long long num_filerecs;
+extern unsigned int dedupe_seq; /* This is incremented on every dedupe pass */
+
 
 struct filerec {
 	int		fd;			/* file descriptor */
@@ -53,6 +55,7 @@ struct filerec {
 #endif
 	/* mtime in nanoseconds */
 	uint64_t		mtime;
+	unsigned int		dedupe_seq;
 };
 
 /*
@@ -72,12 +75,6 @@ struct filerec {
  * line. See dbfile_write_hashes().
 */
 #define	FILEREC_IN_DB		0x04
-/*
- * File was rescanned. We use this during the extent search and dedupe
- * stages to avoid comparison against files which haven't changed from
- * our last run.
- */
-#define	FILEREC_RESCANNED	0x08
 
 void init_filerec(void);
 void free_all_filerecs(void);
@@ -90,6 +87,21 @@ void filerec_free(struct filerec *file);
 int filerec_open(struct filerec *file, int write);
 void filerec_close(struct filerec *file);
 
+/*
+ * dedupe_seq is used to track when a file has been deduped. When we
+ * scan or rescan a file, we set its seq to dedupe_seq + 1. The global
+ * dedupe_seq value is only incremented once a full dedupe pass is
+ * done. We can then compare sequence numbers to tell whether a file
+ * has been deduped or not.
+ */
+static inline void filerec_clear_deduped(struct filerec *file)
+{
+	file->dedupe_seq = dedupe_seq + 1;
+}
+static inline int filerec_deduped(struct filerec *file)
+{
+	return !!(file->dedupe_seq <= dedupe_seq);
+}
 struct open_once {
 	struct rb_root	root;
 };
