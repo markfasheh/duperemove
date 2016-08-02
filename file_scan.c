@@ -778,16 +778,18 @@ int populate_tree()
 
 	struct thread_params params = { 0, 0, };
 
-	pool = setup_pool(&params, &mutex, csum_whole_file);
-	if (!pool) {
-		ret = -1;
-		goto out;
+	if (files_to_scan) {
+		pool = setup_pool(&params, &mutex, csum_whole_file);
+		if (!pool) {
+			ret = -1;
+			goto out;
+		}
+
+		run_pool(pool);
+
+		printf("Total files:  %d\n", params.num_files);
+		printf("Total hashes: %d\n", params.num_hashes);
 	}
-
-	run_pool(pool);
-
-	printf("Total files:  %d\n", params.num_files);
-	printf("Total hashes: %d\n", params.num_hashes);
 out:
 	g_dataset_destroy(&params);
 
