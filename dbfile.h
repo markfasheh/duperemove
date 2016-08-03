@@ -43,6 +43,8 @@ sqlite3 *dbfile_get_handle(void);
 int dbfile_write_file_info(sqlite3 *db, struct filerec *file);
 int dbfile_write_hashes(sqlite3 *db, struct filerec *file,
 			uint64_t nb_hash, struct block *hashes);
+int dbfile_begin_trans(sqlite3 *db);
+int dbfile_commit_trans(sqlite3 *db);
 
 /*
  * This is used for printing so we can get away with chars from sqlite

@@ -716,6 +716,12 @@ static void csum_whole_file(struct filerec *file,
 	file->num_blocks = nb_hash;
 	/* Make sure that we'll check this file on any future dedupe passes */
 	filerec_clear_deduped(file);
+	ret = dbfile_begin_trans(db);
+	if (ret) {
+		g_mutex_unlock(&io_mutex);
+		goto err;
+	}
+
 	ret = dbfile_write_file_info(db, file);
 	if (ret) {
 		g_mutex_unlock(&io_mutex);
@@ -723,6 +729,12 @@ static void csum_whole_file(struct filerec *file,
 	}
 
 	ret = dbfile_write_hashes(db, file, nb_hash, hashes);
+	if (ret) {
+		g_mutex_unlock(&io_mutex);
+		goto err;
+	}
+
+	ret = dbfile_commit_trans(db);
 	if (ret) {
 		g_mutex_unlock(&io_mutex);
 		goto err;

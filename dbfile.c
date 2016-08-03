@@ -247,6 +247,26 @@ void dbfile_close(void)
 	gdb = NULL;
 }
 
+int dbfile_begin_trans(sqlite3 *db)
+{
+	int ret;
+
+	ret = sqlite3_exec(db, "begin transaction", NULL, NULL, NULL);
+	if (ret)
+		perror_sqlite(ret, "starting transaction");
+	return ret;
+}
+
+int dbfile_commit_trans(sqlite3 *db)
+{
+	int ret;
+
+	ret = sqlite3_exec(db, "commit transaction", NULL, NULL, NULL);
+	if (ret)
+		perror_sqlite(ret, "committing transaction");
+	return ret;
+}
+
 static int sync_config_text(sqlite3_stmt *stmt, const char *key, char *val,
 			    int len)
 {
@@ -793,7 +813,6 @@ int dbfile_write_hashes(sqlite3 *db, struct filerec *file, uint64_t nb_hash,
 {
 	int ret;
 	uint64_t i;
-	char *errorstr = NULL;
 	sqlite3_stmt *stmt = NULL;
 	uint64_t loff;
 	uint32_t flags;
@@ -803,13 +822,6 @@ int dbfile_write_hashes(sqlite3 *db, struct filerec *file, uint64_t nb_hash,
 		ret = dbfile_remove_file_hashes(db, file);
 		if (ret)
 			return ret;
-	}
-
-	ret = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &errorstr);
-	if (ret) {
-		perror_sqlite(ret, "starting transaction");
-		sqlite3_free(errorstr);
-		return ret;
 	}
 
 #define	UPDATE_HASH						\
@@ -853,12 +865,6 @@ int dbfile_write_hashes(sqlite3 *db, struct filerec *file, uint64_t nb_hash,
 		}
 
 		sqlite3_reset(stmt);
-	}
-
-	ret = sqlite3_exec(db, "COMMIT TRANSACTION", NULL, NULL, &errorstr);
-	if (ret) {
-		perror_sqlite(ret, "committing transaction");
-		sqlite3_free(errorstr);
 	}
 
 	ret = 0;
