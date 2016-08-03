@@ -12,6 +12,16 @@ to each other, finding and categorizing extents that match each
 other. When given the \fB-d\fR option, \fBduperemove\fR will submit those
 extents for deduplication using the Linux kernel extent-same ioctl.
 
+\fBduperemove\fR can store the hashes it computes in a \fIhashfile\fR. If
+given an existing \fIhashfile\fR, \fBduperemove\fR will only compute hashes
+for those files which have changed since the last run.  Thus you can run
+\fBduperemove\fR repeatedly on your data as it changes, without having to
+re-checksum unchanged data.  For more on \fIhashfiles\fR see the
+\fB--hashfile\fR option below.
+
+\fBduperemove\fR can also take input from the \fBfdupes\fR program, see the
+\fB--fdupes\fR option below.
+
 .SH "GENERAL"
 Duperemove has two major modes of operation one of which is a subset
 of the other.
@@ -69,14 +79,28 @@ Print numbers in human-readable format.
 
 .TP
 \fB\--hashfile=hashfile\fR
-Use a file for temporary storage of hashes instead of memory. This
-option drastically reduces the memory footprint of duperemove and is
-recommended when your data set is more than a few files large. If the
-hashfile exists, it will be overwritten. The hashfile can be deleted
-when duperemove is complete.
+Use a file for storage of hashes instead of memory. This option drastically
+reduces the memory footprint of duperemove and is recommended when your data
+set is more than a few files large.  \fIHashfiles\fR are also reusable,
+allowing you to further reduce the amount of hashing done on subsequent
+dedupe runs.
 
-A future enhancement will allow duperemove to reuse the data inside
-hashfiles to optimize the file scan by skipping unchanged files.
+If \fIhashfile\fR does not exist it will be created.  If it exists,
+\fBduperemove\fR will check the file paths stored inside of it for changes.
+Files which have changed will be rescanned and their updated hashes will be
+written to the \fIhashfile\fR.  Deleted files will be removed from the \fIhashfile\fR.
+
+New files are only added to the \fIhashfile\fR if they are discoverable via
+the \fIfiles\fR argument.  For that reason you probably want to provide the
+same \fIfiles\fR list and \fB-r\fR arguments on each run of
+\fBduperemove\fR.  The file discovery algorithm is efficient and will only
+visit each file once, even if it is already in the \fIhashfile\fR.
+
+Adding a new path to a hashfile is as simple as adding it to the \fIfiles\fR
+argument.
+
+When deduping from a hashfile, duperemove will avoid deduping files which
+have not changed since the last dedupe.
 
 .TP
 \fB\-L\fR
@@ -96,22 +120,17 @@ Run in \fBfdupes\fR mode. With this option you can pipe the output of
 recieving a file list in this manner, duperemove will skip the hashing phase.
 
 .TP
+\fB\-v\fR
+Be verbose.
+
+.TP
 \fB\--skip-zeroes\fR
 Read data blocks and skip any zeroed blocks, useful for speedup duperemove,
 but can prevent deduplication of zeroed files.
 
 .TP
-\fB\-x\fR
-Don't cross filesystem boundaries, this is the default behavior since
-duperemove v0.11. The option is kept for backwards compatibility.
-
-.TP
 \fB\-b size\fR
 Use the specified block size. The default is \fB128K\fR.
-
-.TP
-\fB\-v\fR
-Be verbose.
 
 .TP
 \fB\--io-threads=N\fR
@@ -122,6 +141,11 @@ cpus.
 .TP
 \fB\-?, --help\fR
 Prints help text.
+
+.TP
+\fB\-x\fR
+Don't cross filesystem boundaries, this is the default behavior since
+duperemove v0.11. The option is kept for backwards compatibility.
 
 .TP
 \fB\--lookup-extents=[yes|no]\fR
@@ -166,4 +190,5 @@ Deduplication is currently only supported by the \fIbtrfs\fR and \fIxfs\fR files
 .SH "SEE ALSO"
 .BR filesystems(5)
 .BR btrfs(8)
+.BR xfs(8)
 .BR fdupes(1)
