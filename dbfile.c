@@ -182,6 +182,7 @@ reopen:
 			 * mtime so any attempt to 'upgrade' would
 			 * include rescanning all files anyway.
 			 */
+			sqlite3_close(db);
 			ret = unlink(filename);
 			if (ret && errno != ENOENT) {
 				ret = errno;
@@ -199,6 +200,7 @@ reopen:
 				"version, %d.%d (I understand %d.%d)\n",
 				filename, vmajor, vminor, DB_FILE_MAJOR,
 				DB_FILE_MINOR);
+			sqlite3_close(db);
 			return -EIO;
 		}
 	}
