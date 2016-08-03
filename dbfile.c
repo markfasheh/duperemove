@@ -124,10 +124,6 @@ static int dbfile_set_modes(sqlite3 *db)
 		return ret;
 	}
 
-	ret = sqlite3_exec(db, "PRAGMA journal_mode = MEMORY", NULL, NULL, NULL);
-	if (ret)
-		perror_sqlite(ret, "configuring database (journal pragma)");
-
 	return ret;
 }
 
