@@ -321,14 +321,6 @@ int __dbfile_sync_config(sqlite3 *db, unsigned int block_size, dev_t onefs_dev,
 		return ret;
 	}
 
-	ret = sync_config_int(stmt, "version_major", DB_FILE_MAJOR);
-	if (ret)
-		goto out;
-
-	ret = sync_config_int(stmt, "version_minor", DB_FILE_MINOR);
-	if (ret)
-		goto out;
-
 	ret = sync_config_text(stmt, "hash_type", hash_type, 8);
 	if (ret)
 		goto out;
@@ -352,6 +344,18 @@ int __dbfile_sync_config(sqlite3 *db, unsigned int block_size, dev_t onefs_dev,
 		goto out;
 
 	ret = sync_config_int(stmt, "dedupe_sequence", seq);
+	if (ret)
+		goto out;
+
+	ret = sync_config_int(stmt, "version_minor", DB_FILE_MINOR);
+	if (ret)
+		goto out;
+
+	/*
+	 * Always write version_major last so we have an easy check
+	 * whether the config table was fully written.
+	 */
+	ret = sync_config_int(stmt, "version_major", DB_FILE_MAJOR);
 	if (ret)
 		goto out;
 
