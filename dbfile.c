@@ -169,13 +169,13 @@ reopen:
 	} else {
 		ret = __dbfile_get_config(db, NULL, NULL, NULL, NULL, NULL,
 					  &vmajor, &vminor, NULL, NULL);
-		if (ret) {
+		if (ret && ret != SQLITE_CORRUPT) {
 			perror_sqlite(ret, "reading initial db config");
 			sqlite3_close(db);
 			return ret;
 		}
 
-		if (vmajor == 1) {
+		if (ret || vmajor <= 1) {
 			/*
 			 * Behavior for v1 dbfiles was to delete
 			 * them on every run. They also didn't store
@@ -187,8 +187,8 @@ reopen:
 			if (ret && errno != ENOENT) {
 				ret = errno;
 				fprintf(stderr, "Error %d while unlinking old "
-					"db file \"%s\": %s", ret, filename,
-					strerror(ret));
+					"or damaged db file \"%s\": %s", ret,
+					filename, strerror(ret));
 				return ret;
 			}
 			newfile = 1;
@@ -446,7 +446,7 @@ out:
 
 static int get_config_int(sqlite3_stmt *stmt, const char *name, int *val)
 {
-	int ret;
+	int ret, found = 0;
 
 	if (!val)
 		return 0;
@@ -459,11 +459,15 @@ static int get_config_int(sqlite3_stmt *stmt, const char *name, int *val)
 
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
 		*val = sqlite3_column_int(stmt, 0);
+		found++;
 	}
 	if (ret != SQLITE_DONE) {
 		perror_sqlite(ret, "retrieving row from config table (step)");
 		return ret;
 	}
+
+	if (!found)
+		return SQLITE_CORRUPT;
 
 	sqlite3_reset(stmt);
 
@@ -472,7 +476,7 @@ static int get_config_int(sqlite3_stmt *stmt, const char *name, int *val)
 
 static int get_config_int64(sqlite3_stmt *stmt, const char *name, uint64_t *val)
 {
-	int ret;
+	int ret, found = 0;;
 
 	if (!val)
 		return 0;
@@ -485,11 +489,15 @@ static int get_config_int64(sqlite3_stmt *stmt, const char *name, uint64_t *val)
 
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
 		*val = sqlite3_column_int64(stmt, 0);
+		found++;
 	}
 	if (ret != SQLITE_DONE) {
 		perror_sqlite(ret, "retrieving row from config table (step)");
 		return ret;
 	}
+
+	if (!found)
+		return SQLITE_CORRUPT;
 
 	sqlite3_reset(stmt);
 
@@ -498,7 +506,7 @@ static int get_config_int64(sqlite3_stmt *stmt, const char *name, uint64_t *val)
 
 static int get_config_text(sqlite3_stmt *stmt, const char *name, const unsigned char *val)
 {
-	int ret;
+	int ret, found = 0;
 	const unsigned char *local;
 
 	if (!val)
@@ -513,12 +521,16 @@ static int get_config_text(sqlite3_stmt *stmt, const char *name, const unsigned 
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
 		local = sqlite3_column_text(stmt, 0);
 		strcpy((char *)val, (char *)local);
+		found++;
 	}
 
 	if (ret != SQLITE_DONE) {
 		perror_sqlite(ret, "retrieving row from config table (step)");
 		return ret;
 	}
+
+	if (!found)
+		return SQLITE_CORRUPT;
 
 	sqlite3_reset(stmt);
 
