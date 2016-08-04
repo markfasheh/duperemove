@@ -13,11 +13,11 @@ other. When given the \fB-d\fR option, \fBduperemove\fR will submit those
 extents for deduplication using the Linux kernel extent-same ioctl.
 
 \fBduperemove\fR can store the hashes it computes in a \fIhashfile\fR. If
-given an existing \fIhashfile\fR, \fBduperemove\fR will only compute hashes
+given an existing hashfile, \fBduperemove\fR will only compute hashes
 for those files which have changed since the last run.  Thus you can run
 \fBduperemove\fR repeatedly on your data as it changes, without having to
-re-checksum unchanged data.  For more on \fIhashfiles\fR see the
-\fB--hashfile\fR option below.
+re-checksum unchanged data.  For more on hashfiles see the
+\fB--hashfile\fR option below as well as the \fIExamples\fR section.
 
 \fBduperemove\fR can also take input from the \fBfdupes\fR program, see the
 \fB--fdupes\fR option below.
@@ -117,7 +117,7 @@ times. Duperemove will read the list from standard input if a hyphen
 \fB\--fdupes\fR
 Run in \fBfdupes\fR mode. With this option you can pipe the output of
 \fBfdupes\fR to duperemove to dedupe any duplicate files found. When
-recieving a file list in this manner, duperemove will skip the hashing phase.
+receiving a file list in this manner, duperemove will skip the hashing phase.
 
 .TP
 \fB\-v\fR
@@ -139,18 +139,34 @@ stages. Default is automatically detected based on number of host
 cpus.
 
 .TP
-\fB\-?, --help\fR
-Prints help text.
+\fB\---dedupe-options=\fR\fIoptions\fR
+Comma separated list of options which alter how we dedupe. Prepend 'no' to an
+option in order to turn it off. The default is --dedupe-options=nosame,noblock.
+.RS
+.TP
+\fB[no]same\fR
+Allow dedupe of extents within the same file.
+.TP
+\fB[no]block\fR
+Dedupe by block - don't optimize our data into extents before
+dedupe. Generally this is undesirable as it will greatly increase the
+total number of dedupe requests. There is also a larger potential for
+file fragmentation.
+.RE
 
 .TP
-\fB\-x\fR
-Don't cross filesystem boundaries, this is the default behavior since
-duperemove v0.11. The option is kept for backwards compatibility.
+\fB\-?, --help\fR
+Prints help text.
 
 .TP
 \fB\--lookup-extents=[yes|no]\fR
 Defaults to no. Allows duperemove to skip checksumming some blocks by
 checking their extent state.
+
+.TP
+\fB\-x\fR
+Don't cross filesystem boundaries, this is the default behavior since
+duperemove v0.11. The option is kept for backwards compatibility.
 
 .TP
 \fB\--read-hashes=hashfile\fR
@@ -179,6 +195,49 @@ Deprecated, see \fB--io-threads\fR above.
 .TP
 \fB\--hash=alg\fR
 Supported alg: sha256, xxhash, murmur3
+
+.SH "EXAMPLES"
+.SS "Simple Usage"
+Dedupe the files in directory /foo, recurse into all subdirectories. You only want to use this for small data sets.
+.IP
+duperemove -dr /foo
+.PP
+Use duperemove with fdupes to dedupe identical files below directory foo.
+.IP
+fdupes -r /foo | duperemove --fdupes
+
+.SS "Using Hashfiles"
+Duperemove can optionally store the hashes it calculates in a
+hashfile. Hashfiles have two primary advantages - memory usage and
+re-usability. When using a hashfile, duperemove will stream computed
+hashes to it, instead of main memory.
+
+If Duperemove is run with an existing hashfile, it will only scan
+those files which have changed since the last time the hashfile was
+updated. The \fIfiles\fR argument controls which directories
+duperemove will scan for newly added files. In the simplest usage, you
+rerun duperemove with the same parameters and it will only scan
+changed or newly added files - see the first example below.
+
+.PP
+Dedupe the files in directory foo, storing hashes in foo.hash. We can
+run this command multiple times and duperemove will only checksum and
+dedupe changed or newly added files.
+.IP
+duperemove -dr --hashfile=foo.hash foo/
+.PP
+Don't scan for new files, only update changed or deleted files, then dedupe.
+.IP
+duperemove -dr --hashfile=foo.hash
+.PP
+Add directory bar to our hashfile and discover any files that were
+recently added to foo.
+.IP
+duperemove -dr --hashfile=foo.hash foo/ bar/
+.PP
+List the files tracked by foo.hash.
+.IP
+duperemove -L --hashfile=foo.hash
 
 .SH "FAQ"
 
