@@ -38,6 +38,7 @@
 
 declare_alloc_tracking(file_block);
 declare_alloc_tracking(dupe_blocks_list);
+declare_alloc_tracking(file_hash_head);
 
 extern unsigned int blocksize;
 
@@ -176,7 +177,7 @@ static int add_file_hash_head(struct dupe_blocks_list *dups,
 	if (head)
 		goto add;
 
-	head = malloc(sizeof(*head));
+	head = malloc_file_hash_head();
 	if (!head)
 		return ENOMEM;
 
@@ -195,7 +196,7 @@ static void free_one_hash_head(struct dupe_blocks_list *dups,
 			       struct file_hash_head *head)
 {
 	rb_erase(&head->h_node, &dups->dl_files_root);
-	free(head);
+	free_file_hash_head(head);
 }
 
 int file_in_dups_list(struct dupe_blocks_list *dups, struct filerec *file)
