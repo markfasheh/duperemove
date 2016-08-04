@@ -551,13 +551,17 @@ struct csum_block {
 };
 
 static inline int csum_next_block(struct csum_block *data, uint64_t *off,
-				  struct fiemap_ctxt *fc)
+				  struct fiemap_ctxt **in_fc)
 {
+	struct fiemap_ctxt *fc = NULL;
 	ssize_t stored_bytes = data->bytes;
 	ssize_t bytes_read;
 	int ret = 0;
 	unsigned int hole;
 	int partial = 0;
+
+	if (in_fc)
+		fc = *in_fc;
 
 	bytes_read = read(data->file->fd, data->buf + stored_bytes,
 				blocksize - stored_bytes);
@@ -598,7 +602,7 @@ static inline int csum_next_block(struct csum_block *data, uint64_t *off,
 				strerror(ret));
 
 			free(fc);
-			fc = NULL;
+			fc = *in_fc = NULL;
 		} else {
 			if (skip_zeroes && fieflags & FIEMAP_EXTENT_UNWRITTEN)
 				return 3;
@@ -674,7 +678,7 @@ static void csum_whole_file(struct filerec *file,
 		goto err_noclose;
 
 	while (1) {
-		ret = csum_next_block(&curr_block, &off, fc);
+		ret = csum_next_block(&curr_block, &off, &fc);
 		if (ret == 0) /* EOF */
 			break;
 
