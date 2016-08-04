@@ -636,7 +636,12 @@ int main(int argc, char **argv)
 		if (ret)
 			return ret;
 
-		if (!dbfile_is_new) {
+		if (dbfile_is_new) {
+			ret = dbfile_sync_config(blocksize, fs_onefs_dev(),
+						 fs_onefs_id(), dedupe_seq);
+			if (ret)
+				goto out;
+		} else {
 			printf("Adding files from database for hashing.\n");
 
 			ret = dbfile_scan_files();
@@ -667,11 +672,6 @@ int main(int argc, char **argv)
 			fflush(stdout);
 
 		ret = dbfile_sync_files(dbfile_get_handle());
-		if (ret)
-			goto out;
-
-		ret = dbfile_sync_config(blocksize, fs_onefs_dev(),
-					 fs_onefs_id(), dedupe_seq);
 		if (ret)
 			goto out;
 
