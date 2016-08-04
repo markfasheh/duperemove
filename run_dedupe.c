@@ -122,7 +122,7 @@ static void process_dedupe_results(struct dedupe_ctxt *ctxt,
 	}
 }
 
-static void add_shared_extents(struct dupe_extents *dext, uint64_t *shared)
+static void get_extent_info(struct dupe_extents *dext)
 {
 	int ret = 0;
 	struct extent *extent;
@@ -134,15 +134,24 @@ static void add_shared_extents(struct dupe_extents *dext, uint64_t *shared)
 		if (filerec_open(file, 0))
 			continue;
 
+		extent->e_shared_bytes = 0;
 		ret = filerec_count_shared(file, extent->e_loff, dext->de_len,
-					   shared, &(extent->e_poff),
-					   &extent->e_plen);
+					   &extent->e_shared_bytes,
+					   &extent->e_poff, &extent->e_plen);
 		if (ret) {
 			fprintf(stderr, "%s: fiemap error %d: %s\n",
 				extent->e_file->filename, ret, strerror(ret));
 		}
 		filerec_close(file);
 	}
+}
+
+static void add_shared_extents(struct dupe_extents *dext, uint64_t *shared)
+{
+	struct extent *extent;
+
+	list_for_each_entry(extent, &dext->de_extents, e_list)
+		*shared += extent->e_shared_bytes;
 }
 
 static int disk_extent_grew(struct dupe_extents *dext, struct extent *extent)
@@ -274,20 +283,22 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 	g_mutex_unlock(&console_mutex);
 
 	shared_prev = shared_post = 0ULL;
-	add_shared_extents(dext, &shared_prev);
-
 	/*
 	 * Remove any extents which have already been deduped. This
 	 * will free dext for us if the number of available extents
 	 * goes below 2. If that happens, we return a special value so
 	 * the caller knows not to reference dext any more.
 	 */
+	get_extent_info(dext);
 	clean_deduped(&dext);
 	if (!dext) {
 		printf("[%p] Skipping - extents are already deduped.\n",
 		       g_thread_self());
 		return DEDUPE_EXTENTS_CLEANED;
 	}
+
+	/* Do this after clean_deduped as we may have removed some extents */
+	add_shared_extents(dext, &shared_prev);
 
 	list_for_each_entry(extent, &dext->de_extents, e_list) {
 		if (list_is_last(&extent->e_list, &dext->de_extents))
@@ -410,6 +421,7 @@ close_files:
 	abort_on(ctxt != NULL);
 	abort_on(!RB_EMPTY_ROOT(&open_files.root));
 
+	get_extent_info(dext);
 	add_shared_extents(dext, &shared_post);
 	/*
 	 * It's entirely possible that some other process is

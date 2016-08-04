@@ -59,6 +59,7 @@ struct extent	{
 	 */
 	uint64_t		e_poff;
 	uint64_t		e_plen;
+	uint64_t		e_shared_bytes;
 };
 
 /* endoff is NOT inclusive! TODO: Fix this because it's confusing as #$%^ */
