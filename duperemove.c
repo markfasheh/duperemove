@@ -730,11 +730,14 @@ int main(int argc, char **argv)
 	if (ret)
 		goto out;
 
-	/*
-	 * Only error for this is enomem so we continue in the hopes
-	 * that something might get deduped.
-	 */
 	ret = find_all_dupes(&dups_tree, &res);
+	if (ret) {
+		/* Only error for this should be enomem */
+		fprintf(stderr,
+			"Error %d: %s while finding duplicate extents.\n",
+			ret, strerror(ret));
+		goto out;
+	}
 
 	if (run_dedupe) {
 		dedupe_results(&res, &dups_tree);
