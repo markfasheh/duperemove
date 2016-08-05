@@ -483,6 +483,7 @@ struct block_dedupe_list
 {
 	unsigned char		bd_hash[DIGEST_LEN_MAX];
 	struct list_head	bd_block_list;
+	struct hash_tree	*bd_hash_tree;
 };
 static void free_bdl(struct block_dedupe_list *bdl);
 
@@ -547,8 +548,11 @@ static int __block_dedupe(struct block_dedupe_list *bdl,
 
 out:
 	dext = rb_entry(rb_first(&res->root), struct dupe_extents, de_node);
-	if (dext)
+	if (dext) {
+		g_mutex_lock(&mutex);
 		dupe_extents_free(dext, res);
+		g_mutex_unlock(&mutex);
+	}
 
 	return ret;
 }
@@ -666,11 +670,13 @@ static int dedupe_worker(void *priv, struct dedupe_counts *counts)
 
 static GThreadPool *dedupe_pool = NULL;
 
-struct block_dedupe_list *alloc_bdl(struct dupe_blocks_list *dups)
+struct block_dedupe_list *alloc_bdl(struct hash_tree *tree,
+				    struct dupe_blocks_list *dups)
 {
 	struct block_dedupe_list *bdl = malloc(sizeof(*bdl));
 
 	if (bdl) {
+		bdl->bd_hash_tree = tree;
 		INIT_LIST_HEAD(&bdl->bd_block_list);
 		memcpy(&bdl->bd_hash, &dups->dl_hash, DIGEST_LEN_MAX);
 	}
@@ -683,8 +689,11 @@ static void free_bdl(struct block_dedupe_list *bdl)
 
 	if (bdl) {
 		list_for_each_entry_safe(block, tmp, &bdl->bd_block_list, b_list) {
-			list_del(&block->b_list);
-			file_block_free(block);
+			list_del_init(&block->b_list);
+			g_mutex_lock(&mutex);
+			remove_hashed_block(bdl->bd_hash_tree, block);
+			g_mutex_unlock(&mutex);
+
 		}
 		free(bdl);
 	}
@@ -713,16 +722,17 @@ static int push_bdl(struct block_dedupe_list *bdl)
  * duplicates.
  */
 #define	DEDUPE_MAX	(1000000)
-static int __push_blocks(struct dupe_blocks_list *dups)
+static int __push_blocks(struct hash_tree *hashes,
+			 struct dupe_blocks_list *dups)
 {
 	int i, ret = 0;
 	unsigned long long j;
-	struct block_dedupe_list *bdl = alloc_bdl(dups);
+	struct block_dedupe_list *bdl;
 	struct file_block *block;
 
 	if (dups->dl_num_elem < DEDUPE_MAX) {
 		/* the easy way */
-		bdl = alloc_bdl(dups);
+		bdl = alloc_bdl(hashes, dups);
 		if (!bdl) {
 			fprintf(stderr, "Fatal: out of memory while deduping\n");
 			ret = ENOMEM;
@@ -753,7 +763,7 @@ static int __push_blocks(struct dupe_blocks_list *dups)
 				 */
 				if (list_is_last(&block->b_list, &dups->dl_list)
 				    || (j == smax && i != (io_threads - 1))) {
-					bdl = alloc_bdl(dups);
+					bdl = alloc_bdl(hashes, dups);
 					if (!bdl) {
 						fprintf(stderr,
 							"Fatal: out of memory"
@@ -789,7 +799,7 @@ static int push_blocks(struct hash_tree *hashes)
 		if (dups->dl_num_elem < 2)
 			continue;
 
-		if (__push_blocks(dups))
+		if (__push_blocks(hashes, dups))
 			return 1;
 	}
 	return 0;
