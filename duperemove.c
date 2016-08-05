@@ -545,10 +545,103 @@ static void print_header(void)
 	printf("Using hash: %s\n", csum_mod->name);
 }
 
+static int create_update_hashfile(int argc, char **argv, int filelist_idx)
+{
+	int ret;
+	int dbfile_is_new = 0;
+
+	ret = dbfile_create(serialize_fname, &dbfile_is_new);
+	if (ret)
+		goto out;
+
+	if (!dbfile_is_new) {
+		dev_t dev;
+		uint64_t fsid;
+		unsigned db_blocksize;
+		char db_hash_type[8];
+
+		ret = dbfile_get_config(&db_blocksize, NULL, NULL, &dev, &fsid,
+					NULL, NULL, db_hash_type, &dedupe_seq);
+		if (ret)
+			goto out;
+
+		if (strncasecmp(db_hash_type, hash_type, 8)) {
+			fprintf(stderr,
+				"Error: Hashfile %s uses %.*s. for checksums "
+				"but we are using %.*s.\nTry running with "
+				"--hash=%.*s\n", serialize_fname, 8,
+				db_hash_type, 8, hash_type,
+				8, db_hash_type);
+			ret = EINVAL;
+			goto out;
+		}
+
+		if (db_blocksize != blocksize) {
+			vprintf("Using blocksize %uK from hashfile (%uK "
+				"blocksize requested).\n", db_blocksize/1024,
+				blocksize/1024);
+			blocksize = db_blocksize;
+		}
+
+		fs_set_onefs(dev, fsid);
+	}
+
+	print_header();
+
+	if (stdin_filelist)
+		ret = add_files_from_stdin(0);
+	else
+		ret = add_files_from_cmdline(argc - filelist_idx,
+					     &argv[filelist_idx]);
+	if (ret)
+		goto out;
+
+	if (dbfile_is_new) {
+		ret = dbfile_sync_config(blocksize, fs_onefs_dev(),
+					 fs_onefs_id(), dedupe_seq);
+		if (ret)
+			goto out;
+	} else {
+		printf("Adding files from database for hashing.\n");
+
+		ret = dbfile_scan_files();
+		if (ret)
+			goto out;
+	}
+
+	if (list_empty(&filerec_list)) {
+		fprintf(stderr, "No dedupe candidates found.\n");
+		ret = EINVAL;
+		goto out;
+	}
+
+	ret = populate_tree();
+	if (ret) {
+		fprintf(stderr,	"Error while populating extent tree!\n");
+		goto out;
+	}
+
+	ret = create_indexes(dbfile_get_handle());
+	if (ret)
+		goto out;
+
+	/*
+	 * File scan from above can cause quite a bit of output, flush
+	 * here in case of logfile.
+	 */
+	if (stdout_is_tty)
+		fflush(stdout);
+
+	ret = dbfile_sync_files(dbfile_get_handle());
+	if (ret)
+		goto out;
+out:
+	return ret;
+}
+
 int main(int argc, char **argv)
 {
 	int ret, filelist_idx = 0;
-	int dbfile_is_new = 0;
 	struct results_tree res;
 	struct hash_tree dups_tree;
 
@@ -592,90 +685,7 @@ int main(int argc, char **argv)
 	switch (use_hashfile) {
 	case H_UPDATE:
 	case H_WRITE:
-		ret = dbfile_create(serialize_fname, &dbfile_is_new);
-		if (ret)
-			goto out;
-
-		if (!dbfile_is_new) {
-			dev_t dev;
-			uint64_t fsid;
-			unsigned db_blocksize;
-			char db_hash_type[8];
-
-			ret = dbfile_get_config(&db_blocksize, NULL, NULL, &dev,
-						&fsid, NULL, NULL, db_hash_type,
-						&dedupe_seq);
-			if (ret)
-				goto out;
-
-			if (strncasecmp(db_hash_type, hash_type, 8)) {
-				fprintf(stderr,
-					"Error: Hashfile %s uses %.*s. for "
-					"checksums but we are using %.*s.\n"
-					"Try running with --hash=%.*s\n",
-					serialize_fname, 8, db_hash_type, 8,
-					hash_type, 8, db_hash_type);
-				ret = EINVAL;
-				goto out;
-			}
-
-			if (db_blocksize != blocksize) {
-				vprintf("Using blocksize %uK from hashfile (%uK"
-					" blocksize requested).\n",
-				db_blocksize/1024, blocksize/1024);
-				blocksize = db_blocksize;
-			}
-
-			fs_set_onefs(dev, fsid);
-		}
-
-		print_header();
-
-		if (stdin_filelist)
-			ret = add_files_from_stdin(0);
-		else
-			ret = add_files_from_cmdline(argc - filelist_idx,
-						     &argv[filelist_idx]);
-		if (ret)
-			goto out;
-
-		if (dbfile_is_new) {
-			ret = dbfile_sync_config(blocksize, fs_onefs_dev(),
-						 fs_onefs_id(), dedupe_seq);
-			if (ret)
-				goto out;
-		} else {
-			printf("Adding files from database for hashing.\n");
-
-			ret = dbfile_scan_files();
-			if (ret)
-				goto out;
-		}
-
-		if (list_empty(&filerec_list)) {
-			fprintf(stderr, "No dedupe candidates found.\n");
-			ret = EINVAL;
-			goto out;
-		}
-
-		ret = populate_tree();
-		if (ret) {
-			fprintf(stderr,	"Error while populating extent tree!\n");
-			goto out;
-		}
-
-		ret = create_indexes(dbfile_get_handle());
-		if (ret)
-			goto out;
-
-		/*
-		 * File scan from above can cause quite a bit of output, flush
-		 * here in case of logfile.
-		 */
-		if (stdout_is_tty)
-			fflush(stdout);
-
-		ret = dbfile_sync_files(dbfile_get_handle());
+		ret = create_update_hashfile(argc, argv, filelist_idx);
 		if (ret)
 			goto out;
 
