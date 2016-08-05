@@ -308,9 +308,10 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 	return 0;
 }
 
-static void remove_hashed_block(struct hash_tree *tree,
-				struct file_block *block, struct filerec *file)
+static int __remove_hashed_block(struct hash_tree *tree,
+				 struct file_block *block, struct filerec *file)
 {
+	int ret = 0;
 	struct dupe_blocks_list *blocklist = block->b_parent;
 	struct file_hash_head *head;
 
@@ -336,10 +337,18 @@ static void remove_hashed_block(struct hash_tree *tree,
 		tree->num_hashes--;
 
 		free_dupe_blocks_list(blocklist);
+		ret = 1;
 	}
 
 	free_file_block(block);
 	tree->num_blocks--;
+	return ret;
+}
+
+static void remove_hashed_block(struct hash_tree *tree,
+				struct file_block *block, struct filerec *file)
+{
+	__remove_hashed_block(tree, block, file);
 }
 
 void remove_hashed_blocks(struct hash_tree *tree, struct filerec *file)
@@ -400,4 +409,22 @@ void init_hash_tree(struct hash_tree *tree)
 	tree->root = RB_ROOT;
 	tree->num_blocks = tree->num_hashes = 0;
 	INIT_LIST_HEAD(&tree->size_list);
+}
+
+void free_hash_tree(struct hash_tree *tree)
+{
+	struct dupe_blocks_list *dups;
+	struct file_block *block, *tmp;
+	struct rb_node *n = rb_first(&tree->root);
+
+	while (n) {
+		dups = rb_entry(n, struct dupe_blocks_list, dl_node);
+
+		list_for_each_entry_safe(block, tmp, &dups->dl_list, b_list) {
+			if (__remove_hashed_block(tree, block, block->b_file))
+				break;
+		}
+
+		n = rb_first(&tree->root);
+	}
 }

@@ -104,7 +104,7 @@ void mark_block_seen(struct file_block *block);
 void clear_all_seen_blocks(void);
 
 void init_hash_tree(struct hash_tree *tree);
-
+void free_hash_tree(struct hash_tree *tree);
 
 void debug_print_block(struct file_block *e);
 void debug_print_hash_tree(struct hash_tree *tree);
