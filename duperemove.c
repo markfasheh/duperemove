@@ -592,7 +592,7 @@ int main(int argc, char **argv)
 	case H_WRITE:
 		ret = dbfile_create(serialize_fname, &dbfile_is_new);
 		if (ret)
-			break;
+			goto out;
 
 		if (!dbfile_is_new) {
 			dev_t dev;
