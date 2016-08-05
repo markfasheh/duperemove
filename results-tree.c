@@ -440,3 +440,17 @@ void dupe_extents_free(struct dupe_extents *dext, struct results_tree *res)
 		count = remove_extent(res, extent);
 	} while (count > 0);
 }
+
+void free_results_tree(struct results_tree *res)
+{
+	struct dupe_extents *de;
+	struct rb_node *n = rb_first(&res->root);
+
+	while (n) {
+		de = rb_entry(n, struct dupe_extents, de_node);
+
+		dupe_extents_free(de, res);
+
+		n = rb_first(&res->root);
+	}
+}

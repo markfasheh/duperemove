@@ -750,6 +750,7 @@ int main(int argc, char **argv)
 			print_dupes_table(&res);
 	}
 
+	free_results_tree(&res);
 	free_hash_tree(&dups_tree);
 	free_all_filerecs();
 out:
