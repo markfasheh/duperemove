@@ -422,8 +422,10 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 			*delete = 1;
 			return 0;
 		} else if (ret == -1) {
-			ret = errno;
-			return ret;
+			fprintf(stderr,	"Error %d: %s while stating file %s.\n",
+				errno, strerror(errno), filename);
+			*delete = 1;
+			return 0;
 		}
 
 		ret = __add_file(filename, &st, &file);
