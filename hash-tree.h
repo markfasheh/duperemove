@@ -52,8 +52,11 @@ struct file_block {
 	uint64_t	b_loff;
 	unsigned int	b_flags;
 
-	struct list_head	b_list;  /* For dl_list, all blocks
-					  * with this md5. */
+	/*
+	 * All blocks with this md5. Can be on dupe_blocks_list->dl_list, or
+	 * block_dedupe_list->bd_block_list (see run_dedupe.c).
+	 */
+	struct list_head	b_list;
 
 	struct rb_node		b_file_next; /* filerec->block_tree */
 	struct list_head	b_head_list; /* file_hash_head->h_blocks */
@@ -75,6 +78,8 @@ static inline unsigned long block_len(struct file_block *block)
 
 int insert_hashed_block(struct hash_tree *tree, unsigned char *digest,
 			struct filerec *file, uint64_t loff, unsigned int flags);
+int remove_hashed_block(struct hash_tree *tree, struct file_block *block);
+
 void sort_hashes_by_size(struct hash_tree *tree);
 
 /*
@@ -107,7 +112,5 @@ void free_hash_tree(struct hash_tree *tree);
 
 void debug_print_block(struct file_block *e);
 void debug_print_hash_tree(struct hash_tree *tree);
-
-void file_block_free(struct file_block *b);
 
 #endif /* __HASH_TREE__ */

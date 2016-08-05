@@ -43,17 +43,6 @@ declare_alloc_tracking(file_hash_head);
 extern unsigned int blocksize;
 
 /*
- * This is hacky, we should rework the declare_alloc_tracking macros
- * to optionally create nonstatic versions, then add a
- * declare_alloc_tracking_headers macro for those times where we want
- * to export the alloc functions.
- */
-void file_block_free(struct file_block *b)
-{
-	free_file_block(b);
-}
-
-/*
  * Management of filerec->block_tree rb tree. This is simple - ordered
  * by loff. So that the code in find_dupes.c can walk them in logical
  * order. We use a tree for this so that our dbfile backend is free to
@@ -308,8 +297,8 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 	return 0;
 }
 
-static int __remove_hashed_block(struct hash_tree *tree,
-				 struct file_block *block)
+int remove_hashed_block(struct hash_tree *tree,
+			struct file_block *block)
 {
 	int ret = 0;
 	struct dupe_blocks_list *blocklist = block->b_parent;
@@ -405,7 +394,7 @@ void free_hash_tree(struct hash_tree *tree)
 		dups = rb_entry(n, struct dupe_blocks_list, dl_node);
 
 		list_for_each_entry_safe(block, tmp, &dups->dl_list, b_list) {
-			if (__remove_hashed_block(tree, block))
+			if (remove_hashed_block(tree, block))
 				break;
 		}
 
