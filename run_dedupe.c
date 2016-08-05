@@ -720,7 +720,7 @@ static int __push_blocks(struct dupe_blocks_list *dups)
 {
 	int i, ret = 0;
 	unsigned long long j;
-	struct block_dedupe_list *bdl = alloc_bdl(dups);
+	struct block_dedupe_list *bdl;
 	struct file_block *block;
 
 	if (dups->dl_num_elem < DEDUPE_MAX) {
