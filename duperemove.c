@@ -648,7 +648,7 @@ int main(int argc, char **argv)
 
 			ret = dbfile_scan_files();
 			if (ret)
-				break;
+				goto out;
 		}
 
 		if (list_empty(&filerec_list)) {
