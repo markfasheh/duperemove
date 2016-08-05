@@ -51,7 +51,7 @@ static sqlite3_stmt *find_blocks_stmt = NULL;
 
 /* dirty hack so we don't have to add file_scan.o to hashstats */
 int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
-		uint64_t size, uint64_t mtime, int *delete)
+		uint64_t size, uint64_t mtime, unsigned int seq, int *delete)
 {
 	return 0;
 }
