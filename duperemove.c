@@ -606,7 +606,7 @@ int main(int argc, char **argv)
 						&fsid, NULL, NULL, db_hash_type,
 						&dedupe_seq);
 			if (ret)
-				return ret;
+				goto out;
 
 			if (strncasecmp(db_hash_type, hash_type, 8)) {
 				fprintf(stderr,
@@ -615,7 +615,8 @@ int main(int argc, char **argv)
 					"Try running with --hash=%.*s\n",
 					serialize_fname, 8, db_hash_type, 8,
 					hash_type, 8, db_hash_type);
-				return EINVAL;
+				ret = EINVAL;
+				goto out;
 			}
 
 			if (db_blocksize != blocksize) {
@@ -636,7 +637,7 @@ int main(int argc, char **argv)
 			ret = add_files_from_cmdline(argc - filelist_idx,
 						     &argv[filelist_idx]);
 		if (ret)
-			return ret;
+			goto out;
 
 		if (dbfile_is_new) {
 			ret = dbfile_sync_config(blocksize, fs_onefs_dev(),
@@ -653,7 +654,8 @@ int main(int argc, char **argv)
 
 		if (list_empty(&filerec_list)) {
 			fprintf(stderr, "No dedupe candidates found.\n");
-			return EINVAL;
+			ret = EINVAL;
+			goto out;
 		}
 
 		ret = populate_tree();
@@ -745,10 +747,10 @@ int main(int argc, char **argv)
 			print_dupes_table(&res);
 	}
 
+out:
 	free_results_tree(&res);
 	free_hash_tree(&dups_tree);
 	free_all_filerecs();
-out:
 	dbfile_close();
 
 	if (ret == ENOMEM || debug)
