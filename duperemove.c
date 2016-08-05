@@ -76,7 +76,7 @@ static enum {
 } use_hashfile = H_UPDATE;
 static char *serialize_fname = NULL;
 unsigned int io_threads;
-int do_lookup_extents = 1;
+int do_lookup_extents = 0;
 
 int stdout_is_tty = 0;
 
@@ -431,7 +431,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			}
 			break;
 		case LOOKUP_EXTENTS_OPTION:
-			do_lookup_extents = parse_yesno_option(optarg, 1);
+			do_lookup_extents = parse_yesno_option(optarg, 0);
 			break;
 		case ONE_FILESYSTEM_OPTION:
 		case 'x':
