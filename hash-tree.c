@@ -309,11 +309,12 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 }
 
 static int __remove_hashed_block(struct hash_tree *tree,
-				 struct file_block *block, struct filerec *file)
+				 struct file_block *block)
 {
 	int ret = 0;
 	struct dupe_blocks_list *blocklist = block->b_parent;
 	struct file_hash_head *head;
+	struct filerec *file = block->b_file;
 
 	abort_on(blocklist->dl_num_elem == 0);
 
@@ -343,23 +344,6 @@ static int __remove_hashed_block(struct hash_tree *tree,
 	free_file_block(block);
 	tree->num_blocks--;
 	return ret;
-}
-
-static void remove_hashed_block(struct hash_tree *tree,
-				struct file_block *block, struct filerec *file)
-{
-	__remove_hashed_block(tree, block, file);
-}
-
-void remove_hashed_blocks(struct hash_tree *tree, struct filerec *file)
-{
-	struct rb_node *node;
-	struct file_block *block;
-
-	while ((node = rb_first(&file->block_tree)) != NULL) {
-		block = rb_entry(node, struct file_block, b_file_next);
-		remove_hashed_block(tree, block, file);
-	}
 }
 
 static unsigned int seen_counter = 1;
@@ -421,7 +405,7 @@ void free_hash_tree(struct hash_tree *tree)
 		dups = rb_entry(n, struct dupe_blocks_list, dl_node);
 
 		list_for_each_entry_safe(block, tmp, &dups->dl_list, b_list) {
-			if (__remove_hashed_block(tree, block, block->b_file))
+			if (__remove_hashed_block(tree, block))
 				break;
 		}
 
