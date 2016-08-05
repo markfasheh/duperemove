@@ -550,9 +550,11 @@ int main(int argc, char **argv)
 	int ret, filelist_idx = 0;
 	int dbfile_is_new = 0;
 	struct results_tree res;
+	struct hash_tree dups_tree;
 
 	init_filerec();
 	init_results_tree(&res);
+	init_hash_tree(&dups_tree);
 
 	/* Parse options might change this so set a default here */
 #if GLIB_CHECK_VERSION(2,36,0)
@@ -710,14 +712,7 @@ int main(int argc, char **argv)
 		break;
 	}
 
-	/* We will now reread the serialized file, and create a new
-	 * shiny tree with only duplicate hashes
-	 */
-	struct hash_tree dups_tree;
-
 	printf("Loading only duplicated hashes from hashfile.\n");
-
-	init_hash_tree(&dups_tree);
 
 	ret = dbfile_load_hashes(&dups_tree);
 	if (ret)
