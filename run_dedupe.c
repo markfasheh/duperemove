@@ -547,8 +547,11 @@ static int __block_dedupe(struct block_dedupe_list *bdl,
 
 out:
 	dext = rb_entry(rb_first(&res->root), struct dupe_extents, de_node);
-	if (dext)
+	if (dext) {
+		g_mutex_lock(&mutex);
 		dupe_extents_free(dext, res);
+		g_mutex_unlock(&mutex);
+	}
 
 	return ret;
 }
