@@ -788,7 +788,6 @@ err_noclose:
 
 int populate_tree()
 {
-	int ret = 0;
 	GMutex mutex;
 	GThreadPool *pool;
 
@@ -796,18 +795,16 @@ int populate_tree()
 
 	if (files_to_scan) {
 		pool = setup_pool(&params, &mutex, csum_whole_file);
-		if (!pool) {
-			ret = -1;
-			goto out;
-		}
+		if (!pool)
+			return ENOMEM;
 
 		run_pool(pool);
 
 		printf("Total files:  %d\n", params.num_files);
 		printf("Total hashes: %d\n", params.num_hashes);
-	}
-out:
-	g_dataset_destroy(&params);
 
-	return ret;
+		g_dataset_destroy(&params);
+	}
+
+	return 0;
 }
