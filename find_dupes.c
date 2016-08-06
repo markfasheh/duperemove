@@ -58,10 +58,10 @@ static void record_match(struct results_tree *res, unsigned char *digest,
 	soff[0] = start[0]->b_loff;
 	soff[1] = start[1]->b_loff;
 
-	eoff[0] = block_len(end[0]) + end[0]->b_loff;
-	eoff[1] = block_len(end[1]) + end[1]->b_loff;
+	eoff[0] = block_len(end[0]) + end[0]->b_loff - 1;
+	eoff[1] = block_len(end[1]) + end[1]->b_loff - 1;
 
-	len = eoff[0] - soff[0];
+	len = eoff[0] - soff[0] + 1;
 
 	ret = insert_result(res, digest, recs, soff, eoff);
 	if (ret) {

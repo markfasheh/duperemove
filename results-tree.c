@@ -249,7 +249,7 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 	struct extent *e0 = alloc_extent(recs[0], startoff[0]);
 	struct extent *e1 = alloc_extent(recs[1], startoff[1]);
 	struct dupe_extents *dext;
-	uint64_t len = endoff[0] - startoff[0];
+	uint64_t len = endoff[0] - startoff[0] + 1;
 	int add_score = 1;
 
 	if (!e0 || !e1)

@@ -62,7 +62,6 @@ struct extent	{
 	uint64_t		e_shared_bytes;
 };
 
-/* endoff is NOT inclusive! TODO: Fix this because it's confusing as #$%^ */
 int insert_result(struct results_tree *res, unsigned char *digest,
 		  struct filerec *recs[2], uint64_t startoff[2],
 		  uint64_t endoff[2]);
