@@ -379,9 +379,11 @@ static uint64_t __remove_overlaps(struct results_tree *res, struct filerec *file
 			extent = found;
 		}
 
-		remove_extent(res, to_del);
 		node = interval_tree_iter_next(&extent->e_itnode,
 					       start, end);
+
+		if (remove_extent(res, to_del) == 0)
+			break;
 	}
 
 	return greatest + 1;
