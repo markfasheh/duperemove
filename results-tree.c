@@ -366,20 +366,16 @@ static uint64_t __remove_overlaps(struct results_tree *res, struct filerec *file
 		if (extent_end(found) > greatest)
 			greatest = extent_end(found);
 
-		if (extent_score(extent) < extent_score(found))
-			to_del = extent;
-
-#ifdef	ITDEBUG
-		printf("  extent: (%"PRIu64", %"PRIu64", %p)  found: "
-		       "(%"PRIu64", %"PRIu64", %p)  to_del: %p  greatest: "
-		       "%"PRIu64"\n",
-		       extent->e_loff, extent_end(extent), extent,
-		       found->e_loff, extent_end(found), found, to_del,
-		       greatest);
-#endif	/* ITDEBUG */
-
 		if (extent_score(extent) < extent_score(found)) {
 			to_del = extent;
+#ifdef	ITDEBUG
+			printf("  extent: (%"PRIu64", %"PRIu64", %p)  found: "
+			       "(%"PRIu64", %"PRIu64", %p)  to_del: %p  "
+			       "greatest: %"PRIu64"\n",
+			       extent->e_loff, extent_end(extent), extent,
+			       found->e_loff, extent_end(found), found, to_del,
+			       greatest);
+#endif	/* ITDEBUG */
 			extent = found;
 		}
 
