@@ -353,40 +353,32 @@ static uint64_t __remove_overlaps(struct results_tree *res, struct filerec *file
 {
 	struct interval_tree_node *node;
 	struct extent *found, *to_del;
-	uint64_t greatest = extent_end(extent);
 	uint64_t start, end;
 
 	start = extent->e_loff;
 	end = extent_end(extent);
 
 	node = interval_tree_iter_next(&extent->e_itnode, start, end);
-	while (node) {
+	if (node) {
 		to_del = found = container_of(node, struct extent, e_itnode);
 
-		if (extent_end(found) > greatest)
-			greatest = extent_end(found);
-
-		if (extent_score(extent) < extent_score(found)) {
+		if (extent_score(extent) < extent_score(found))
 			to_del = extent;
+
 #ifdef	ITDEBUG
-			printf("  extent: (%"PRIu64", %"PRIu64", %p)  found: "
-			       "(%"PRIu64", %"PRIu64", %p)  to_del: %p  "
-			       "greatest: %"PRIu64"\n",
-			       extent->e_loff, extent_end(extent), extent,
-			       found->e_loff, extent_end(found), found, to_del,
-			       greatest);
+		printf("  extent: (%"PRIu64", %"PRIu64", %p)  found: "
+		       "(%"PRIu64", %"PRIu64", %p)  to_del: %p  "
+		       "greatest: %"PRIu64"\n", extent->e_loff,
+		       extent_end(extent), extent, found->e_loff,
+		       extent_end(found), found, to_del,
+		       greatest);
 #endif	/* ITDEBUG */
-			extent = found;
-		}
 
-		node = interval_tree_iter_next(&extent->e_itnode,
-					       start, end);
-
-		if (remove_extent(res, to_del) == 0)
-			break;
+		remove_extent(res, to_del);
+		return end;
 	}
 
-	return greatest + 1;
+	return end + 1;
 }
 
 /*
