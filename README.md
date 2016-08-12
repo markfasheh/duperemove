@@ -11,6 +11,14 @@ to each other, finding and categorizing extents that match each
 other. When given the -d option, duperemove will submit those
 extents for deduplication using the btrfs-extent-same ioctl.
 
+Duperemove can store the hashes it computes in a hashfile. If
+given an existing hashfile, duperemove will only compute hashes
+for those files which have changed since the last run.  Thus you can run
+duperemove repeatedly on your data as it changes, without having to
+re-checksum unchanged data.
+
+Duperemove can also take input from the fdupes program.
+
 Duperemove has two major modes of operation one of which is a subset
 of the other.
 
@@ -62,7 +70,9 @@ Libraries: Duperemove uses glib2 and sqlite3.
 Please see the FAQ file [provided in the duperemove
 source](https://github.com/markfasheh/duperemove/blob/master/FAQ.md)
 
-# Usage Examples
+# Simple Usage Example
+
+Please see the duperemove man page for more interesting usage examples.
 
 Duperemove takes a list of files and directories to scan for
 dedupe. If a directory is specified, all regular files within it will
