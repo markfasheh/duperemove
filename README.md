@@ -19,11 +19,11 @@ re-checksum unchanged data.
 
 Duperemove can also take input from the fdupes program.
 
-Duperemove has two major modes of operation one of which is a subset
-of the other.
-
 
 ## Readonly / Non-deduplicating Mode
+
+Duperemove has two major modes of operation one of which is a subset
+of the other.
 
 When run without -d (the default) duperemove will print out one or
 more tables of matching extents it has determined would be ideal
