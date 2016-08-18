@@ -431,8 +431,15 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 		ret = __add_file(filename, &st, &file);
 		if (ret)
 			return ret;
-		if (!file)
-			return ENOMEM;
+		if (!file) {
+			/*
+			 * File is in DB and on disk but _add_file()
+			 * didn't like it (could be too small now,
+			 * mode change, etc).
+			 */
+			*delete = 1;
+			return 0;
+		}
 	}
 	/*
 	 * Set dedupe_seq from the db record. It will be updated if we
