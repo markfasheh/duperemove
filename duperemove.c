@@ -64,6 +64,7 @@ int skip_zeroes = 0;
 
 int target_rw = 1;
 static int version_only = 0;
+static int help_option = 0;
 static int fdupes_mode = 0;
 static int stdin_filelist = 0;
 static unsigned int list_only_opt = 0;
@@ -458,6 +459,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			add_rm_file(optarg);
 			break;
 		case HELP_OPTION:
+			help_option = 1;
 		case '?':
 		default:
 			version_only = 0;
@@ -659,7 +661,7 @@ int main(int argc, char **argv)
 	ret = parse_options(argc, argv, &filelist_idx);
 	if (ret || version_only) {
 		usage(argv[0]);
-		return version_only ? 0 : EINVAL;
+		return (version_only || help_option) ? 0 : EINVAL;
 	}
 
 	if (fdupes_mode)
