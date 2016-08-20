@@ -1097,11 +1097,7 @@ static int dbfile_load_one_filerec(sqlite3 *db, uint64_t ino, uint64_t subvol,
 	}
 
 	ret = sqlite3_step(stmt);
-	if (ret == SQLITE_ROW) {
-		/* print a diagnostic message here? */
-		ret = SQLITE_DONE;
-	}
-	if (ret != SQLITE_DONE) {
+	if (ret != SQLITE_ROW) {
 		perror_sqlite(ret, "executing statement");
 		goto out;
 	}
