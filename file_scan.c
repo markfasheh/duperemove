@@ -455,8 +455,11 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 
 	if (found) {
 		/* We implicitly matched inode, subvol */
-		if (strcmp(filename, file->filename))
+		if (strcmp(filename, file->filename)) {
 			file->flags |= FILEREC_UPDATE_DB;
+			vprintf("File \"%s\" was renamed to \"%s\"\n", filename,
+				file->filename);
+		}
 		file->flags |= FILEREC_IN_DB;
 		return 0;
 	}
@@ -468,6 +471,9 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 		 * the new information will be eventually put into the
 		 * database.
 		 */
+		vprintf("File \"%s\", ino/subvol was %"PRIu64".%"PRIu64" is now"
+			" %"PRIu64".%"PRIu64"\n", file->filename, inum,
+			subvolid, file->inum, file->subvolid);
 		set_filerec_scan_flags(file);
 		*delete = 1;
 	} else {
