@@ -456,7 +456,7 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 	if (found) {
 		/* We implicitly matched inode, subvol */
 		if (strcmp(filename, file->filename)) {
-			file->flags |= FILEREC_UPDATE_DB;
+			set_filerec_scan_flags(file);
 			vprintf("File \"%s\" was renamed to \"%s\"\n", filename,
 				file->filename);
 			/*
