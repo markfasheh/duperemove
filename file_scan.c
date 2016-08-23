@@ -459,6 +459,14 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 			file->flags |= FILEREC_UPDATE_DB;
 			vprintf("File \"%s\" was renamed to \"%s\"\n", filename,
 				file->filename);
+			/*
+			 * Delete the db record as we index the files
+			 * table by filename. Otherwise our later
+			 * update will be inserting what the db will
+			 * think is a new record.
+			 */
+			*delete = 1;
+			return 0;
 		}
 		file->flags |= FILEREC_IN_DB;
 		return 0;
