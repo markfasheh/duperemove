@@ -415,12 +415,11 @@ out:
 int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 		uint64_t size, uint64_t mtime, unsigned int seq, int *delete)
 {
-	int found, ret = 0;
+	int ret = 0;
 	struct filerec *file = filerec_find(inum, subvolid);
 	struct stat st;
 
 	*delete = 0;
-	found = !!file;
 
 	dprintf("Lookup/stat file \"%s\" from hashdb\n", filename);
 
@@ -479,26 +478,19 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 	else if (size != file->size) /* size change alone means no alloc */
 		file->flags |= FILEREC_UPDATE_DB;
 
-	if (found) {
-		/* We implicitly matched inode, subvol */
-		if (strcmp(filename, file->filename)) {
-			set_filerec_scan_flags(file);
-			vprintf("File \"%s\" was renamed to \"%s\"\n", filename,
-				file->filename);
-			/*
-			 * Delete the db record as we index the files
-			 * table by filename. Otherwise our later
-			 * update will be inserting what the db will
-			 * think is a new record.
-			 */
-			*delete = 1;
-			return 0;
-		}
-		file->flags |= FILEREC_IN_DB;
-		return 0;
-	}
-
-	if (file->inum != inum || file->subvolid != subvolid) {
+	if (file->inum == inum && file->subvolid == subvolid
+	    && strcmp(filename, file->filename)) {
+		vprintf("File \"%s\" was renamed to \"%s\"\n", filename,
+			file->filename);
+		/*
+		 * Delete the db record as we index the files
+		 * table by filename. Otherwise our later
+		 * update will be inserting what the db will
+		 * think is a new record.
+		 */
+		set_filerec_scan_flags(file);
+		*delete = 1;
+	} else if (file->inum != inum || file->subvolid != subvolid) {
 		/*
 		 * New inode/subvol, but same name. Delete the db
 		 * record and mark our filerec as needing an update so
@@ -511,6 +503,7 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 		set_filerec_scan_flags(file);
 		*delete = 1;
 	} else {
+		/* All 3 of (filename, ino, subvol) match */
 		file->flags |= FILEREC_IN_DB;
 	}
 
