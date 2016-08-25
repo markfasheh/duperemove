@@ -440,6 +440,7 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 			 * inode number. Delete the record and allow
 			 * scan to put the correct one in.
 			 */
+			file->dedupe_seq = seq;
 			print_file_changed(filename, inum, subvolid, file);
 			set_filerec_scan_flags(file);
 			*delete = 1;
