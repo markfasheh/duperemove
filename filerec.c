@@ -45,6 +45,8 @@
 static GMutex filerec_fd_mutex;
 struct list_head filerec_list;
 static struct rb_root filerec_by_inum = RB_ROOT;
+/* Name tree is secondary to inum tree */
+static struct rb_root filerec_by_name = RB_ROOT;
 unsigned long long num_filerecs = 0ULL;
 unsigned int dedupe_seq = 0;
 
@@ -206,6 +208,11 @@ static int cmp_filerecs(struct filerec *file1, uint64_t file2_inum,
 	return 0;
 }
 
+static int cmp_filerecs_by_name(const char *filename1, const char *filename2)
+{
+	return strcmp(filename1, filename2);
+}
+
 static void insert_filerec(struct filerec *file)
 {
 	int c;
@@ -232,6 +239,32 @@ static void insert_filerec(struct filerec *file)
 	return;
 }
 
+static void insert_filerec_by_name(struct filerec *file)
+{
+	int c;
+	struct rb_node **p = &filerec_by_name.rb_node;
+	struct rb_node *parent = NULL;
+	struct filerec *tmp;
+
+	while (*p) {
+		parent = *p;
+
+		tmp = rb_entry(parent, struct filerec, name_node);
+
+		c = cmp_filerecs_by_name(file->filename, tmp->filename);
+		if (c < 0)
+			p = &(*p)->rb_left;
+		else if (c > 0)
+			p = &(*p)->rb_right;
+		else
+			abort_lineno(); /* We should never find a duplicate */
+	}
+
+	rb_link_node(&file->name_node, parent, p);
+	rb_insert_color(&file->name_node, &filerec_by_name);
+	return;
+}
+
 struct filerec *filerec_find(uint64_t inum, uint64_t subvolid)
 {
 	int c;
@@ -248,6 +281,26 @@ struct filerec *filerec_find(uint64_t inum, uint64_t subvolid)
 			n = n->rb_right;
 		else
 			return file;
+	}
+	return NULL;
+}
+
+struct filerec *filerec_find_by_name(const char *filename)
+{
+	int c;
+	struct rb_node *n = filerec_by_name.rb_node;
+	struct filerec *tmp;
+
+	while (n) {
+		tmp = rb_entry(n, struct filerec, name_node);
+
+		c = cmp_filerecs_by_name(filename, tmp->filename);
+		if (c < 0)
+			n = n->rb_left;
+		else if (c > 0)
+			n = n->rb_right;
+		else
+			return tmp;
 	}
 	return NULL;
 }
@@ -276,6 +329,7 @@ static struct filerec *filerec_alloc_insert(const char *filename,
 		file->mtime = mtime;
 
 		insert_filerec(file);
+		insert_filerec_by_name(file);
 		list_add_tail(&file->rec_list, &filerec_list);
 		num_filerecs++;
 	}
@@ -307,6 +361,8 @@ void filerec_free(struct filerec *file)
 
 		if (!RB_EMPTY_NODE(&file->inum_node))
 			rb_erase(&file->inum_node, &filerec_by_inum);
+		if (!RB_EMPTY_NODE(&file->name_node))
+			rb_erase(&file->name_node, &filerec_by_name);
 		free_compared_tree(file);
 		free_filerec(file);
 		num_filerecs--;

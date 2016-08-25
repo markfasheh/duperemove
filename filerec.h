@@ -37,6 +37,7 @@ struct filerec {
 
 	uint64_t		inum;
 	struct rb_node		inum_node;
+	struct rb_node		name_node;	/* by name */
 
 	uint64_t		num_blocks;	/* blocks we've inserted */
 	uint64_t		size;
@@ -83,6 +84,8 @@ void debug_print_filerecs(void);
 struct filerec *filerec_new(const char *filename, uint64_t inum,
 			    uint64_t subvolid, uint64_t size, uint64_t mtime);
 struct filerec *filerec_find(uint64_t inum, uint64_t subvolid);
+struct filerec *filerec_find_by_name(const char *filename);
+
 void filerec_free(struct filerec *file);
 int filerec_open(struct filerec *file, int write);
 void filerec_close(struct filerec *file);
