@@ -396,6 +396,15 @@ out:
 	return 0;
 }
 
+#define	print_file_changed(_filename, _inum, _subvolid, _file)		\
+	do {								\
+		vprintf("Database record (\"%s\", %"PRIu64".%"PRIu64") "\
+			"differs from disk (\"%s\", %"PRIu64".%"PRIu64	\
+			"), update flagged.\n", _filename, _inum,	\
+			_subvolid, (_file)->filename, (_file)->inum,	\
+			(_file)->_subvolid);				\
+	} while (0)
+
 /*
  * Add filerec from a db record.
  *
@@ -431,10 +440,7 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 			 * inode number. Delete the record and allow
 			 * scan to put the correct one in.
 			 */
-			vprintf("File \"%s\", ino/subvol was %"PRIu64".%"
-				PRIu64" is now %"PRIu64".%"PRIu64"\n",
-				file->filename, inum, subvolid, file->inum,
-				file->subvolid);
+			print_file_changed(filename, inum, subvolid, file);
 			set_filerec_scan_flags(file);
 			*delete = 1;
 			return 0;
@@ -478,28 +484,9 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 	else if (size != file->size) /* size change alone means no alloc */
 		file->flags |= FILEREC_UPDATE_DB;
 
-	if (file->inum == inum && file->subvolid == subvolid
-	    && strcmp(filename, file->filename)) {
-		vprintf("File \"%s\" was renamed to \"%s\"\n", filename,
-			file->filename);
-		/*
-		 * Delete the db record as we index the files
-		 * table by filename. Otherwise our later
-		 * update will be inserting what the db will
-		 * think is a new record.
-		 */
-		set_filerec_scan_flags(file);
-		*delete = 1;
-	} else if (file->inum != inum || file->subvolid != subvolid) {
-		/*
-		 * New inode/subvol, but same name. Delete the db
-		 * record and mark our filerec as needing an update so
-		 * the new information will be eventually put into the
-		 * database.
-		 */
-		vprintf("File \"%s\", ino/subvol was %"PRIu64".%"PRIu64" is now"
-			" %"PRIu64".%"PRIu64"\n", file->filename, inum,
-			subvolid, file->inum, file->subvolid);
+	if (file->inum != inum || file->subvolid != subvolid ||
+	    strcmp(filename, file->filename)) {
+		print_file_changed(filename, inum, subvolid, file);
 		set_filerec_scan_flags(file);
 		*delete = 1;
 	} else {
