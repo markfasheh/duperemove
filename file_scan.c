@@ -367,6 +367,17 @@ int add_file(const char *name, int dirfd)
 		goto out;
 	}
 
+	/*
+	 * Since we scan the disk via stat() first, we should never
+	 * get a duplicate filename at this stage. However we can
+	 * still check to be safe as the result will otherwise be an
+	 * abort in the insert routine.
+	 */
+	if (filerec_find_by_name(abspath)) {
+		vprintf("Filename \"%s\" was seen twice! Skipping.\n", abspath);
+		goto out;
+	}
+
 	ret = __add_file(abspath, &st, &file);
 	if (ret)
 		return ret;
@@ -414,6 +425,21 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 	dprintf("Lookup/stat file \"%s\" from hashdb\n", filename);
 
 	if (!file) {
+		file = filerec_find_by_name(filename);
+		if (file) {
+			/*
+			 * We have a file by this name but a different
+			 * inode number. Delete the record and allow
+			 * scan to put the correct one in.
+			 */
+			vprintf("File \"%s\", ino/subvol was %"PRIu64".%"
+				PRIu64" is now %"PRIu64".%"PRIu64"\n",
+				file->filename, inum, subvolid, file->inum,
+				file->subvolid);
+			set_filerec_scan_flags(file);
+			*delete = 1;
+			return 0;
+		}
 		/* Go to disk and look up by filename */
 		ret = stat(filename, &st);
 		if (ret == -1 && errno == ENOENT) {
