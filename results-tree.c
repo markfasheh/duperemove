@@ -54,6 +54,15 @@ static inline uint64_t extent_score(struct extent *extent)
 	return extent->e_parent->de_score;
 }
 
+/* Check if e1 is fully contained within e2 */
+static int extent_contained(struct extent *e1, struct extent *e2)
+{
+	if (e1->e_loff >= e2->e_loff &&
+	    extent_end(e1) <= extent_end(e2))
+		return 1;
+	return 0;
+}
+
 static struct extent *alloc_extent(struct filerec *file, uint64_t loff)
 {
 	struct extent *e = calloc_extent(1);
@@ -348,42 +357,77 @@ static void print_all_extents(struct filerec *file)
 }
 #endif	/* ITDEBUG */
 
-static uint64_t __remove_overlaps(struct results_tree *res, struct filerec *file,
-			      struct extent *extent)
+static inline int should_remove_extent(struct extent *extent)
 {
-	struct interval_tree_node *node;
-	struct extent *found, *to_del;
-	uint64_t start, end;
+	if (extent->e_parent->de_num_dupes > 2)
+		return 1;
 
-	start = extent->e_loff;
-	end = extent_end(extent);
-
-	node = interval_tree_iter_next(&extent->e_itnode, start, end);
-	if (node) {
-		to_del = found = container_of(node, struct extent, e_itnode);
-
-		if (extent_score(extent) < extent_score(found))
-			to_del = extent;
-
-#ifdef	ITDEBUG
-		printf("  extent: (%"PRIu64", %"PRIu64", %p)  found: "
-		       "(%"PRIu64", %"PRIu64", %p)  to_del: %p  "
-		       "greatest: %"PRIu64"\n", extent->e_loff,
-		       extent_end(extent), extent, found->e_loff,
-		       extent_end(found), found, to_del,
-		       greatest);
-#endif	/* ITDEBUG */
-
-		remove_extent(res, to_del);
-		return end;
-	}
-
-	return end + 1;
+	return 0;
 }
 
 /*
- * At the end of this function the file should have zero dup extents
- * with overlapping ranges.
+ * Remove an extent, IFF:
+ *    - it is completely inside of another extent
+ *    - removing it wouldn't cause dedupe of another file to shrink
+ */
+static uint64_t __remove_overlaps(struct results_tree *res, struct filerec *file,
+			      struct extent *extent_in)
+{
+	struct extent *extent;
+	struct interval_tree_node *node;
+	uint64_t best_end = extent_end(extent_in);
+	uint64_t start, end;
+
+restart:
+	start = extent_in->e_loff;
+	end = extent_end(extent_in);
+	node = &extent_in->e_itnode;
+
+	while ((node = interval_tree_iter_next(node, start, end)) != NULL) {
+		extent = container_of(node, struct extent, e_itnode);
+
+#ifdef	ITDEBUG
+		printf("  extent_in: (%"PRIu64", %"PRIu64", %u)  extent: "
+		       "(%"PRIu64", %"PRIu64", %u)  best_end: %"PRIu64"\n",
+		       extent_in->e_loff, extent_end(extent_in),
+		       extent_in->e_parent->de_num_dupes, extent->e_loff,
+		       extent_end(extent), extent->e_parent->de_num_dupes,
+		       best_end);
+#endif	/* ITDEBUG */
+		abort_on(extent == extent_in);
+
+		if (extent_end(extent) > best_end)
+			best_end = extent_end(extent);
+		if (extent_end(extent_in) > best_end)
+			best_end = extent_end(extent_in);
+
+		if (extent_contained(extent, extent_in)) {
+			if (should_remove_extent(extent)) {
+#ifdef	ITDEBUG
+				printf("  remove extent\n");
+#endif
+				remove_extent(res, extent);
+				extent = extent_in;//for node below
+			}
+		} else if (extent_contained(extent_in, extent)) {
+			if (should_remove_extent(extent_in)) {
+#ifdef	ITDEBUG
+				printf("  remove extent_in\n");
+#endif
+				remove_extent(res, extent_in);
+				extent_in = extent;
+				goto restart;
+			}
+		}
+		node = &extent->e_itnode;
+	}
+
+	return best_end + 1;
+}
+
+/*
+ * Remove extents which are completely enveloped within other
+ * extents. Favor maximum dedupe.
  */
 void remove_overlapping_extents(struct results_tree *res, struct filerec *file)
 {
@@ -397,11 +441,11 @@ void remove_overlapping_extents(struct results_tree *res, struct filerec *file)
 			break;
 		extent = container_of(node, struct extent, e_itnode);
 #ifdef	ITDEBUG
-		dprintf("check file %s, extents: %d, (%"PRIu64", %"PRIu64") "
-			"ep: %p, search start: %"PRIu64", search end: "
-			"%"PRIu64"\n", file->filename, file->num_extents,
-			extent->e_loff, extent->e_itnode.last, extent, start,
-			end);
+		printf("check file %s, extents: %d, (%"PRIu64", %"PRIu64") "
+		       "ep: %p, search start: %"PRIu64", search end: "
+		       "%"PRIu64"\n", file->filename, file->num_extents,
+		       extent->e_loff, extent->e_itnode.last, extent, start,
+		       end);
 #endif	/* ITDEBUG */
 
 		start = __remove_overlaps(res, file, extent);
