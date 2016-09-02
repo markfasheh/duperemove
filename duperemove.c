@@ -39,6 +39,7 @@
 #include "util.h"
 #include "btrfs-util.h"
 #include "dbfile.h"
+#include "stats.h"
 #include "memstats.h"
 #include "debug.h"
 
@@ -742,6 +743,9 @@ int main(int argc, char **argv)
 	}
 
 	if (run_dedupe) {
+#ifdef	PRINT_STATS
+		run_filerec_stats();
+#endif
 		dedupe_results(&res, &dups_tree);
 
 		/*
@@ -760,6 +764,9 @@ int main(int argc, char **argv)
 			debug_print_hash_tree(&dups_tree);
 		else
 			print_dupes_table(&res);
+#ifdef	PRINT_STATS
+		run_filerec_stats();
+#endif
 	}
 
 out:
