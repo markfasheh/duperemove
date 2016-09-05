@@ -68,15 +68,14 @@ void print_dupes_table(struct results_tree *res)
 
 		dext = rb_entry(node, struct dupe_extents, de_node);
 
-		printf("Showing %u identical extents with id ",
-		       dext->de_num_dupes);
+		printf("Showing %u identical extents of length %s with id ",
+		       dext->de_num_dupes, pretty_size(dext->de_len));
 		debug_print_digest_short(stdout, dext->de_hash);
 		printf("\n");
-		printf("Start\t\tLength\t\tFilename\n");
+		printf("Start\t\tFilename\n");
 		list_for_each_entry(extent, &dext->de_extents, e_list) {
-			printf("%s\t%s\t\"%s\"\n",
+			printf("%s\t\"%s\"\n",
 			       pretty_size(extent->e_loff),
-			       pretty_size(dext->de_len),
 			       extent->e_file->filename);
 		}
 
