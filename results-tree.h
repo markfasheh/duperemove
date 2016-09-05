@@ -60,6 +60,9 @@ struct extent	{
 	uint64_t		e_poff;
 	uint64_t		e_plen;
 	uint64_t		e_shared_bytes;
+
+#define	E_MAY_DELETE	0x01
+	int			e_flags;
 };
 
 int insert_result(struct results_tree *res, unsigned char *digest,

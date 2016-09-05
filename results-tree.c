@@ -357,9 +357,24 @@ static void print_all_extents(struct filerec *file)
 }
 #endif	/* ITDEBUG */
 
-static inline int should_remove_extent(struct extent *extent)
+static inline int check_tag_extent(struct extent *extent)
 {
-	if (extent->e_parent->de_num_dupes > 2)
+	struct extent *extent2;
+	struct dupe_extents *dext = extent->e_parent;
+
+	if (dext->de_num_dupes > 2)
+		return 1;
+
+	abort_on(extent->e_parent->de_num_dupes != 2);
+
+	extent->e_flags |= E_MAY_DELETE;
+
+	/* Only two items on the list now */
+	extent = list_first_entry(&dext->de_extents, struct extent, e_list);
+	extent2 = list_next_entry(extent, e_list);
+
+	if ((extent->e_flags & E_MAY_DELETE) &&
+	    (extent2->e_flags & E_MAY_DELETE))
 		return 1;
 
 	return 0;
@@ -377,6 +392,8 @@ static uint64_t __remove_overlaps(struct results_tree *res, struct filerec *file
 	struct interval_tree_node *node;
 	uint64_t best_end = extent_end(extent_in);
 	uint64_t start, end;
+	int ret;
+	int removed;
 
 restart:
 	start = extent_in->e_loff;
@@ -401,25 +418,39 @@ restart:
 		if (extent_end(extent_in) > best_end)
 			best_end = extent_end(extent_in);
 
+		removed = 0;
+
 		if (extent_contained(extent, extent_in)) {
-			if (should_remove_extent(extent)) {
+			ret = check_tag_extent(extent);
+			if (ret) {
 #ifdef	ITDEBUG
 				printf("  remove extent\n");
 #endif
 				remove_extent(res, extent);
-				extent = extent_in;//for node below
+				removed = 1;
 			}
 		} else if (extent_contained(extent_in, extent)) {
-			if (should_remove_extent(extent_in)) {
+			ret = check_tag_extent(extent_in);
+			if (ret) {
 #ifdef	ITDEBUG
 				printf("  remove extent_in\n");
 #endif
 				remove_extent(res, extent_in);
-				extent_in = extent;
-				goto restart;
+				removed = 1;
 			}
 		}
-		node = &extent->e_itnode;
+
+		if (removed) {
+			/* We can't trust extent or extent_in, start over */
+			node = interval_tree_iter_first(&file->extent_tree,
+							start, end);
+			if (!node)
+				break;
+			extent_in = container_of(node, struct extent, e_itnode);
+			goto restart;
+		} else {
+			node = &extent->e_itnode;
+		}
 	}
 
 	return best_end + 1;
