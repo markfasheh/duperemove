@@ -133,10 +133,11 @@ static void get_extent_info(struct dupe_extents *dext)
 		if (filerec_open(file, 0))
 			continue;
 
-		extent->e_shared_bytes = 0;
+		extent_shared_bytes(extent) = 0;
 		ret = filerec_count_shared(file, extent->e_loff, dext->de_len,
-					   &extent->e_shared_bytes,
-					   &extent->e_poff, &extent->e_plen);
+					   &extent_shared_bytes(extent),
+					   &extent_poff(extent),
+					   &extent_plen(extent));
 		if (ret) {
 			fprintf(stderr, "%s: fiemap error %d: %s\n",
 				extent->e_file->filename, ret, strerror(ret));
@@ -150,7 +151,7 @@ static void add_shared_extents(struct dupe_extents *dext, uint64_t *shared)
 	struct extent *extent;
 
 	list_for_each_entry(extent, &dext->de_extents, e_list)
-		*shared += extent->e_shared_bytes;
+		*shared += extent_shared_bytes(extent);
 }
 
 static int disk_extent_grew(struct dupe_extents *dext, struct extent *extent)
@@ -170,7 +171,7 @@ static int disk_extent_grew(struct dupe_extents *dext, struct extent *extent)
 	 * - Kernels before 4.2 rejected unaligned lengths, so we can
 	 *   have a residual tail extent to dedupe.
 	 */
-	if (extent->e_plen < dext->de_len)
+	if (extent_plen(extent) < dext->de_len)
 		return 1;
 	return 0;
 }
@@ -209,7 +210,7 @@ static void clean_deduped(struct dupe_extents **ret_dext)
 		 * throwing everything else out.
 		 */
 		if (first &&
-		    (outer_extent->e_poff == 0 ||
+		    (extent_poff(outer_extent) == 0 ||
 		     disk_extent_grew(dext, outer_extent)))
 			extents_kept++;
 		first = 0;
@@ -234,14 +235,14 @@ static void clean_deduped(struct dupe_extents **ret_dext)
 			 * skip the extent (it might want to be
 			 * deduped).
 			 */
-			if (inner_extent->e_poff
-			    && outer_extent->e_poff == inner_extent->e_poff
+			if (extent_poff(inner_extent)
+			    && extent_poff(outer_extent) == extent_poff(inner_extent)
 			    && !disk_extent_grew(dext, inner_extent)) {
 				dprintf("Remove extent "
 					"(\"%s\", %"PRIu64", %"PRIu64")\n",
-				       inner_extent->e_file->filename,
-				       inner_extent->e_poff,
-				       inner_extent->e_plen);
+					inner_extent->e_file->filename,
+					extent_poff(inner_extent),
+					extent_plen(inner_extent));
 
 				g_mutex_lock(&mutex);
 				left = remove_extent(results_tree,
@@ -288,6 +289,9 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 	 * goes below 2. If that happens, we return a special value so
 	 * the caller knows not to reference dext any more.
 	 */
+	ret = init_all_extent_dedupe_info(dext);
+	if (ret)
+		goto out;
 	get_extent_info(dext);
 	clean_deduped(&dext);
 	if (!dext) {

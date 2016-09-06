@@ -38,6 +38,7 @@
 
 declare_alloc_tracking(dupe_extents);
 declare_alloc_tracking(extent);
+declare_alloc_tracking(extent_dedupe_info);
 
 static inline uint64_t extent_len(struct extent *extent)
 {
@@ -72,7 +73,6 @@ static struct extent *alloc_extent(struct filerec *file, uint64_t loff)
 		rb_init_node(&e->e_node);
 		e->e_file = file;
 		e->e_loff = loff;
-		e->e_poff = e->e_plen = 0;
 	}
 	return e;
 }
@@ -195,6 +195,8 @@ static void insert_extent_list_free(struct dupe_extents *dext,
 				    struct extent **e)
 {
 	if (insert_extent_list(dext, *e)) {
+		if ((*e)->e_info)
+			free((*e)->e_info);
 		free_extent(*e);
 		*e = NULL;
 	}
@@ -318,6 +320,8 @@ again:
 #ifdef	ITDEBUG
 	extent->e_file->num_extents--;
 #endif
+	if (extent->e_info)
+		free_extent_dedupe_info(extent->e_info);
 	free_extent(extent);
 
 	if (p->de_num_dupes == 1) {
@@ -336,6 +340,27 @@ again:
 		res->num_dupes--;
 	}
 	return result;
+}
+
+/*
+ * Alloc an info item for each extent. No cleanup is done if we
+ * ENOMEM - remove_extent() is smart enough to conditionally free
+ * these.
+ */
+int init_all_extent_dedupe_info(struct dupe_extents *dext)
+{
+	struct rb_node *node;
+	struct extent *extent;
+
+	for (node = rb_first(&dext->de_extents_root); node;
+	     node = rb_next(node)) {
+		extent = rb_entry(node, struct extent, e_node);
+		if (!extent->e_info)
+			extent->e_info = calloc_extent_dedupe_info(1);
+		if (!extent->e_info)
+			return ENOMEM;
+	}
+	return 0;
 }
 
 #ifdef	ITDEBUG

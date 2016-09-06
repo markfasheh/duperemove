@@ -74,6 +74,7 @@ declare_alloc_tracking_header(file_block);
 declare_alloc_tracking_header(dupe_blocks_list);
 declare_alloc_tracking_header(dupe_extents);
 declare_alloc_tracking_header(extent);
+declare_alloc_tracking_header(extent_dedupe_info);
 declare_alloc_tracking_header(filerec);
 declare_alloc_tracking_header(filerec_token);
 declare_alloc_tracking_header(file_hash_head);

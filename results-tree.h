@@ -37,6 +37,7 @@ struct dupe_extents {
 	struct rb_node		de_node;
 };
 
+struct extent_dedupe_info;
 struct extent	{
 	struct dupe_extents	*e_parent;
 
@@ -50,6 +51,15 @@ struct extent	{
 	 * easier to remove overlapping duplicates. */
 	struct interval_tree_node e_itnode;
 
+	/* We allocate this on demand, during the dedupe stage. */
+	struct extent_dedupe_info	*e_info;
+
+#define	E_MAY_DELETE	0x01
+	int			e_flags;
+};
+
+struct extent_dedupe_info
+{
 	/*
 	 * Physical offset and length are used to figure out whether
 	 * we have already deduped this extent yet.
@@ -57,13 +67,13 @@ struct extent	{
 	 * e_plen is the length of the *first* physical extent in our
 	 * range, not a total of all extents covered.
 	 */
-	uint64_t		e_poff;
-	uint64_t		e_plen;
-	uint64_t		e_shared_bytes;
-
-#define	E_MAY_DELETE	0x01
-	int			e_flags;
+	uint64_t		d_poff;
+	uint64_t		d_plen;
+	uint64_t		d_shared_bytes;
 };
+#define extent_poff(_e)	((_e)->e_info->d_poff)
+#define extent_plen(_e)	((_e)->e_info->d_plen)
+#define extent_shared_bytes(_e)	((_e)->e_info->d_shared_bytes)
 
 int insert_result(struct results_tree *res, unsigned char *digest,
 		  struct filerec *recs[2], uint64_t startoff[2],
@@ -77,5 +87,6 @@ void init_results_tree(struct results_tree *res);
 void free_results_tree(struct results_tree *res);
 void dupe_extents_free(struct dupe_extents *dext, struct results_tree *res);
 
+int init_all_extent_dedupe_info(struct dupe_extents *dext);
 unsigned int remove_extent(struct results_tree *res, struct extent *extent);
 #endif /* __RESULTS_TREE__ */
