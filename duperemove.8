@@ -113,6 +113,10 @@ Remove file from the db and exit. Can be specified multiple
 times. Duperemove will read the list from standard input if a hyphen
 (-) is provided. Requires the \fB\--hashfile\fR option.
 
+\fBNote:\fR If you are piping filenames from another duperemove instance it
+is advisable to do so into a temporary file first as running duperemove
+simultaneously on the same hashfile may cause corruption.
+
 .TP
 \fB\--fdupes\fR
 Run in \fBfdupes\fR mode. With this option you can pipe the output of
