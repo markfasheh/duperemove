@@ -775,8 +775,12 @@ out:
 	free_all_filerecs();
 	dbfile_close();
 
+#ifdef DEBUG_BUILD
+	print_mem_stats();
+#else
 	if (ret == ENOMEM || debug)
 		print_mem_stats();
+#endif
 
 	return ret;
 }

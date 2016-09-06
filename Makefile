@@ -71,7 +71,7 @@ MANDIR = $(SHAREDIR)/man
 	$(CC) $(CFLAGS) -c $< -o $@ $(LIBRARY_FLAGS)
 
 all: $(progs)
-debug: CFLAGS += -ggdb3 -fsanitize=address -fno-omit-frame-pointer
+debug: CFLAGS += -ggdb3 -fsanitize=address -fno-omit-frame-pointer -DDEBUG_BUILD
 debug: $(progs)
 
 #TODO: Replace this with an auto-dependency
