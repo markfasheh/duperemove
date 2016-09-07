@@ -79,6 +79,7 @@ static enum {
 static char *serialize_fname = NULL;
 unsigned int io_threads;
 int do_lookup_extents = 0;
+int fiemap_during_dedupe = 1;
 
 int stdout_is_tty = 0;
 
@@ -258,6 +259,8 @@ static int parse_dedupe_opts(const char *opts)
 			dedupe_same_file = !invert;
 		} else if (strcmp(token, "block") == 0) {
 			block_dedupe = !invert;
+		} else if (strcmp(token, "fiemap") == 0) {
+			fiemap_during_dedupe = !invert;
 		} else {
 			print_usage = 1;
 			break;

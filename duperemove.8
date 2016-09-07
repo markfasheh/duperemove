@@ -147,17 +147,34 @@ cpus.
 .TP
 \fB\---dedupe-options=\fR\fIoptions\fR
 Comma separated list of options which alter how we dedupe. Prepend 'no' to an
-option in order to turn it off. The default is --dedupe-options=nosame,noblock.
+option in order to turn it off.
 .RS
 .TP
 \fB[no]same\fR
-Allow dedupe of extents within the same file.
+Defaults to \fBoff\fR. Allow dedupe of extents within the same
+file.
+.TP
+\fB[no]fiemap\fR
+Defaults to \fBon\fR. Duperemove uses the \fIfiemap\fR ioctl during
+the dedupe stage to optimize out already deduped extents as well as to
+provide an estimate of the space saved after dedupe operations are
+complete.
+
+Unfortunately, some versions of Btrfs exhibit extrmely poor
+performance in fiemap as the number of references on a file extent
+goes up. If you are experiencing the dedupe phase slowing down
+or 'locking up' this option may give you a significant amount of
+performance back.
+
+\fBNote:\fR This does not turn off all useage of fiemap, to disable
+fiemap during the file scan stage, you will also want to use the
+\fB--lookup-extents=no\fR option.
 .TP
 \fB[no]block\fR
-Dedupe by block - don't optimize our data into extents before
-dedupe. Generally this is undesirable as it will greatly increase the
-total number of dedupe requests. There is also a larger potential for
-file fragmentation.
+Defaults to \fBoff\fR. Dedupe by block - don't optimize our data into
+extents before dedupe. Generally this is undesirable as it will
+greatly increase the total number of dedupe requests. There is also a
+larger potential for file fragmentation.
 .RE
 
 .TP

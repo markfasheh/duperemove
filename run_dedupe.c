@@ -43,6 +43,7 @@
 
 extern int block_dedupe;
 extern int dedupe_same_file;
+extern int fiemap_during_dedupe;
 
 static GMutex mutex;
 static GMutex console_mutex;
@@ -292,12 +293,14 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 	ret = init_all_extent_dedupe_info(dext);
 	if (ret)
 		goto out;
-	get_extent_info(dext);
-	clean_deduped(&dext);
-	if (!dext) {
-		printf("[%p] Skipping - extents are already deduped.\n",
-		       g_thread_self());
-		return DEDUPE_EXTENTS_CLEANED;
+	if (fiemap_during_dedupe) {
+		get_extent_info(dext);
+		clean_deduped(&dext);
+		if (!dext) {
+			printf("[%p] Skipping - extents are already deduped.\n",
+			       g_thread_self());
+			return DEDUPE_EXTENTS_CLEANED;
+		}
 	}
 
 	/* Do this after clean_deduped as we may have removed some extents */
@@ -424,8 +427,10 @@ close_files:
 	abort_on(ctxt != NULL);
 	abort_on(!RB_EMPTY_ROOT(&open_files.root));
 
-	get_extent_info(dext);
-	add_shared_extents(dext, &shared_post);
+	if (fiemap_during_dedupe) {
+		get_extent_info(dext);
+		add_shared_extents(dext, &shared_post);
+	}
 	/*
 	 * It's entirely possible that some other process is
 	 * manipulating files underneath us. Take care not to
@@ -882,11 +887,18 @@ void dedupe_results(struct results_tree *res, struct hash_tree *hashes)
 
 	g_thread_pool_free(dedupe_pool, FALSE, TRUE);
 
-	if (ret == 0)
-		printf("Kernel processed data (excludes target files): "
-		       "%s\nComparison of extent info shows a net change in "
-		       "shared extents of: %s\n",pretty_size(counts.kern_bytes),
-		       pretty_size(counts.fiemap_bytes));
+	if (ret == 0) {
+		if (fiemap_during_dedupe) {
+			printf("Kernel processed data (excludes target files): "
+			       "%s\nComparison of extent info shows a net "
+			       "change in shared extents of: %s\n",
+			       pretty_size(counts.kern_bytes),
+			       pretty_size(counts.fiemap_bytes));
+		} else {
+			printf("Kernel processed data (excludes target files): "
+			       "%s\n", pretty_size(counts.kern_bytes));
+		}
+	}
 }
 
 int fdupes_dedupe(void)
