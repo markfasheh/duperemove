@@ -1,6 +1,4 @@
-This README is for the development branch of duperemove. If you're looking
-for a stable version which is continually updated with fixes, please see
-[v0.10 branch](https://github.com/markfasheh/duperemove/tree/v0.10-branch).
+This README is for duperemove v0.11.
 
 # Duperemove
 
