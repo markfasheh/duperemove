@@ -7,51 +7,17 @@ submitting them for deduplication. When given a list of files it will
 hash their contents on a block by block basis and compare those hashes
 to each other, finding and categorizing extents that match each
 other. When given the -d option, duperemove will submit those
-extents for deduplication using the btrfs-extent-same ioctl.
+extents for deduplication using the Linux kernel extent-same ioctl.
 
-Duperemove can store the hashes it computes in a hashfile. If
+Duperemove can store the hashes it computes in a 'hashfile'. If
 given an existing hashfile, duperemove will only compute hashes
 for those files which have changed since the last run.  Thus you can run
 duperemove repeatedly on your data as it changes, without having to
 re-checksum unchanged data.
 
-Duperemove can also take input from the fdupes program.
+Duperemove can also take input from the [fdupes](https://github.com/adrianlopezroche/fdupes) program.
 
-
-## Readonly / Non-deduplicating Mode
-
-Duperemove has two major modes of operation one of which is a subset
-of the other.
-
-When run without -d (the default) duperemove will print out one or
-more tables of matching extents it has determined would be ideal
-candidates for deduplication. As a result, readonly mode is useful for
-seeing what duperemove might do when run with '-d'. The output could
-also be used by some other software to submit the extents for
-deduplication at a later time.
-
-It is important to note that this mode will not print out *all*
-instances of matching extents, just those it would consider for
-deduplication.
-
-Generally, duperemove does not concern itself with the underlying
-representation of the extents it processes. Some of them could be
-compressed, undergoing I/O, or even have already been deduplicated. In
-dedupe mode, the kernel handles those details and therefore we try not
-to replicate that work.
-
-
-## Deduping Mode
-
-This functions similarly to readonly mode with the exception that the
-duplicated extents found in our "read, hash, and compare" step will
-actually be submitted for deduplication. An estimate of the total data
-deduplicated will be printed after the operation is complete. This
-estimate is calculated by comparing the total amount of shared bytes
-in each file before and after the dedupe.
-
-
-See the duperemove man page for further details about running duperemove.
+See [the duperemove man page](http://markfasheh.github.io/duperemove/duperemove.html) for further details about running duperemove.
 
 
 # Requirements
@@ -68,9 +34,16 @@ Libraries: Duperemove uses glib2 and sqlite3.
 Please see the FAQ file [provided in the duperemove
 source](https://github.com/markfasheh/duperemove/blob/master/FAQ.md)
 
-# Simple Usage Example
+For bug reports and feature requests please use [the github issue tracker](https://github.com/markfasheh/duperemove/issues)
 
-Please see the duperemove man page for more interesting usage examples.
+
+# Examples
+
+Please see the examples section of [the duperemove man
+page](http://markfasheh.github.io/duperemove/duperemove.html#7)
+for a complete set of usage examples, including hashfile usage.
+
+## A simple example, with program output
 
 Duperemove takes a list of files and directories to scan for
 dedupe. If a directory is specified, all regular files within it will
@@ -105,29 +78,49 @@ dir1, thus adding file5.
 
 An actual run, output will differ according to duperemove version.
 
-    duperemove -dhr file1 file2 dir1
     Using 128K blocks
-    Using hash: SHA256
-    Using 2 threads for file hashing phase
-    csum: file1     [1/5]
-    csum: file2     [2/5]
-    csum: dir1/file3       [3/5]
-    csum: dir1/subdir1/file5       [4/5]
-    csum: dir1/file4       [5/5]
-    Hashed 80 blocks, resulting in 17 unique hashes. Calculating duplicate
-    extents - this may take some time.
-    [########################################]
-    Search completed with no errors.
-    Simple read and compare of file data found 2 instances of extents that might
-    benefit from deduplication.
-    Start           Length          Filename (2 extents)
-    0.0     2.0M    "file2"
-    0.0     2.0M    "dir1//file4"
-    Start           Length          Filename (3 extents)
-    0.0     2.0M    "file1"
-    0.0     2.0M    "dir1//file3"
-    0.0     2.0M    "dir1//subdir1/file5"
-    Dedupe 1 extents with target: (0.0, 2.0M), "file2"
-    Dedupe 2 extents with target: (0.0, 2.0M), "file1"
-    Kernel processed data (excludes target files): 6.0M
-    Comparison of extent info shows a net change in shared extents of: 10.0M
+    Using hash: murmur3
+    Using 4 threads for file hashing phase
+    csum: /btrfs/file1 	[1/5] (20.00%)
+    csum: /btrfs/file2 	[2/5] (40.00%)
+    csum: /btrfs/dir1/subdir1/file5 	[3/5] (60.00%)
+    csum: /btrfs/dir1/file3 	[4/5] (80.00%)
+    csum: /btrfs/dir1/file4 	[5/5] (100.00%)
+    Total files:  5
+    Total hashes: 80
+    Loading only duplicated hashes from hashfile.
+    Hashing completed. Calculating duplicate extents - this may take some time.
+    Simple read and compare of file data found 3 instances of extents that might benefit from deduplication.
+    Showing 2 identical extents of length 512.0K with id 0971ffa6
+    Start		Filename
+    512.0K	"/btrfs/file1"
+    1.5M	"/btrfs/dir1/file4"
+    Showing 2 identical extents of length 1.0M with id b34ffe8f
+    Start		Filename
+    0.0	"/btrfs/dir1/file4"
+    0.0	"/btrfs/dir1/file3"
+    Showing 3 identical extents of length 1.5M with id f913dceb
+    Start		Filename
+    0.0	"/btrfs/file2"
+    0.0	"/btrfs/dir1/file3"
+    0.0	"/btrfs/dir1/subdir1/file5"
+    Using 4 threads for dedupe phase
+    [0x147f4a0] Try to dedupe extents with id 0971ffa6
+    [0x147f770] Try to dedupe extents with id b34ffe8f
+    [0x147f680] Try to dedupe extents with id f913dceb
+    [0x147f4a0] Dedupe 1 extents (id: 0971ffa6) with target: (512.0K, 512.0K), "/btrfs/file1"
+    [0x147f770] Dedupe 1 extents (id: b34ffe8f) with target: (0.0, 1.0M), "/btrfs/dir1/file4"
+    [0x147f680] Dedupe 2 extents (id: f913dceb) with target: (0.0, 1.5M), "/btrfs/file2"
+    Kernel processed data (excludes target files): 4.5M
+    Comparison of extent info shows a net change in shared extents of: 5.5M
+
+
+# Links of interest
+
+[The duperemove wiki](https://github.com/markfasheh/duperemove/wiki)
+has both design and performance documentation.
+
+[duperemove-tests](https://github.com/markfasheh/duperemove-tests) has
+a growing assortment of regression tests.
+
+[Duperemove web page](http://markfasheh.github.io/duperemove/)

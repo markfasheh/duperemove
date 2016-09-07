@@ -1,0 +1,452 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>duperemove(8) - </title>
+<style type="text/css">
+h1 { font-size: 100%; margin-top: 2em; margin-bottom: 0; }
+h2 { font-size: 100%; margin-left: 4ex; margin-top: 2em; margin-bottom: 0; }
+p { margin-top: 1ex; margin-bottom: 1ex; }
+.j { text-align: justify; }
+.pp { margin-left: 8ex; }
+.tp1 { margin-left: 12ex; }
+.tp2 { margin-left: 16ex; }
+.pre { font-family: monospace; }
+</style>
+</head>
+
+<body>
+
+<table width="98%">
+	<tr>
+		<td>duperemove(8)</td>
+		<td align="center">Version 0.11</td>
+
+		<td>duperemove(8)</td>
+
+		</tr>
+</table>
+
+<h1><a name="0"></a>"NAME"</h1>
+
+<p class="pp j">duperemove - Find duplicate extents and print them to stdout
+</p>
+
+<h1><a name="1"></a>"SYNOPSIS"</h1>
+
+<p class="pp j"><b>duperemove</b> <i>[options]</i> \fIfiles...\fI
+</p>
+
+<h1><a name="2"></a>"DESCRIPTION"</h1>
+
+<p class="pp j"><b>duperemove</b> is a simple tool for finding duplicated extents and
+submitting them for deduplication. When given a list of files it will
+hash their contents on a block by block basis and compare those hashes
+to each other, finding and categorizing extents that match each
+other. When given the <b>-d</b> option, <b>duperemove</b> will submit
+those extents for deduplication using the Linux kernel extent-same
+ioctl.
+<br />
+<br />
+<b>duperemove</b> can store the hashes it computes in a <i>hashfile</i>. If
+given an existing hashfile, <b>duperemove</b> will only compute hashes
+for those files which have changed since the last run.  Thus you can run
+<b>duperemove</b> repeatedly on your data as it changes, without having to
+re-checksum unchanged data.  For more on hashfiles see the
+<b>--hashfile</b> option below as well as the <i>Examples</i> section.
+<br />
+<br />
+<b>duperemove</b> can also take input from the <b>fdupes</b> program, see the
+<b>--fdupes</b> option below.
+<br />
+<br />
+</p>
+
+<h1><a name="3"></a>"GENERAL"</h1>
+
+<p class="pp j">Duperemove has two major modes of operation one of which is a subset
+of the other.
+<br />
+<br />
+</p>
+
+<h2><a name="4"></a>"Readonly / Non-deduplicating Mode"</h2>
+
+<br />
+<br />
+<p class="pp j">When run without <b>-d</b> (the default) duperemove will print out one or
+more tables of matching extents it has determined would be ideal
+candidates for deduplication. As a result, readonly mode is useful for
+seeing what duperemove might do when run with <b>-d</b>. The output could
+also be used by some other software to submit the extents for
+deduplication at a later time.
+<br />
+<br />
+It is important to note that this mode will not print out <b>all</b>
+instances of matching extents, just those it would consider for
+deduplication.
+<br />
+<br />
+Generally, duperemove does not concern itself with the underlying
+representation of the extents it processes. Some of them could be
+compressed, undergoing I/O, or even have already been deduplicated. In
+dedupe mode, the kernel handles those details and therefore we try not
+to replicate that work.
+<br />
+<br />
+</p>
+
+<h2><a name="5"></a>"Deduping Mode"</h2>
+
+<br />
+<br />
+<p class="pp j">This functions similarly to readonly mode with the exception that the
+duplicated extents found in our "read, hash, and compare" step will
+actually be submitted for deduplication. An estimate of the total data
+deduplicated will be printed after the operation is complete. This
+estimate is calculated by comparing the total amount of shared bytes
+in each file before and after the dedupe.
+<br />
+<br />
+</p>
+
+<h1><a name="6"></a>"OPTIONS"</h1>
+
+<p class="pp j"><i>files</i> can refer to a list of regular files and directories or be
+a hyphen (-) to read them from standard input.
+If a directory is specified, all regular files within it will also be
+scanned. Duperemove can also be told to recursively scan directories with
+the '-r' switch.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>-r</b>
+</p>
+
+<p class="tp2 j">Enable recursive dir traversal.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>-d</b>
+</p>
+
+<p class="tp2 j">De-dupe the results - only works on <i>btrfs</i> and \fIxfs (experimental)\FR.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>-A</b>
+</p>
+
+<p class="tp2 j">Opens files readonly when deduping. Primarily for use by privileged
+users on readonly snapshots.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>-h</b>
+</p>
+
+<p class="tp2 j">Print numbers in human-readable format.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>--hashfile=hashfile</b>
+</p>
+
+<p class="tp2 j">Use a file for storage of hashes instead of memory. This option drastically
+reduces the memory footprint of duperemove and is recommended when your data
+set is more than a few files large.  <i>Hashfiles</i> are also reusable,
+allowing you to further reduce the amount of hashing done on subsequent
+dedupe runs.
+<br />
+<br />
+If <i>hashfile</i> does not exist it will be created.  If it exists,
+<b>duperemove</b> will check the file paths stored inside of it for changes.
+Files which have changed will be rescanned and their updated hashes will be
+written to the <i>hashfile</i>.  Deleted files will be removed from the <i>hashfile</i>.
+<br />
+<br />
+New files are only added to the <i>hashfile</i> if they are discoverable via
+the <i>files</i> argument.  For that reason you probably want to provide the
+same <i>files</i> list and <b>-r</b> arguments on each run of
+<b>duperemove</b>.  The file discovery algorithm is efficient and will only
+visit each file once, even if it is already in the <i>hashfile</i>.
+<br />
+<br />
+Adding a new path to a hashfile is as simple as adding it to the <i>files</i>
+argument.
+<br />
+<br />
+When deduping from a hashfile, duperemove will avoid deduping files which
+have not changed since the last dedupe.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>-L</b>
+</p>
+
+<p class="tp2 j">Print all files in the hashfile and exit. Requires the <b>--hashfile</b> option.
+Will print additional information about each file when run with <b>-v</b>.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>-R [file]</b>
+</p>
+
+<p class="tp2 j">Remove file from the db and exit. Can be specified multiple
+times. Duperemove will read the list from standard input if a hyphen
+(-) is provided. Requires the <b>--hashfile</b> option.
+<br />
+<br />
+<b>Note:</b> If you are piping filenames from another duperemove instance it
+is advisable to do so into a temporary file first as running duperemove
+simultaneously on the same hashfile may corrupt that hashfile.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>--fdupes</b>
+</p>
+
+<p class="tp2 j">Run in <b>fdupes</b> mode. With this option you can pipe the output of
+<b>fdupes</b> to duperemove to dedupe any duplicate files found. When
+receiving a file list in this manner, duperemove will skip the hashing phase.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>-v</b>
+</p>
+
+<p class="tp2 j">Be verbose.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>--skip-zeroes</b>
+</p>
+
+<p class="tp2 j">Read data blocks and skip any zeroed blocks, useful for speedup duperemove,
+but can prevent deduplication of zeroed files.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>-b size</b>
+</p>
+
+<p class="tp2 j">Use the specified block size. The default is <b>128K</b>.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>--io-threads=N</b>
+</p>
+
+<p class="tp2 j">Use N threads for I/O. This is used by the file hashing and dedupe
+stages. Default is automatically detected based on number of host
+cpus.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>---dedupe-options=</b><i>options</i>
+</p>
+
+<p class="tp2 j">Comma separated list of options which alter how we dedupe. Prepend 'no' to an
+option in order to turn it off. The default is --dedupe-options=nosame,noblock.
+</p>
+
+<p class="tp1"><b>[no]same</b>
+</p>
+
+<p class="tp2 j">Allow dedupe of extents within the same file.
+</p>
+
+<p class="tp1"><b>[no]block</b>
+</p>
+
+<p class="tp2 j">Dedupe by block - don't optimize our data into extents before
+dedupe. Generally this is undesirable as it will greatly increase the
+total number of dedupe requests. There is also a larger potential for
+file fragmentation.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>--help</b>
+</p>
+
+<p class="tp2 j">Prints help text.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>--lookup-extents=[yes|no]</b>
+</p>
+
+<p class="tp2 j">Defaults to no. Allows duperemove to skip checksumming some blocks by
+checking their extent state.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>-x</b>
+</p>
+
+<p class="tp2 j">Don't cross filesystem boundaries, this is the default behavior since
+duperemove v0.11. The option is kept for backwards compatibility.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>--read-hashes=hashfile</b>
+</p>
+
+<p class="tp2 j"><b>\This option is primarily for testing.</b> See the <b>--hashfile</b> option if you want to use hashfiles.
+<br />
+<br />
+Read hashes from a hashfile. A file list is not required with this
+option. Dedupe can be done if duperemove is run from the same base
+directory as is stored in the hash file (basically duperemove has to
+be able to find the files).
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>--write-hashes=hashfile</b>
+</p>
+
+<p class="tp2 j"><b>\This option is primarily for testing.</b> See the <b>--hashfile</b> option if you want to use hashfiles.
+<br />
+<br />
+Write hashes to a hashfile. These can be read in at a later date and
+deduped from.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>--debug</b>
+</p>
+
+<p class="tp2 j">Print debug messages, forces <b>-v</b> if selected.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>--hash-threads=N</b>
+</p>
+
+<p class="tp2 j">Deprecated, see <b>--io-threads</b> above.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>--hash=alg</b>
+</p>
+
+<p class="tp2 j">Supported alg: sha256, xxhash, murmur3
+<br />
+<br />
+</p>
+
+<h1><a name="7"></a>"EXAMPLES"</h1>
+
+<h2><a name="8"></a>"Simple Usage"</h2>
+
+<p class="pp j">Dedupe the files in directory /foo, recurse into all subdirectories. You only want to use this for small data sets.
+</p>
+
+<p class="tp2 j">duperemove -dr /foo
+</p>
+
+<p class="pp j">Use duperemove with fdupes to dedupe identical files below directory foo.
+</p>
+
+<p class="tp2 j">fdupes -r /foo | duperemove --fdupes
+<br />
+<br />
+</p>
+
+<h2><a name="9"></a>"Using Hashfiles"</h2>
+
+<p class="pp j">Duperemove can optionally store the hashes it calculates in a
+hashfile. Hashfiles have two primary advantages - memory usage and
+re-usability. When using a hashfile, duperemove will stream computed
+hashes to it, instead of main memory.
+<br />
+<br />
+If Duperemove is run with an existing hashfile, it will only scan
+those files which have changed since the last time the hashfile was
+updated. The <i>files</i> argument controls which directories
+duperemove will scan for newly added files. In the simplest usage, you
+rerun duperemove with the same parameters and it will only scan
+changed or newly added files - see the first example below.
+<br />
+<br />
+</p>
+
+<p class="pp j">Dedupe the files in directory foo, storing hashes in foo.hash. We can
+run this command multiple times and duperemove will only checksum and
+dedupe changed or newly added files.
+</p>
+
+<p class="tp2 j">duperemove -dr --hashfile=foo.hash foo/
+</p>
+
+<p class="pp j">Don't scan for new files, only update changed or deleted files, then dedupe.
+</p>
+
+<p class="tp2 j">duperemove -dr --hashfile=foo.hash
+</p>
+
+<p class="pp j">Add directory bar to our hashfile and discover any files that were
+recently added to foo.
+</p>
+
+<p class="tp2 j">duperemove -dr --hashfile=foo.hash foo/ bar/
+</p>
+
+<p class="pp j">List the files tracked by foo.hash.
+</p>
+
+<p class="tp2 j">duperemove -L --hashfile=foo.hash
+<br />
+<br />
+</p>
+
+<h1><a name="10"></a>"FAQ"</h1>
+
+<br />
+<br />
+<p class="pp j">Please see the <b>FAQ.md</b> file which should have been included with your duperemove package.
+<br />
+<br />
+</p>
+
+<h1><a name="11"></a>"NOTES"</h1>
+
+<p class="pp j">Deduplication is currently only supported by the <i>btrfs</i> and <i>xfs</i> filesystem.
+<br />
+<br />
+</p>
+
+<h1><a name="12"></a>"SEE ALSO"</h1>
+
+<p class="pp j"><b>hashstats(8)</b> <b>filesystems(5)</b> <b>btrfs(8)</b> <b>xfs(8)</b> <b>fdupes(1)</b> </p>
+
+<h1>Index</h1>
+
+<ol>
+<li><a href="#0">"NAME"</a></li><li><a href="#1">"SYNOPSIS"</a></li><li><a href="#2">"DESCRIPTION"</a></li><li><a href="#3">"GENERAL"</a></li><ol>
+<li><a href="#4">"Readonly / Non-deduplicating Mode"</a></li><li><a href="#5">"Deduping Mode"</a></li></ol>
+<li><a href="#6">"OPTIONS"</a></li><li><a href="#7">"EXAMPLES"</a></li><ol>
+<li><a href="#8">"Simple Usage"</a></li><li><a href="#9">"Using Hashfiles"</a></li></ol>
+<li><a href="#10">"FAQ"</a></li><li><a href="#11">"NOTES"</a></li><li><a href="#12">"SEE ALSO"</a></li></ol>
+</body>
+</html>
