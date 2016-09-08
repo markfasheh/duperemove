@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="UTF-8">
+    <title>Duperemove by markfasheh</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="stylesheets/normalize.css" media="screen">
+    <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/github-light.css" media="screen">
+  </head>
+  <body>
+    <section class="page-header">
+      <h1 class="project-name">Duperemove</h1>
+      <h2 class="project-tagline">Tools for deduping file systems</h2>
+      <a href="https://github.com/markfasheh/duperemove" class="btn">View on GitHub</a>
+      <a href="https://github.com/markfasheh/duperemove/zipball/master" class="btn">Download .zip</a>
+      <a href="https://github.com/markfasheh/duperemove/tarball/master" class="btn">Download .tar.gz</a>
+    </section>
+
+    <section class="main-content">
+      <p>This README is for the development branch of duperemove. If you're looking
+for a stable version which is continually updated with fixes, please see
+<a href="https://github.com/markfasheh/duperemove/tree/v0.10-branch">v0.10 branch</a>.</p>
+
+<h1>
+<a id="duperemove" class="anchor" href="#duperemove" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Duperemove</h1>
+
+<p>Duperemove is a simple tool for finding duplicated extents and
+submitting them for deduplication. When given a list of files it will
+hash their contents on a block by block basis and compare those hashes
+to each other, finding and categorizing extents that match each
+other. When given the -d option, duperemove will submit those
+extents for deduplication using the btrfs-extent-same ioctl.</p>
+
+<p>Duperemove can store the hashes it computes in a hashfile. If
+given an existing hashfile, duperemove will only compute hashes
+for those files which have changed since the last run.  Thus you can run
+duperemove repeatedly on your data as it changes, without having to
+re-checksum unchanged data.</p>
+
+<p>Duperemove can also take input from the fdupes program.</p>
+
+<h2>
+<a id="readonly--non-deduplicating-mode" class="anchor" href="#readonly--non-deduplicating-mode" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Readonly / Non-deduplicating Mode</h2>
+
+<p>Duperemove has two major modes of operation one of which is a subset
+of the other.</p>
+
+<p>When run without -d (the default) duperemove will print out one or
+more tables of matching extents it has determined would be ideal
+candidates for deduplication. As a result, readonly mode is useful for
+seeing what duperemove might do when run with '-d'. The output could
+also be used by some other software to submit the extents for
+deduplication at a later time.</p>
+
+<p>It is important to note that this mode will not print out <em>all</em>
+instances of matching extents, just those it would consider for
+deduplication.</p>
+
+<p>Generally, duperemove does not concern itself with the underlying
+representation of the extents it processes. Some of them could be
+compressed, undergoing I/O, or even have already been deduplicated. In
+dedupe mode, the kernel handles those details and therefore we try not
+to replicate that work.</p>
+
+<h2>
+<a id="deduping-mode" class="anchor" href="#deduping-mode" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Deduping Mode</h2>
+
+<p>This functions similarly to readonly mode with the exception that the
+duplicated extents found in our "read, hash, and compare" step will
+actually be submitted for deduplication. An estimate of the total data
+deduplicated will be printed after the operation is complete. This
+estimate is calculated by comparing the total amount of shared bytes
+in each file before and after the dedupe.</p>
+
+<p>See the duperemove man page for further details about running duperemove.</p>
+
+<h1>
+<a id="requirements" class="anchor" href="#requirements" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Requirements</h1>
+
+<p>The latest stable code can be found in <a href="https://github.com/markfasheh/duperemove/tree/v0.10-branch">v0.10-branch</a>.</p>
+
+<p>Kernel: Duperemove needs a kernel version equal to or greater than 3.13</p>
+
+<p>Libraries: Duperemove uses glib2 and sqlite3.</p>
+
+<h1>
+<a id="faq" class="anchor" href="#faq" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>FAQ</h1>
+
+<p>Please see the FAQ file <a href="https://github.com/markfasheh/duperemove/blob/master/FAQ.md">provided in the duperemove
+source</a></p>
+
+<h1>
+<a id="simple-usage-example" class="anchor" href="#simple-usage-example" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Simple Usage Example</h1>
+
+<p>Please see the duperemove man page for more interesting usage examples.</p>
+
+<p>Duperemove takes a list of files and directories to scan for
+dedupe. If a directory is specified, all regular files within it will
+be scanned. Duperemove can also be told to recursively scan
+directories with the '-r' switch. If '-h' is provided, duperemove will
+print numbers in powers of 1024 (e.g., "128K").</p>
+
+<p>Assume this abitrary layout for the following examples.</p>
+
+<pre><code>.
+├── dir1
+│   ├── file3
+│   ├── file4
+│   └── subdir1
+│       └── file5
+├── file1
+└── file2
+</code></pre>
+
+<p>This will dedupe files 'file1' and 'file2':</p>
+
+<pre><code>duperemove -dh file1 file2
+</code></pre>
+
+<p>This does the same but adds any files in dir1 (file3 and file4):</p>
+
+<pre><code>duperemove -dh file1 file2 dir1
+</code></pre>
+
+<p>This will dedupe exactly the same as above but will recursively walk
+dir1, thus adding file5.</p>
+
+<pre><code>duperemove -dhr file1 file2 dir1/
+</code></pre>
+
+<p>An actual run, output will differ according to duperemove version.</p>
+
+<pre><code>duperemove -dhr file1 file2 dir1
+Using 128K blocks
+Using hash: SHA256
+Using 2 threads for file hashing phase
+csum: file1     [1/5]
+csum: file2     [2/5]
+csum: dir1/file3       [3/5]
+csum: dir1/subdir1/file5       [4/5]
+csum: dir1/file4       [5/5]
+Hashed 80 blocks, resulting in 17 unique hashes. Calculating duplicate
+extents - this may take some time.
+[########################################]
+Search completed with no errors.
+Simple read and compare of file data found 2 instances of extents that might
+benefit from deduplication.
+Start           Length          Filename (2 extents)
+0.0     2.0M    "file2"
+0.0     2.0M    "dir1//file4"
+Start           Length          Filename (3 extents)
+0.0     2.0M    "file1"
+0.0     2.0M    "dir1//file3"
+0.0     2.0M    "dir1//subdir1/file5"
+Dedupe 1 extents with target: (0.0, 2.0M), "file2"
+Dedupe 2 extents with target: (0.0, 2.0M), "file1"
+Kernel processed data (excludes target files): 6.0M
+Comparison of extent info shows a net change in shared extents of: 10.0M
+</code></pre>
+
+      <footer class="site-footer">
+        <span class="site-footer-owner"><a href="https://github.com/markfasheh/duperemove">Duperemove</a> is maintained by <a href="https://github.com/markfasheh">markfasheh</a>.</span>
+
+        <span class="site-footer-credits">This page was generated by <a href="https://pages.github.com">GitHub Pages</a> using the <a href="https://github.com/jasonlong/cayman-theme">Cayman theme</a> by <a href="https://twitter.com/jasonlong">Jason Long</a>.</span>
+      </footer>
+
+    </section>
+
+  
+  </body>
+</html>
