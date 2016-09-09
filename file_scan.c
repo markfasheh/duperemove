@@ -45,6 +45,7 @@
 #include "file_scan.h"
 #include "d_tree.h"
 #include "dbfile.h"
+#include "util.h"
 
 /* This is not in linux/magic.h */
 #ifndef	XFS_SB_MAGIC
@@ -60,6 +61,7 @@ static uint64_t one_fs_btrfs;
 static uint64_t walked_size;
 static unsigned long long files_to_scan;
 static GMutex io_mutex; /* locks db writes */
+static unsigned int leading_spaces;
 
 struct thread_params {
 	int num_files;           /* Total number of files we hashed */
@@ -655,13 +657,16 @@ static inline int csum_next_block(struct csum_block *data, uint64_t *off,
 static void csum_whole_file_init(GMutex **mutex, void *location,
 				struct filerec *file, struct fiemap_ctxt **fc)
 {
-	static long long unsigned cur_scan_files;
+	static long long unsigned _cur_scan_files;
+	unsigned long long cur_scan_files;
 	*mutex = g_dataset_get_data(location, "mutex");
 
-	__sync_add_and_fetch(&cur_scan_files, 1);
-	printf("csum: %s \t[%llu/%llu] (%.2f%%)\n", file->filename,
-	       cur_scan_files, files_to_scan,
-	       (double)cur_scan_files / (double)files_to_scan * 100);
+	cur_scan_files = __sync_add_and_fetch(&_cur_scan_files, 1);
+
+	printf("[%0*llu/%llu] (%05.2f%%) csum: %s\n",
+	       leading_spaces, cur_scan_files, files_to_scan,
+	       (double)cur_scan_files / (double)files_to_scan * 100,
+	       file->filename);
 
 	if (do_lookup_extents) {
 		*fc = alloc_fiemap_ctxt();
@@ -820,8 +825,9 @@ int populate_tree()
 {
 	GMutex mutex;
 	GThreadPool *pool;
-
 	struct thread_params params = { 0, 0, };
+
+	leading_spaces = num_digits(files_to_scan);
 
 	if (files_to_scan) {
 		pool = setup_pool(&params, &mutex, csum_whole_file);
