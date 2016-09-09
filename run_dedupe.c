@@ -48,7 +48,7 @@ extern int fiemap_during_dedupe;
 static GMutex mutex;
 static GMutex console_mutex;
 static struct results_tree *results_tree;
-static unsigned long long total_dedupe_passes;
+static volatile unsigned long long total_dedupe_passes;
 static volatile unsigned long long curr_dedupe_pass;
 static unsigned int leading_spaces;
 
@@ -797,6 +797,9 @@ static int __push_blocks(struct hash_tree *hashes,
 					if (push_bdl(bdl))
 						goto out;
 					bdl = NULL;
+
+					__sync_add_and_fetch(
+						&total_dedupe_passes, 1);
 					break;
 				}
 			}
