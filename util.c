@@ -156,3 +156,14 @@ void record_end_print(struct elapsed_time *e)
 	record_end(e);
 	printf("%s took %fs\n", e->name, e->elapsed);
 }
+
+int num_digits(unsigned long long num)
+{
+	unsigned int digits = 0;
+
+	while (num) {
+		num /= 10;
+		digits++;
+	}
+	return digits;
+}
