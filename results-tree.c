@@ -196,7 +196,7 @@ static void insert_extent_list_free(struct dupe_extents *dext,
 {
 	if (insert_extent_list(dext, *e)) {
 		if ((*e)->e_info)
-			free((*e)->e_info);
+			free_extent_dedupe_info((*e)->e_info);
 		free_extent(*e);
 		*e = NULL;
 	}
