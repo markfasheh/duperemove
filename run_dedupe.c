@@ -290,10 +290,10 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 	 * goes below 2. If that happens, we return a special value so
 	 * the caller knows not to reference dext any more.
 	 */
-	ret = init_all_extent_dedupe_info(dext);
-	if (ret)
-		goto out;
 	if (fiemap_during_dedupe) {
+		ret = init_all_extent_dedupe_info(dext);
+		if (ret)
+			goto out;
 		get_extent_info(dext);
 		clean_deduped(&dext);
 		if (!dext) {
@@ -301,10 +301,13 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 			       g_thread_self());
 			return DEDUPE_EXTENTS_CLEANED;
 		}
-	}
 
-	/* Do this after clean_deduped as we may have removed some extents */
-	add_shared_extents(dext, &shared_prev);
+		/*
+		 * Do this after clean_deduped as we may have removed some
+		 * extents.
+		 */
+		add_shared_extents(dext, &shared_prev);
+	}
 
 	list_for_each_entry(extent, &dext->de_extents, e_list) {
 		if (list_is_last(&extent->e_list, &dext->de_extents))
