@@ -48,6 +48,9 @@ extern int fiemap_during_dedupe;
 static GMutex mutex;
 static GMutex console_mutex;
 static struct results_tree *results_tree;
+static unsigned long long total_dedupe_passes;
+static volatile unsigned long long curr_dedupe_pass;
+static unsigned int leading_spaces;
 
 void print_dupes_table(struct results_tree *res)
 {
@@ -262,7 +265,7 @@ static void clean_deduped(struct dupe_extents **ret_dext)
 
 #define	DEDUPE_EXTENTS_CLEANED	(-1)
 static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
-			      uint64_t *kern_bytes)
+			      uint64_t *kern_bytes, unsigned long long passno)
 {
 	int ret = 0;
 	int last = 0;
@@ -278,7 +281,8 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 
 	/* Dedupe extents with id %s*/
 	g_mutex_lock(&console_mutex);
-	printf("[%p] Try to dedupe extents with id ", g_thread_self());
+	printf("[%p] (%0*llu/%llu) Try to dedupe extents with id ",
+	       g_thread_self(), leading_spaces, passno, total_dedupe_passes);
 	debug_print_digest_short(stdout, dext->de_hash);
 	printf("\n");
 	g_mutex_unlock(&console_mutex);
@@ -472,8 +476,9 @@ static int extent_dedupe_worker(struct dupe_extents *dext,
 				uint64_t *fiemap_bytes, uint64_t *kern_bytes)
 {
 	int ret;
+	unsigned long long passno = __sync_add_and_fetch(&curr_dedupe_pass, 1);
 
-	ret = dedupe_extent_list(dext, fiemap_bytes, kern_bytes);
+	ret = dedupe_extent_list(dext, fiemap_bytes, kern_bytes, passno);
 	if (ret) {
 		if (ret == DEDUPE_EXTENTS_CLEANED)
 			return 0;
@@ -509,7 +514,7 @@ static int __block_dedupe(struct block_dedupe_list *bdl,
 			  struct filerec *tgt_file,
 			  uint64_t tgt_off,
 			  uint64_t *fiemap_bytes,
-			  uint64_t *kern_bytes)
+			  uint64_t *kern_bytes, unsigned long long passno)
 {
 	int ret, one_old = 0;
 	struct dupe_extents *dext = NULL;
@@ -552,7 +557,8 @@ static int __block_dedupe(struct block_dedupe_list *bdl,
 	abort_on(!dext);
 
 	if (dext->de_num_dupes >= 2) {
-		ret = dedupe_extent_list(dext, fiemap_bytes, kern_bytes);
+		ret = dedupe_extent_list(dext, fiemap_bytes, kern_bytes,
+					 passno);
 		if (ret == DEDUPE_EXTENTS_CLEANED)
 			ret = 0;
 	}
@@ -612,7 +618,7 @@ static void pick_target_files(struct block_dedupe_list *bdl,
 /* for kernels without same file dedupe (< v4.2) */
 static int block_dedupe_nosame(struct block_dedupe_list *bdl,
 			       struct results_tree *res, uint64_t *fiemap_bytes,
-			       uint64_t *kern_bytes)
+			       uint64_t *kern_bytes, unsigned long long passno)
 {
 	int ret;
 	struct filerec *tgt_file1, *tgt_file2;
@@ -634,10 +640,10 @@ static int block_dedupe_nosame(struct block_dedupe_list *bdl,
 	}
 
 	ret = __block_dedupe(bdl, res, tgt_file1, tgt_off1, fiemap_bytes,
-			     kern_bytes);
+			     kern_bytes, passno);
 	if (!ret)
 		ret = __block_dedupe(bdl, res, tgt_file2, tgt_off2,
-				     fiemap_bytes, kern_bytes);
+				     fiemap_bytes, kern_bytes, passno);
 
 	return ret;
 }
@@ -647,15 +653,16 @@ static int block_dedupe_worker(struct block_dedupe_list *bdl,
 {
 	int ret;
 	struct results_tree res;
+	unsigned long long passno = __sync_add_and_fetch(&curr_dedupe_pass, 1);
 
 	init_results_tree(&res);
 
 	if (!dedupe_same_file)
 		ret = block_dedupe_nosame(bdl, &res, fiemap_bytes,
-					  kern_bytes);
+					  kern_bytes, passno);
 	else
 		ret = __block_dedupe(bdl, &res, NULL, 0, fiemap_bytes,
-				     kern_bytes);
+				     kern_bytes, passno);
 	free_bdl(bdl);
 	return ret;
 }
@@ -877,10 +884,15 @@ void dedupe_results(struct results_tree *res, struct hash_tree *hashes)
 		return;
 	}
 
-	if (block_dedupe)
+	if (block_dedupe) {
+		total_dedupe_passes = hashes->num_hashes;
+		leading_spaces = num_digits(total_dedupe_passes);
 		ret = push_blocks(hashes);
-	else
+	} else {
+		total_dedupe_passes = res->num_dupes;
+		leading_spaces = num_digits(total_dedupe_passes);
 		ret = push_extents(res);
+	}
 
 	if (ret) {
 		fprintf(stderr, "Fatal error while deduping: %s\n",
