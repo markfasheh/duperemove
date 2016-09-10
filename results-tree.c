@@ -214,12 +214,12 @@ static struct dupe_extents *dupe_extents_new(struct results_tree *res,
 
 	memcpy(dext->de_hash, digest, digest_len);
 	dext->de_len = len;
+	dext->de_score = len;
+
 	INIT_LIST_HEAD(&dext->de_extents);
 	dext->de_extents_root = RB_ROOT;
-
 	rb_init_node(&dext->de_node);
-
-	dext->de_score = len;
+	g_mutex_init(&dext->de_mutex);
 
 	return dext;
 }
@@ -275,7 +275,9 @@ int insert_one_result(struct results_tree *res, unsigned char *digest,
 
 	abort_on(dext->de_len != len);
 
+	g_mutex_lock(&dext->de_mutex);
 	insert_extent_list_free(dext, &extent);
+	g_mutex_unlock(&dext->de_mutex);
 
 	return 0;
 }
@@ -299,6 +301,7 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 
 	abort_on(dext->de_len != len);
 
+	g_mutex_lock(&dext->de_mutex);
 	insert_extent_list_free(dext, &e0);
 	insert_extent_list_free(dext, &e1);
 
@@ -322,6 +325,7 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 		recs[1]->num_extents++;
 #endif
 	}
+	g_mutex_unlock(&dext->de_mutex);
 
 	return 0;
 }
