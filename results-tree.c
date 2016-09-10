@@ -219,12 +219,42 @@ static struct dupe_extents *dupe_extents_new(struct results_tree *res,
 
 	rb_init_node(&dext->de_node);
 
-	insert_dupe_extents(res, dext);
-
 	dext->de_score = len;
 
 	return dext;
 }
+
+static struct dupe_extents *find_alloc_dext(struct results_tree *res,
+					    unsigned char *digest,
+					    uint64_t len, int *add_score)
+{
+	struct dupe_extents *dext, *new;
+
+	if (add_score)
+		*add_score = 1;
+
+	g_mutex_lock(&res->tree_mutex);
+	dext = find_dupe_extents(res, digest, len);
+	g_mutex_unlock(&res->tree_mutex);
+	if (!dext) {
+		new = dupe_extents_new(res, digest, len);
+
+		g_mutex_lock(&res->tree_mutex);
+		dext = find_dupe_extents(res, digest, len);
+		if (dext) {
+			g_mutex_unlock(&res->tree_mutex);
+			free_dupe_extents(new);
+			return dext;
+		}
+		insert_dupe_extents(res, new);
+		g_mutex_unlock(&res->tree_mutex);
+		if (add_score)
+			*add_score = 0;
+		return new;
+	}
+	return dext;
+}
+
 
 /*
  * This does not do all the work of insert_result(), just enough for
@@ -239,12 +269,9 @@ int insert_one_result(struct results_tree *res, unsigned char *digest,
 	if (!extent)
 		return ENOMEM;
 
-	dext = find_dupe_extents(res, digest, len);
-	if (!dext) {
-		dext = dupe_extents_new(res, digest, len);
-		if (!dext)
-			return ENOMEM;
-	}
+	dext = find_alloc_dext(res, digest, len, NULL);
+	if (!dext)
+		return ENOMEM;
 
 	abort_on(dext->de_len != len);
 
@@ -261,18 +288,14 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 	struct extent *e1 = alloc_extent(recs[1], startoff[1]);
 	struct dupe_extents *dext;
 	uint64_t len = endoff[0] - startoff[0] + 1;
-	int add_score = 1;
+	int add_score;
 
 	if (!e0 || !e1)
 		return ENOMEM;
 
-	dext = find_dupe_extents(res, digest, len);
-	if (!dext) {
-		dext = dupe_extents_new(res, digest, len);
-		if (!dext)
-			return ENOMEM;
-		add_score = 0;
-	}
+	dext = find_alloc_dext(res, digest, len, &add_score);
+	if (!dext)
+		return ENOMEM;
 
 	abort_on(dext->de_len != len);
 
@@ -512,6 +535,7 @@ void init_results_tree(struct results_tree *res)
 {
 	res->root = RB_ROOT;
 	res->num_dupes = 0;
+	g_mutex_init(&res->tree_mutex);
 }
 
 void dupe_extents_free(struct dupe_extents *dext, struct results_tree *res)

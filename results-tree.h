@@ -17,11 +17,14 @@
 #ifndef __RESULTS_TREE_
 #define __RESULTS_TREE_
 
+#include <glib.h>
+
 #include "interval_tree.h"
 
 struct results_tree {
 	struct rb_root	root;
 	unsigned int	num_dupes;
+	GMutex		tree_mutex;
 };
 
 struct dupe_extents {
