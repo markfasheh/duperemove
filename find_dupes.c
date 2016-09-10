@@ -231,22 +231,20 @@ static int walk_dupe_hashes(struct dupe_blocks_list *dups,
 			    struct results_tree *res)
 {
 	int ret;
-	struct file_block *block;
 	struct filerec *file1, *file2, *tmp1, *tmp2;
 	LIST_HEAD(cmp_files);
 	unsigned int cmp_tot = 0;
+	struct rb_node *node;
+	struct file_hash_head *fh;
 
 	vprintf("Gather files from hash: ");
 	if (verbose)
 		debug_print_digest_short(stdout, dups->dl_hash);
 	vprintf(" (%llu identical extents)\n", dups->dl_num_elem);
 
-#define SKIP_FLAGS	(FILE_BLOCK_SKIP_COMPARE|FILE_BLOCK_HOLE)
-	list_for_each_entry(block, &dups->dl_list, b_list) {
-		file1 = block->b_file;
-
-		if (block->b_flags & SKIP_FLAGS)
-			continue;
+	for (node = rb_first(&dups->dl_files_root); node; node = rb_next(node)) {
+		fh = rb_entry(node, struct file_hash_head, h_node);
+		file1 = fh->h_file;
 
 		if (list_empty(&file1->tmp_list)) {
 			list_add_tail(&file1->tmp_list, &cmp_files);
