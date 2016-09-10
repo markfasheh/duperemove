@@ -82,10 +82,26 @@ static void record_match(struct results_tree *res, unsigned char *digest,
 		(unsigned long long)eoff[1] / blocksize);
 }
 
+static inline void mark_block_seen(uint64_t *off, struct file_block *block)
+{
+	/* + 1 because otherwise block->b_loff == gives us trouble */
+	if ((*off) < block->b_loff)
+		*off = block->b_loff + 1;
+}
+
+static inline int block_seen(uint64_t off, struct file_block *block)
+{
+	if (off > block->b_loff)
+		return 1;
+	return 0;
+}
+
 static int walk_dupe_block(struct filerec *orig_file,
 			   struct file_block *orig_file_block,
+			   uint64_t *orig_best_off,
 			   struct filerec *walk_file,
 			   struct file_block *walk_file_block,
+			   uint64_t *walk_best_off,
 			   struct results_tree *res)
 {
 	struct file_block *orig = orig_file_block;
@@ -97,7 +113,8 @@ static int walk_dupe_block(struct filerec *orig_file,
 	uint64_t orig_blkno, walk_blkno;
 	struct rb_node *node;
 
-	if (block_seen(block) || block_seen(orig))
+	if (block_seen(*walk_best_off, block) ||
+	    block_seen(*orig_best_off, orig))
 		goto out;
 
 	csum = start_running_checksum();
@@ -105,8 +122,8 @@ static int walk_dupe_block(struct filerec *orig_file,
 	abort_on(block->b_parent != orig->b_parent);
 
 	while (block->b_parent == orig->b_parent) {
-		mark_block_seen(block);
-		mark_block_seen(orig);
+		mark_block_seen(walk_best_off, block);
+		mark_block_seen(orig_best_off, orig);
 
 		end[0] = orig;
 		end[1] = block;
@@ -153,7 +170,8 @@ out:
  */
 static void lookup_walk_file_hash_head(struct file_block *orig_block,
 				       struct filerec *walk_file,
-				       struct results_tree *res)
+				       struct results_tree *res,
+				       uint64_t *file_off, uint64_t *walk_off)
 {
 	struct dupe_blocks_list *parent = orig_block->b_parent;
 	struct file_block *cur;
@@ -170,8 +188,8 @@ static void lookup_walk_file_hash_head(struct file_block *orig_block,
 
 		abort_on(cur->b_file != walk_file);
 
-		if (walk_dupe_block(orig_block->b_file, orig_block,
-				    walk_file, cur, res))
+		if (walk_dupe_block(orig_block->b_file, orig_block, file_off,
+				    walk_file, cur, walk_off, res))
 			break;
 	}
 }
@@ -181,11 +199,13 @@ static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
 {
 	struct file_block *cur;
 	struct rb_node *node;
+	uint64_t file_off = 0;
+	uint64_t walk_off = 0;
 
 	for (node = rb_first(&file->block_tree); node; node = rb_next(node)) {
 		cur = rb_entry(node, struct file_block, b_file_next);
 
-		if (block_seen(cur))
+		if (block_seen(file_off, cur))
 			continue;
 
 		if (!file_in_dups_list(cur->b_parent, walk_file))
@@ -196,9 +216,9 @@ static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
 		 *  - Traverse, along with original file until we have no match
 		 *     - record
 		 */
-		lookup_walk_file_hash_head(cur, walk_file, res);
+		lookup_walk_file_hash_head(cur, walk_file, res, &file_off,
+					   &walk_off);
 	}
-	clear_all_seen_blocks();
 }
 
 static int compare_files(struct results_tree *res, struct filerec *file1, struct filerec *file2)

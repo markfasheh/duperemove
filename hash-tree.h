@@ -48,7 +48,6 @@ struct dupe_blocks_list {
 struct file_block {
 	struct dupe_blocks_list	*b_parent;
 	struct filerec	*b_file;
-	unsigned int	b_seen;
 	uint64_t	b_loff;
 	unsigned int	b_flags;
 
@@ -101,11 +100,6 @@ struct file_hash_head {
 int file_in_dups_list(struct dupe_blocks_list *dups, struct filerec *file);
 struct file_hash_head *find_file_hash_head(struct dupe_blocks_list *dups,
 					   struct filerec *file);
-
-int block_seen(struct file_block *block);
-int block_ever_seen(struct file_block *block);
-void mark_block_seen(struct file_block *block);
-void clear_all_seen_blocks(void);
 
 void init_hash_tree(struct hash_tree *tree);
 void free_hash_tree(struct hash_tree *tree);

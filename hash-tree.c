@@ -77,10 +77,10 @@ void debug_print_block(struct file_block *e)
 {
 	struct filerec *f = e->b_file;
 
-	printf("%s\tloff: %llu lblock: %llu seen: %u flags: 0x%x\n",
+	printf("%s\tloff: %llu lblock: %llu flags: 0x%x\n",
 	       f->filename,
 	       (unsigned long long)e->b_loff,
-	       (unsigned long long)e->b_loff / blocksize, e->b_seen,
+	       (unsigned long long)e->b_loff / blocksize,
 	       e->b_flags);
 }
 
@@ -272,7 +272,6 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 	}
 
 	e->b_file = file;
-	e->b_seen = 0;
 	e->b_loff = loff;
 	e->b_flags = flags;
 	e->b_parent = d;
@@ -333,28 +332,6 @@ int remove_hashed_block(struct hash_tree *tree,
 	free_file_block(block);
 	tree->num_blocks--;
 	return ret;
-}
-
-static unsigned int seen_counter = 1;
-
-int block_seen(struct file_block *block)
-{
-	return !!(block->b_seen == seen_counter);
-}
-
-int block_ever_seen(struct file_block *block)
-{
-	return !(block->b_seen == 0);
-}
-
-void mark_block_seen(struct file_block *block)
-{
-	block->b_seen = seen_counter;
-}
-
-void clear_all_seen_blocks(void)
-{
-	seen_counter++;
 }
 
 static int cmp_by_size(void *priv, struct list_head *a, struct list_head *b)
