@@ -549,6 +549,7 @@ static void print_header(void)
 {
 	printf("Using %uK blocks\n", blocksize / 1024);
 	printf("Using hash: %s\n", csum_mod->name);
+	printf("Gathering file list...\n");
 }
 
 static int create_update_hashfile(int argc, char **argv, int filelist_idx)
