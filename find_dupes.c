@@ -360,11 +360,66 @@ static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
 	}
 }
 
+/*
+ * Track by number of compares. This could be an atomic but GCond
+ * requires a mutex so we might as well use it...
+ */
+static unsigned long long	search_total;
+static unsigned long long	search_processed;
+static GMutex			progress_mutex;
+static GCond			progress_updated;
+static void print_extent_search_status(unsigned long long processed);
+static void clear_extent_search_status(unsigned long long processed,
+				       int err);
+
+static void init_extent_search_status(unsigned long long nr_items)
+{
+	search_total = nr_items;
+}
+
+static void update_extent_search_status(unsigned long long processed)
+{
+	g_mutex_lock(&progress_mutex);
+	search_processed += processed;
+	g_cond_signal(&progress_updated);
+	g_mutex_unlock(&progress_mutex);
+}
+
+static void wait_update_extent_search_status(GThreadPool *pool)
+{
+	uint64_t end_time = g_get_monotonic_time () + 1 * G_TIME_SPAN_SECOND;
+	unsigned long long tmp, last = 0;
+
+	if (!stdout_is_tty || verbose || debug)
+		return;
+
+	/* Get the bar started */
+	print_extent_search_status(0);
+
+	g_mutex_lock(&progress_mutex);
+	while (search_processed < search_total) {
+		g_cond_wait_until(&progress_updated, &progress_mutex, end_time);
+		tmp = search_processed;
+		g_mutex_unlock(&progress_mutex);
+
+		if (tmp != last)
+			print_extent_search_status(tmp);
+		last = tmp;
+
+		g_mutex_lock(&progress_mutex);
+	}
+	g_mutex_unlock(&progress_mutex);
+
+	print_extent_search_status(search_processed);
+	clear_extent_search_status(search_processed, 0);
+}
+
 static int find_dupes_worker(struct filerec_compare *compare,
 			     struct results_tree *res)
 {
 	find_file_dupes(compare->c_file_high, compare->c_file_low, res);
 	free_filerec_compare(compare);
+	update_extent_search_status(1);
 	return 0;
 }
 
@@ -376,7 +431,9 @@ static int run_compares(struct results_tree *res)
 	GError *err = NULL;
 	GThreadPool *pool = NULL;
 
-	printf("%llu compares to process\n", compare_tree.num_compares);
+	init_extent_search_status(compare_tree.num_compares);
+
+	dprintf("%llu compares to process\n", compare_tree.num_compares);
 
 	pool = g_thread_pool_new((GFunc) find_dupes_worker, res,
 				 io_threads, TRUE, &err);
@@ -402,6 +459,8 @@ static int run_compares(struct results_tree *res)
 			return ENOMEM;
 		}
 	}
+
+	wait_update_extent_search_status(pool);
 
 	g_thread_pool_free(pool, FALSE, TRUE);
 
@@ -462,8 +521,7 @@ out:
 	return ret;
 }
 
-static void update_extent_search_status(struct hash_tree *tree,
-					unsigned long long processed)
+static void print_extent_search_status(unsigned long long processed)
 {
 	static int last_pos = -1;
 	int i, pos;
@@ -473,7 +531,7 @@ static void update_extent_search_status(struct hash_tree *tree,
 	if (!stdout_is_tty || verbose || debug)
 		return;
 
-	progress = (float) processed / tree->num_blocks;
+	progress = (float) processed / search_total;
 	pos = width * progress;
 
 	/* Only update our status every width% */
@@ -494,6 +552,10 @@ static void update_extent_search_status(struct hash_tree *tree,
 	fflush(stdout);
 }
 
+/*
+ * 'err' is impossible in the current code when this is called, but we
+ * can keep the handling here in case that changes.
+ */
 static void clear_extent_search_status(unsigned long long processed,
 				       int err)
 {
@@ -515,7 +577,6 @@ static int find_all_dupes_filewise(struct hash_tree *tree,
 	struct rb_root *root = &tree->root;
 	struct rb_node *node = rb_first(root);
 	struct dupe_blocks_list *dups;
-	unsigned long long processed = 0;
 
 	printf("Hashing completed. Calculating duplicate extents - this may "
 		"take some time.\n");
@@ -526,27 +587,20 @@ static int find_all_dupes_filewise(struct hash_tree *tree,
 
 		dups = rb_entry(node, struct dupe_blocks_list, dl_node);
 
-		update_extent_search_status(tree, processed);
-
 		if (dups->dl_num_elem > 1) {
 			ret = add_compares(dups);
 			if (ret)
 				goto out;
 		}
 
-		processed += dups->dl_num_elem;
-
 		node = rb_next(node);
 	}
-
-	update_extent_search_status(tree, processed);
 
 	ret = run_compares(res);
 
 out:
 	free_filerec_compares();
 
-	clear_extent_search_status(processed, ret);
 	return ret;
 }
 
