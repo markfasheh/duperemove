@@ -47,9 +47,6 @@
 #include "find_dupes.h"
 #include "run_dedupe.h"
 
-/* exported via debug.h */
-int verbose = 0, debug = 0;
-
 #define MIN_BLOCKSIZE	(4U*1024)
 /* max blocksize is somewhat arbitrary. */
 #define MAX_BLOCKSIZE	(1024U*1024)

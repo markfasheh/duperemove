@@ -15,7 +15,7 @@ HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
 CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
 	btrfs-util.c util.c memstats.c file_scan.c find_dupes.c \
 	run_dedupe.c csum.c d_tree.c dbfile.c interval_tree.c list_sort.c \
-	stats.c
+	stats.c debug.c
 hash_CFILES=csum-xxhash.c xxhash.c csum-murmur3.c csum-sha256.c sha256.c
 
 CFILES += $(hash_CFILES)
@@ -36,9 +36,10 @@ objects = $(CFILES:.c=.o)
 
 hash_obj=$(hash_CFILES:.c=.o)
 hashstats_obj = $(hash_obj) rbtree.o hash-tree.o filerec.o util.o \
-	 results-tree.o csum.o d_tree.o dbfile.o interval_tree.o list_sort.o
-show_shared_obj = rbtree.o util.o
-csum_test_obj = $(hash_obj) util.o csum.o
+	results-tree.o csum.o d_tree.o dbfile.o interval_tree.o list_sort.o \
+	debug.o
+show_shared_obj = rbtree.o util.o debug.o
+csum_test_obj = $(hash_obj) util.o csum.o debug.o
 
 install_progs = duperemove hashstats btrfs-extent-same show-shared-extents
 progs = $(install_progs) csum-test

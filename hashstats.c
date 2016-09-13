@@ -35,7 +35,6 @@
 
 extern sqlite3 *gdb;
 
-int verbose = 0, debug = 0;
 unsigned int blocksize;
 static int version_only = 0;
 static int print_all_hashes = 0;

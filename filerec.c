@@ -827,8 +827,6 @@ static char *fiemap_flags_str(unsigned long long flags)
 	return flagstr;
 }
 
-int debug = 1;	/* Want prints from filerec_count_shared */
-
 #ifdef	TEST_FIEMAP_ITER
 static int get_size(struct filerec *file)
 {
@@ -849,6 +847,8 @@ static int test_iter(struct filerec *file)
 	struct fiemap_ctxt *fc = alloc_fiemap_ctxt();
 	unsigned int flags, hole;
 	uint64_t blkno;
+
+	debug = 1;	/* Want prints from filerec_count_shared */
 
 	if (!fc)
 		return ENOMEM;
