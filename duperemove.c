@@ -78,6 +78,8 @@ static unsigned int nr_logical_cpus;
 static unsigned int nr_physical_cpus;
 unsigned int io_threads;
 unsigned int cpu_threads;
+int io_threads_opt = 0;
+int cpu_threads_opt = 0;
 int do_lookup_extents = 0;
 int fiemap_during_dedupe = 1;
 
@@ -436,6 +438,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 					"an integer, %s found\n", optarg);
 				return EINVAL;
 			}
+			io_threads_opt = 1;
 			break;
 		case CPU_THREADS_OPTION:
 			cpu_threads = strtoul(optarg, NULL, 10);
@@ -444,6 +447,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 					"an integer, %s found\n", optarg);
 				return EINVAL;
 			}
+			cpu_threads_opt = 1;
 			break;
 		case LOOKUP_EXTENTS_OPTION:
 			do_lookup_extents = parse_yesno_option(optarg, 0);
@@ -672,11 +676,17 @@ int main(int argc, char **argv)
 		return (version_only || help_option) ? 0 : EINVAL;
 	}
 
-	get_num_cpus(&nr_physical_cpus, &nr_logical_cpus);
-	if (!io_threads)
-		io_threads = nr_logical_cpus;
-	if (!cpu_threads)
-		cpu_threads = nr_physical_cpus;
+	/*
+	 * Don't run detection if the user has supplied our cpu counts
+	 * already.
+	 */
+	if (!io_threads_opt || !cpu_threads_opt) {
+		get_num_cpus(&nr_physical_cpus, &nr_logical_cpus);
+		if (!io_threads)
+			io_threads = nr_logical_cpus;
+		if (!cpu_threads)
+			cpu_threads = nr_physical_cpus;
+	}
 
 	if (fdupes_mode)
 		return add_files_from_stdin(1);
