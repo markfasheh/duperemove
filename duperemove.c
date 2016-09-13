@@ -74,6 +74,8 @@ static enum {
 	H_UPDATE,
 } use_hashfile = H_UPDATE;
 static char *serialize_fname = NULL;
+static unsigned int nr_logical_cpus;
+static unsigned int nr_physical_cpus;
 unsigned int io_threads;
 int do_lookup_extents = 0;
 int fiemap_during_dedupe = 1;
@@ -653,18 +655,15 @@ int main(int argc, char **argv)
 	init_results_tree(&res);
 	init_hash_tree(&dups_tree);
 
-	/* Parse options might change this so set a default here */
-#if GLIB_CHECK_VERSION(2,36,0)
-	io_threads = g_get_num_processors();
-#else
-	io_threads = sysconf(_SC_NPROCESSORS_ONLN);
-#endif
-
 	ret = parse_options(argc, argv, &filelist_idx);
 	if (ret || version_only) {
 		usage(argv[0]);
 		return (version_only || help_option) ? 0 : EINVAL;
 	}
+
+	get_num_cpus(&nr_physical_cpus, &nr_logical_cpus);
+	if (!io_threads)
+		io_threads = nr_logical_cpus;
 
 	if (fdupes_mode)
 		return add_files_from_stdin(1);

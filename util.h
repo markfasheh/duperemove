@@ -51,4 +51,6 @@ void record_end_print(struct elapsed_time *e);
 
 int num_digits(unsigned long long num);
 
+void get_num_cpus(unsigned int *nr_phys, unsigned int *nr_log);
+
 #endif	/* __UTIL_H__ */

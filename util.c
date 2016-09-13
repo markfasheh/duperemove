@@ -28,6 +28,9 @@
 #include <execinfo.h>
 #endif
 #include <sys/time.h>
+#include <unistd.h>
+#include <limits.h>
+#include <errno.h>
 
 #include "debug.h"
 #include "util.h"
@@ -166,4 +169,100 @@ int num_digits(unsigned long long num)
 		digits++;
 	}
 	return digits;
+}
+
+#define	VENDOR_KEY	"vendor_id"
+#define	VENDOR_VAL	"GenuineIntel"
+#define	FLAGS_KEY	"flags"
+#define	HT_FLAG		"ht"
+#define	CPUINFO_DELIM	':'
+#define	FLAGS_DELIM	' '
+
+/* Checks /proc/cpuinfo for an Intel CPU with hyperthreading. */
+static int detect_ht(void)
+{
+	FILE *fp;
+	int err = 0;
+	int ret = 0;
+	char line[LINE_MAX + 1];
+	char *c, *val, *key, *flag;
+	int check_vendor = 1;
+
+	fp = fopen("/proc/cpuinfo", "r");
+	if (fp == NULL) {
+		err = errno;
+		goto out;
+	}
+
+	while (fgets(line, LINE_MAX + 1, fp) != NULL) {
+		c = strchr(line, CPUINFO_DELIM);
+		if (!c)
+			continue;
+		key = line;
+		val = c + 1;/* line is \0 delimited so this should be safe */
+
+		if (*val == '\0') /* No value... */
+			continue;
+
+		/* Strip trailing whitespace from the key. */
+		do {
+			*c = '\0';
+			c--;
+		} while (c > key && !isalnum(*c));
+
+		/* Strip leading and trailing whitespace from val. */
+		while (isspace(*val) && *val != '\0')
+			val++;
+		c = &val[strlen(val) - 1];
+		while (isspace(*c) && c >= val) {
+			*c = '\0';
+			c--;
+		}
+//		printf("key: \"%s\" val: \"%s\"\n", key, val);
+
+		if (check_vendor && !strcmp(key, VENDOR_KEY)) {
+			/* No intel == no ht */
+			if (strcmp(val, VENDOR_VAL))
+				goto out_close;
+			check_vendor = 0;
+		} else if (!strcmp(key, FLAGS_KEY)) {
+			for (flag = val; flag && *flag; flag = c) {
+				c = strchr(flag, FLAGS_DELIM);
+				if (c) {
+					*c = '\0';
+					c++;
+				}
+//				printf("\"flag: %s\"\n", flag);
+				if (!strcmp(flag, HT_FLAG))
+					return 1;
+			}
+			/* No 'ht' in flags? We're done. */
+			goto out_close;
+		}
+	}
+	if (ferror(fp))
+		err = errno;
+
+out_close:
+	fclose(fp);
+out:
+	if (err)
+		fprintf(stderr,
+			"Error %d (\"%s\") while checking /proc/cpuinfo for "
+			"hyperthreading -- will assume ht is off.\n", err,
+			strerror(err));
+	return ret;
+}
+
+void get_num_cpus(unsigned int *nr_phys, unsigned int *nr_log)
+{
+	int ht;
+
+	*nr_phys = *nr_log = sysconf(_SC_NPROCESSORS_ONLN);
+	ht = detect_ht();
+	if (ht && *nr_phys >= 2)
+		*nr_phys /= 2;
+
+	dprintf("Detected %u logical and %u physical cpus (ht is %s).\n",
+		*nr_log, *nr_phys, ht ? "on" : "off");
 }
