@@ -373,15 +373,37 @@ static int run_compares(struct results_tree *res)
 	struct rb_node *node;
 	struct rb_root *root = &compare_tree.root;
 	struct filerec_compare *compare;
+	GError *err = NULL;
+	GThreadPool *pool = NULL;
 
 	printf("%llu compares to process\n", compare_tree.num_compares);
+
+	pool = g_thread_pool_new((GFunc) find_dupes_worker, res,
+				 io_threads, TRUE, &err);
+	if (err) {
+		fprintf(stderr,
+			"Unable to create find file dupes thread pool: %s\n",
+			err->message);
+		g_error_free(err);
+		return ENOMEM;
+	}
 
 	while ((node = rb_first(root)) != NULL) {
 		compare = rb_entry(node, struct filerec_compare, c_node);
 		rb_erase(&compare->c_node, root);
 
-		find_dupes_worker(compare, res);
+		g_thread_pool_push(pool, compare, &err);
+		if (err) {
+			free_filerec_compare(compare);
+
+			fprintf(stderr, "Fatal error while deduping: %s\n",
+				err->message);
+			g_error_free(err);
+			return ENOMEM;
+		}
 	}
+
+	g_thread_pool_free(pool, FALSE, TRUE);
 
 	return 0;
 }
