@@ -613,12 +613,16 @@ int find_all_dupes(struct hash_tree *tree, struct results_tree *res)
 		sort_hashes_by_size(tree);
 		return 0;
 	} else {
+		unsigned long long orig_extent_count = res->num_extents;
 
 		ret = find_all_dupes_filewise(tree, res);
 
 		vprintf("Removing overlapping extents\n");
 		list_for_each_entry(file, &filerec_list, rec_list)
 			remove_overlapping_extents(res, file);
+		dprintf("Removed %llu extents (had %llu).\n",
+			orig_extent_count - res->num_extents,
+			orig_extent_count);
 
 		return ret;
 	}

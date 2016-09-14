@@ -25,6 +25,7 @@ struct results_tree {
 	struct rb_root	root;
 	unsigned int	num_dupes;
 	GMutex		tree_mutex;
+	unsigned long long	num_extents;
 };
 
 struct dupe_extents {

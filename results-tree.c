@@ -116,7 +116,8 @@ static int insert_extent_rb(struct dupe_extents *dext, struct extent *e)
 	return 0;
 }
 
-static int insert_extent_list(struct dupe_extents *dext, struct extent *e)
+static int insert_extent_list(struct results_tree *res,
+			      struct dupe_extents *dext, struct extent *e)
 {
 	/* We keep this tree free of duplicates  */
 	if (insert_extent_rb(dext, e) == 0) {
@@ -191,10 +192,11 @@ static struct dupe_extents *find_dupe_extents(struct results_tree *res,
 	return NULL;
 }
 
-static void insert_extent_list_free(struct dupe_extents *dext,
+static void insert_extent_list_free(struct results_tree *res,
+				    struct dupe_extents *dext,
 				    struct extent **e)
 {
-	if (insert_extent_list(dext, *e)) {
+	if (insert_extent_list(res, dext, *e)) {
 		if ((*e)->e_info)
 			free_extent_dedupe_info((*e)->e_info);
 		free_extent(*e);
@@ -276,9 +278,12 @@ int insert_one_result(struct results_tree *res, unsigned char *digest,
 	abort_on(dext->de_len != len);
 
 	g_mutex_lock(&dext->de_mutex);
-	insert_extent_list_free(dext, &extent);
+	insert_extent_list_free(res, dext, &extent);
 	g_mutex_unlock(&dext->de_mutex);
 
+	g_mutex_lock(&res->tree_mutex);
+	res->num_extents++;
+	g_mutex_unlock(&res->tree_mutex);
 	return 0;
 }
 
@@ -302,8 +307,8 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 	abort_on(dext->de_len != len);
 
 	g_mutex_lock(&dext->de_mutex);
-	insert_extent_list_free(dext, &e0);
-	insert_extent_list_free(dext, &e1);
+	insert_extent_list_free(res, dext, &e0);
+	insert_extent_list_free(res, dext, &e1);
 
 	if (e0) {
 		if (add_score)
@@ -326,6 +331,13 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 #endif
 	}
 	g_mutex_unlock(&dext->de_mutex);
+
+	g_mutex_lock(&res->tree_mutex);
+	if (e0)
+		res->num_extents++;
+	if (e1)
+		res->num_extents++;
+	g_mutex_unlock(&res->tree_mutex);
 
 	return 0;
 }
@@ -350,6 +362,7 @@ again:
 	if (extent->e_info)
 		free_extent_dedupe_info(extent->e_info);
 	free_extent(extent);
+	res->num_extents--;
 
 	if (p->de_num_dupes == 1) {
 		/* It doesn't make sense to have one extent in a dup
@@ -540,6 +553,7 @@ void init_results_tree(struct results_tree *res)
 	res->root = RB_ROOT;
 	res->num_dupes = 0;
 	g_mutex_init(&res->tree_mutex);
+	res->num_extents = 0;
 }
 
 void dupe_extents_free(struct dupe_extents *dext, struct results_tree *res)
