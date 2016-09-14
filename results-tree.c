@@ -309,26 +309,11 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 	g_mutex_lock(&dext->de_mutex);
 	insert_extent_list_free(res, dext, &e0);
 	insert_extent_list_free(res, dext, &e1);
-
-	if (e0) {
-		if (add_score)
+	if (add_score) {
+		if (e0)
 			dext->de_score += len;
-		e0->e_itnode.start = e0->e_loff;
-		e0->e_itnode.last = extent_end(e0);
-		interval_tree_insert(&e0->e_itnode, &recs[0]->extent_tree);
-#ifdef	ITDEBUG
-		recs[0]->num_extents++;
-#endif
-	}
-	if (e1) {
-		if (add_score)
+		if (e1)
 			dext->de_score += len;
-		e1->e_itnode.start = e1->e_loff;
-		e1->e_itnode.last = extent_end(e1);
-		interval_tree_insert(&e1->e_itnode, &recs[1]->extent_tree);
-#ifdef	ITDEBUG
-		recs[1]->num_extents++;
-#endif
 	}
 	g_mutex_unlock(&dext->de_mutex);
 
@@ -338,6 +323,27 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 	if (e1)
 		res->num_extents++;
 	g_mutex_unlock(&res->tree_mutex);
+
+	if (e0) {
+		g_mutex_lock(&recs[0]->extent_tree_mutex);
+		e0->e_itnode.start = e0->e_loff;
+		e0->e_itnode.last = extent_end(e0);
+		interval_tree_insert(&e0->e_itnode, &recs[0]->extent_tree);
+#ifdef	ITDEBUG
+		recs[0]->num_extents++;
+#endif
+		g_mutex_unlock(&recs[0]->extent_tree_mutex);
+	}
+	if (e1) {
+		g_mutex_lock(&recs[1]->extent_tree_mutex);
+		e1->e_itnode.start = e1->e_loff;
+		e1->e_itnode.last = extent_end(e1);
+		interval_tree_insert(&e1->e_itnode, &recs[1]->extent_tree);
+#ifdef	ITDEBUG
+		recs[1]->num_extents++;
+#endif
+		g_mutex_unlock(&recs[1]->extent_tree_mutex);
+	}
 
 	return 0;
 }

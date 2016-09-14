@@ -18,6 +18,7 @@
 
 #include <stdint.h>
 #include <time.h>
+#include <glib.h>
 #include "rbtree.h"
 #include "list.h"
 #include "interval_tree.h"
@@ -48,6 +49,7 @@ struct filerec {
 	struct list_head	tmp_list;
 
 	/* interval tree of dup-extents belonging to this file */
+	GMutex			extent_tree_mutex;
 	struct rb_root		extent_tree;
 #ifdef	ITDEBUG
 	uint64_t		num_extents;

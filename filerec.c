@@ -265,6 +265,7 @@ static struct filerec *filerec_alloc_insert(const char *filename,
 		file->subvolid = subvolid;
 		file->size = size;
 		file->mtime = mtime;
+		g_mutex_init(&file->extent_tree_mutex);
 
 		insert_filerec(file);
 		insert_filerec_by_name(file);
