@@ -39,6 +39,142 @@
 
 extern int block_dedupe;
 extern int dedupe_same_file;
+extern unsigned int io_threads;
+
+struct compare_tree {
+	struct rb_root root;
+	unsigned long long num_compares;
+} compare_tree = { RB_ROOT, 0ULL };
+
+struct filerec_compare {
+	struct filerec	*c_file_low;
+	struct filerec	*c_file_high;
+	struct rb_node	c_node;
+};
+
+declare_alloc_tracking(filerec_compare);
+
+int cmp_filerec_compare(struct filerec_compare *cmp1,
+			struct filerec_compare *cmp2)
+{
+	if (cmp1->c_file_high < cmp2->c_file_high)
+		return -1;
+	else if (cmp1->c_file_high > cmp2->c_file_high)
+		return 1;
+
+	if (cmp1->c_file_low < cmp2->c_file_low)
+		return -1;
+	else if (cmp1->c_file_low > cmp2->c_file_low)
+		return 1;
+
+	return 0;
+}
+
+struct filerec_compare *find_filerec_compare_rb(struct filerec_compare *search)
+{
+	int cmp;
+	struct rb_node *n = compare_tree.root.rb_node;
+	struct filerec_compare *tmp;
+
+	while (n) {
+		tmp = rb_entry(n, struct filerec_compare, c_node);
+
+		cmp = cmp_filerec_compare(search, tmp);
+		if (cmp < 0)
+			n = n->rb_left;
+		else if (cmp > 0)
+			n = n->rb_right;
+		else
+			return tmp;
+	}
+	return NULL;
+}
+
+static void init_filerec_compare(struct filerec_compare *cmp,
+				 struct filerec *file1, struct filerec *file2)
+{
+	struct filerec *tmp;
+
+	if (file1 > file2) {
+		tmp = file1;
+		file1 = file2;
+		file2 = tmp;
+	}
+
+	cmp->c_file_low = file1;
+	cmp->c_file_high = file2;
+	/* rb_node is initialized by the zeroing from calloc() */
+}
+
+static struct filerec_compare *alloc_filerec_compare(struct filerec *file1,
+						     struct filerec *file2)
+{
+	struct filerec_compare *cmp;
+
+	cmp = calloc_filerec_compare(1);
+	if (!cmp)
+		return NULL;
+
+	init_filerec_compare(cmp, file1, file2);
+
+	return cmp;
+}
+
+static int add_filerec_compare(struct filerec *file1, struct filerec *file2)
+{
+	int cmp;
+	struct rb_node **p = &compare_tree.root.rb_node;
+	struct rb_node *parent = NULL;
+	struct filerec_compare *tmp, *ins;
+	struct filerec_compare search;
+
+	init_filerec_compare(&search, file1, file2);
+
+	while (*p) {
+		parent = *p;
+
+		tmp = rb_entry(parent, struct filerec_compare, c_node);
+
+		cmp = cmp_filerec_compare(&search, tmp);
+		if (cmp < 0)
+			p = &(*p)->rb_left;
+		else if (cmp > 0)
+			p = &(*p)->rb_right;
+		else
+			return 0;
+	}
+
+	ins = alloc_filerec_compare(file1, file2);
+	if (!ins)
+		return ENOMEM;
+
+	rb_link_node(&ins->c_node, parent, p);
+	rb_insert_color(&ins->c_node, &compare_tree.root);
+	compare_tree.num_compares++;
+	return 0;
+}
+
+struct filerec_compare *find_filerec_compare(struct filerec *file1,
+					     struct filerec *file2)
+{
+	struct filerec_compare search;
+
+	init_filerec_compare(&search, file1, file2);
+
+	return find_filerec_compare_rb(&search);
+}
+
+static void free_filerec_compares(void)
+{
+	struct rb_node *node;
+	struct filerec_compare *comp;
+
+	while ((node = rb_first(&compare_tree.root)) != NULL) {
+		comp = rb_entry(node, struct filerec_compare, c_node);
+		rb_erase(&comp->c_node, &compare_tree.root);
+		free_filerec_compare(comp);
+	}
+}
 
 static void record_match(struct results_tree *res, unsigned char *digest,
 			 struct filerec *orig, struct filerec *walk,
@@ -202,6 +338,9 @@ static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
 	uint64_t file_off = 0;
 	uint64_t walk_off = 0;
 
+	vprintf("Compare files \"%s\" and "
+		"\"%s\"\n", file->filename, walk_file->filename);
+
 	for (node = rb_first(&file->block_tree); node; node = rb_next(node)) {
 		cur = rb_entry(node, struct file_block, b_file_next);
 
@@ -221,14 +360,33 @@ static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
 	}
 }
 
-static int compare_files(struct results_tree *res, struct filerec *file1, struct filerec *file2)
+static int find_dupes_worker(struct filerec_compare *compare,
+			     struct results_tree *res)
 {
-	find_file_dupes(file1, file2, res);
-	return mark_filerecs_compared(file1, file2);
+	find_file_dupes(compare->c_file_high, compare->c_file_low, res);
+	free_filerec_compare(compare);
+	return 0;
 }
 
-static int walk_dupe_hashes(struct dupe_blocks_list *dups,
-			    struct results_tree *res)
+static int run_compares(struct results_tree *res)
+{
+	struct rb_node *node;
+	struct rb_root *root = &compare_tree.root;
+	struct filerec_compare *compare;
+
+	printf("%llu compares to process\n", compare_tree.num_compares);
+
+	while ((node = rb_first(root)) != NULL) {
+		compare = rb_entry(node, struct filerec_compare, c_node);
+		rb_erase(&compare->c_node, root);
+
+		find_dupes_worker(compare, res);
+	}
+
+	return 0;
+}
+
+static int add_compares(struct dupe_blocks_list *dups)
 {
 	int ret;
 	struct filerec *file1, *file2, *tmp1, *tmp2;
@@ -246,10 +404,9 @@ static int walk_dupe_hashes(struct dupe_blocks_list *dups,
 		fh = rb_entry(node, struct file_hash_head, h_node);
 		file1 = fh->h_file;
 
-		if (list_empty(&file1->tmp_list)) {
-			list_add_tail(&file1->tmp_list, &cmp_files);
-			cmp_tot++;
-		}
+		abort_on(!list_empty(&file1->tmp_list));
+		list_add_tail(&file1->tmp_list, &cmp_files);
+		cmp_tot++;
 	}
 
 	vprintf("Process %u files.\n", cmp_tot);
@@ -258,18 +415,14 @@ static int walk_dupe_hashes(struct dupe_blocks_list *dups,
 		file2 = file1;/* start from file1 for list iter */
 		list_for_each_entry_safe_continue(file2, tmp2, &cmp_files,
 						  tmp_list) {
-			if (filerecs_compared(file1, file2))
-				continue;
-
 			if (filerec_deduped(file1) && filerec_deduped(file2))
 				continue;
 
-			if (dedupe_same_file || file1 != file2) {
-				vprintf("[%u] Compare files \"%s\" and "
-					"\"%s\"\n", cmp_tot, file1->filename,
-					file2->filename);
+			if (find_filerec_compare(file1, file2))
+				continue;
 
-				ret = compare_files(res, file1, file2);
+			if (dedupe_same_file || file1 != file2) {
+				ret = add_filerec_compare(file1, file2);
 				if (ret)
 					goto out;
 			}
@@ -354,7 +507,7 @@ static int find_all_dupes_filewise(struct hash_tree *tree,
 		update_extent_search_status(tree, processed);
 
 		if (dups->dl_num_elem > 1) {
-			ret = walk_dupe_hashes(dups, res);
+			ret = add_compares(dups);
 			if (ret)
 				goto out;
 		}
@@ -365,7 +518,11 @@ static int find_all_dupes_filewise(struct hash_tree *tree,
 	}
 
 	update_extent_search_status(tree, processed);
+
+	ret = run_compares(res);
+
 out:
+	free_filerec_compares();
 
 	clear_extent_search_status(processed, ret);
 	return ret;
