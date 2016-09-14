@@ -249,8 +249,24 @@ but can prevent deduplication of zeroed files.
 </p>
 
 <p class="tp2 j">Use N threads for I/O. This is used by the file hashing and dedupe
-stages. Default is automatically detected based on number of host
-cpus.
+stages. Default is automatically detected based on number of
+host cpus.
+<br />
+<br />
+</p>
+
+<p class="tp1"><b>--cpu-threads=N</b>
+</p>
+
+<p class="tp2 j">Use N threads for CPU bound tasks. This is used by the duplicate
+extent finding stage. Default is automatically detected based on
+number of host cpus.
+<br />
+<br />
+<b>Note:</b> Hyperthreading can adversely affect performance of the
+extent finding stage. If duperemove detects an Intel CPU with
+hyperthreading it will use half the number of cores reported by the
+system for cpu bound tasks.
 <br />
 <br />
 </p>

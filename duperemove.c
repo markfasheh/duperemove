@@ -77,6 +77,7 @@ static char *serialize_fname = NULL;
 static unsigned int nr_logical_cpus;
 static unsigned int nr_physical_cpus;
 unsigned int io_threads;
+unsigned int cpu_threads;
 int do_lookup_extents = 0;
 int fiemap_during_dedupe = 1;
 
@@ -286,6 +287,7 @@ enum {
 	READ_HASHES_OPTION,
 	HASHFILE_OPTION,
 	IO_THREADS_OPTION,
+	CPU_THREADS_OPTION,
 	LOOKUP_EXTENTS_OPTION,
 	ONE_FILESYSTEM_OPTION,
 	HASH_OPTION,
@@ -368,6 +370,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		{ "hashfile", 1, NULL, HASHFILE_OPTION },
 		{ "io-threads", 1, NULL, IO_THREADS_OPTION },
 		{ "hash-threads", 1, NULL, IO_THREADS_OPTION },
+		{ "cpu-threads", 1, NULL, CPU_THREADS_OPTION },
 		{ "lookup-extents", 1, NULL, LOOKUP_EXTENTS_OPTION },
 		{ "one-file-system", 0, NULL, ONE_FILESYSTEM_OPTION },
 		{ "hash", 1, NULL, HASH_OPTION },
@@ -430,6 +433,14 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			io_threads = strtoul(optarg, NULL, 10);
 			if (!io_threads){
 				fprintf(stderr, "Error: --io-threads must be "
+					"an integer, %s found\n", optarg);
+				return EINVAL;
+			}
+			break;
+		case CPU_THREADS_OPTION:
+			cpu_threads = strtoul(optarg, NULL, 10);
+			if (!cpu_threads){
+				fprintf(stderr, "Error: --cpu-threads must be "
 					"an integer, %s found\n", optarg);
 				return EINVAL;
 			}
@@ -664,6 +675,8 @@ int main(int argc, char **argv)
 	get_num_cpus(&nr_physical_cpus, &nr_logical_cpus);
 	if (!io_threads)
 		io_threads = nr_logical_cpus;
+	if (!cpu_threads)
+		cpu_threads = nr_physical_cpus;
 
 	if (fdupes_mode)
 		return add_files_from_stdin(1);

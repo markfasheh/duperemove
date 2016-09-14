@@ -39,7 +39,7 @@
 
 extern int block_dedupe;
 extern int dedupe_same_file;
-extern unsigned int io_threads;
+extern unsigned int cpu_threads;
 
 struct compare_tree {
 	struct rb_root root;
@@ -436,7 +436,7 @@ static int run_compares(struct results_tree *res)
 	dprintf("%llu compares to process\n", compare_tree.num_compares);
 
 	pool = g_thread_pool_new((GFunc) find_dupes_worker, res,
-				 io_threads, TRUE, &err);
+				 cpu_threads, TRUE, &err);
 	if (err) {
 		fprintf(stderr,
 			"Unable to create find file dupes thread pool: %s\n",
@@ -578,8 +578,8 @@ static int find_all_dupes_filewise(struct hash_tree *tree,
 	struct rb_node *node = rb_first(root);
 	struct dupe_blocks_list *dups;
 
-	printf("Hashing completed. Calculating duplicate extents - this may "
-		"take some time.\n");
+	printf("Hashing completed. Using %u threads to calculate duplicate "
+	       "extents. This may take some time.\n", cpu_threads);
 
 	while (1) {
 		if (node == NULL)
