@@ -662,6 +662,8 @@ int main(int argc, char **argv)
 #else
 	io_threads = sysconf(_SC_NPROCESSORS_ONLN);
 #endif
+	if (!geteuid())
+		target_rw = 0;
 
 	ret = parse_options(argc, argv, &filelist_idx);
 	if (ret || version_only) {
