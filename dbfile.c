@@ -1176,6 +1176,8 @@ int dbfile_load_hashes(struct hash_tree *hash_tree)
 	}
 	sqlite3_reset(stmt);
 
+	sort_file_hash_heads(hash_tree);
+
 	ret = 0;
 out:
 	if (stmt)

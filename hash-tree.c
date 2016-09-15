@@ -176,7 +176,7 @@ static int add_file_hash_head(struct dupe_blocks_list *dups,
 	insert_file_hash_head(dups, head);
 	dups->dl_num_files++;
 add:
-	/* We depend on this being added in increasing block order */
+	/* This list get sorted later */
 	list_add_tail(&block->b_head_list, &head->h_blocks);
 	return 0;
 }
@@ -186,6 +186,40 @@ static void free_one_hash_head(struct dupe_blocks_list *dups,
 {
 	rb_erase(&head->h_node, &dups->dl_files_root);
 	free_file_hash_head(head);
+}
+
+static int cmp_blocks(void *priv, struct list_head *a, struct list_head *b)
+{
+	struct file_block *fba, *fbb;
+
+	fba = list_entry(a, struct file_block, b_head_list);
+	fbb = list_entry(b, struct file_block, b_head_list);
+
+	if (fba->b_loff < fbb->b_loff)
+		return -1;
+	else if (fba->b_loff > fbb->b_loff)
+		return 1;
+	return 0;
+}
+
+void sort_file_hash_heads(struct hash_tree *tree)
+{
+	struct rb_node *dups_node;
+	struct dupe_blocks_list *dups;
+	struct rb_node *head_node;
+	struct file_hash_head *head;
+
+	for (dups_node = rb_first(&tree->root); dups_node;
+	     dups_node = rb_next(dups_node)) {
+		dups = rb_entry(dups_node, struct dupe_blocks_list, dl_node);
+
+		for (head_node = rb_first(&dups->dl_files_root); head_node;
+		     head_node = rb_next(head_node)) {
+			head = rb_entry(head_node, struct file_hash_head,
+					h_node);
+			list_sort(NULL, &head->h_blocks, cmp_blocks);
+		}
+	}
 }
 
 int file_in_dups_list(struct dupe_blocks_list *dups, struct filerec *file)

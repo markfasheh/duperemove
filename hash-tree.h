@@ -78,7 +78,17 @@ static inline unsigned long block_len(struct file_block *block)
 int insert_hashed_block(struct hash_tree *tree, unsigned char *digest,
 			struct filerec *file, uint64_t loff, unsigned int flags);
 int remove_hashed_block(struct hash_tree *tree, struct file_block *block);
-
+/*
+ * We must call sort_file_hash_heads after inserting blocks into our
+ * hash_tree. The scan in find_dupes requires them to be in order of
+ * increasing offset.
+ *
+ * NOTE: Using an rbtree instead of doing the list sort winds up in a
+ * large performance loss. The item walk in lookup_walk_file_hash_head()
+ * is highly cpu bound so the extra instructions to do a linear tree walk
+ * really shows up during benchmarking.
+ */
+void sort_file_hash_heads(struct hash_tree *tree);
 void sort_hashes_by_size(struct hash_tree *tree);
 
 /*
