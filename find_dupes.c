@@ -54,6 +54,17 @@ struct filerec_compare {
 
 declare_alloc_tracking(filerec_compare);
 
+/*
+ * Extent search status globals. We track by number of compares. This
+ * could be an atomic but GCond requires a mutex so we might as well
+ * use it...
+ */
+static unsigned long long	search_total;
+static unsigned long long	search_processed;
+static GMutex			progress_mutex;
+static GCond			progress_updated;
+
+
 int cmp_filerec_compare(struct filerec_compare *cmp1,
 			struct filerec_compare *cmp2)
 {
@@ -174,6 +185,97 @@ static void free_filerec_compares(void)
 		rb_erase(&comp->c_node, &compare_tree.root);
 		free_filerec_compare(comp);
 	}
+}
+
+static void init_extent_search_status(unsigned long long nr_items)
+{
+	search_total = nr_items;
+}
+
+static void print_extent_search_status(unsigned long long processed)
+{
+	static int last_pos = -1;
+	int i, pos;
+	int width = 40;
+	float progress;
+
+	if (!stdout_is_tty || verbose || debug)
+		return;
+
+	progress = (float) processed / search_total;
+	pos = width * progress;
+
+	/* Only update our status every width% */
+	if (pos <= last_pos)
+		return;
+	last_pos = pos;
+
+	printf("\r[");
+	for(i = 0; i < width; i++) {
+		if (i < pos)
+			printf("#");
+		else if (i == pos)
+			printf("%%");
+		else
+			printf(" ");
+	}
+	printf("]");
+	fflush(stdout);
+}
+
+/*
+ * 'err' is impossible in the current code when this is called, but we
+ * can keep the handling here in case that changes.
+ */
+static void clear_extent_search_status(unsigned long long processed,
+				       int err)
+{
+	if (!stdout_is_tty || verbose || debug)
+		return;
+
+	if (err)
+		printf("\nSearch exited (%llu processed) with error %d: "
+		       "\"%s\"\n", processed, err, strerror(err));
+	else
+		printf("\nSearch completed with no errors.             \n");
+	fflush(stdout);
+}
+
+static void update_extent_search_status(unsigned long long processed)
+{
+	g_mutex_lock(&progress_mutex);
+	search_processed += processed;
+	g_cond_signal(&progress_updated);
+	g_mutex_unlock(&progress_mutex);
+}
+
+static void wait_update_extent_search_status(GThreadPool *pool)
+{
+	uint64_t end_time = g_get_monotonic_time () + 1 * G_TIME_SPAN_SECOND;
+	unsigned long long tmp, last = 0;
+
+	if (!stdout_is_tty || verbose || debug)
+		return;
+
+	/* Get the bar started */
+	print_extent_search_status(0);
+
+	g_mutex_lock(&progress_mutex);
+	while (search_processed < search_total) {
+		g_cond_wait_until(&progress_updated, &progress_mutex, end_time);
+		tmp = search_processed;
+		g_mutex_unlock(&progress_mutex);
+
+		if (tmp != last)
+			print_extent_search_status(tmp);
+		last = tmp;
+
+		g_mutex_lock(&progress_mutex);
+	}
+	g_mutex_unlock(&progress_mutex);
+
+	print_extent_search_status(search_processed);
+	clear_extent_search_status(search_processed, 0);
 }
 
 static void record_match(struct results_tree *res, unsigned char *digest,
@@ -364,60 +466,6 @@ static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
 	}
 }
 
-/*
- * Track by number of compares. This could be an atomic but GCond
- * requires a mutex so we might as well use it...
- */
-static unsigned long long	search_total;
-static unsigned long long	search_processed;
-static GMutex			progress_mutex;
-static GCond			progress_updated;
-static void print_extent_search_status(unsigned long long processed);
-static void clear_extent_search_status(unsigned long long processed,
-				       int err);
-
-static void init_extent_search_status(unsigned long long nr_items)
-{
-	search_total = nr_items;
-}
-
-static void update_extent_search_status(unsigned long long processed)
-{
-	g_mutex_lock(&progress_mutex);
-	search_processed += processed;
-	g_cond_signal(&progress_updated);
-	g_mutex_unlock(&progress_mutex);
-}
-
-static void wait_update_extent_search_status(GThreadPool *pool)
-{
-	uint64_t end_time = g_get_monotonic_time () + 1 * G_TIME_SPAN_SECOND;
-	unsigned long long tmp, last = 0;
-
-	if (!stdout_is_tty || verbose || debug)
-		return;
-
-	/* Get the bar started */
-	print_extent_search_status(0);
-
-	g_mutex_lock(&progress_mutex);
-	while (search_processed < search_total) {
-		g_cond_wait_until(&progress_updated, &progress_mutex, end_time);
-		tmp = search_processed;
-		g_mutex_unlock(&progress_mutex);
-
-		if (tmp != last)
-			print_extent_search_status(tmp);
-		last = tmp;
-
-		g_mutex_lock(&progress_mutex);
-	}
-	g_mutex_unlock(&progress_mutex);
-
-	print_extent_search_status(search_processed);
-	clear_extent_search_status(search_processed, 0);
-}
-
 static int find_dupes_worker(struct filerec_compare *compare,
 			     struct results_tree *res)
 {
@@ -523,55 +571,6 @@ out:
 		list_del_init(&file1->tmp_list);
 
 	return ret;
-}
-
-static void print_extent_search_status(unsigned long long processed)
-{
-	static int last_pos = -1;
-	int i, pos;
-	int width = 40;
-	float progress;
-
-	if (!stdout_is_tty || verbose || debug)
-		return;
-
-	progress = (float) processed / search_total;
-	pos = width * progress;
-
-	/* Only update our status every width% */
-	if (pos <= last_pos)
-		return;
-	last_pos = pos;
-
-	printf("\r[");
-	for(i = 0; i < width; i++) {
-		if (i < pos)
-			printf("#");
-		else if (i == pos)
-			printf("%%");
-		else
-			printf(" ");
-	}
-	printf("]");
-	fflush(stdout);
-}
-
-/*
- * 'err' is impossible in the current code when this is called, but we
- * can keep the handling here in case that changes.
- */
-static void clear_extent_search_status(unsigned long long processed,
-				       int err)
-{
-	if (!stdout_is_tty || verbose || debug)
-		return;
-
-	if (err)
-		printf("\nSearch exited (%llu processed) with error %d: "
-		       "\"%s\"\n", processed, err, strerror(err));
-	else
-		printf("\nSearch completed with no errors.             \n");
-	fflush(stdout);
 }
 
 static int find_all_dupes_filewise(struct hash_tree *tree,
