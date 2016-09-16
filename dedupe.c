@@ -105,7 +105,7 @@ static void print_btrfs_same_info(struct dedupe_ctxt *ctxt)
 		info = &same->info[i];
 		req = same_idx_to_request(ctxt, i);
 		file = req->req_file;
-		dprintf(_PRE"info[%d]: name: \"%s\", fd: %llu, logical_offset: "
+		dprintf(_PRE"info[%d]: name: \"%s\", fd: %lli, logical_offset: "
 			"%llu, bytes_deduped: %llu, status: %d\n",
 			i, file ? file->filename : "(null)", (long long)info->fd,
 			(unsigned long long)info->logical_offset,

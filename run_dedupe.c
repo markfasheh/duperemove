@@ -393,7 +393,7 @@ run_dedupe:
 		 */
 		if (ctxt->num_queued) {
 			g_mutex_lock(&console_mutex);
-			printf("[%p] Dedupe %d extents (id: ", g_thread_self(),
+			printf("[%p] Dedupe %u extents (id: ", g_thread_self(),
 			       ctxt->num_queued);
 			debug_print_digest_short(stdout, dext->de_hash);
 			printf(") with target: (%s, %s), "
