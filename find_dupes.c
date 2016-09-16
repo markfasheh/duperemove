@@ -505,8 +505,8 @@ static int run_compares(struct results_tree *res)
 		if (err) {
 			free_filerec_compare(compare);
 
-			fprintf(stderr, "Fatal error while deduping: %s\n",
-				err->message);
+			fprintf(stderr, "Fatal error while finding dupe "
+				"extents: %s\n", err->message);
 			g_error_free(err);
 			return ENOMEM;
 		}
