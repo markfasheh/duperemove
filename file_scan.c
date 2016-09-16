@@ -43,7 +43,6 @@
 #include "btrfs-util.h"
 #include "debug.h"
 #include "file_scan.h"
-#include "d_tree.h"
 #include "dbfile.h"
 #include "util.h"
 

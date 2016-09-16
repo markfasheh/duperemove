@@ -1,8 +1,6 @@
 #ifndef	__FILE_SCAN_H__
 #define	__FILE_SCAN_H__
 
-#include "d_tree.h"
-
 /* from duperemove.c */
 extern int run_dedupe;
 extern int one_file_system;
