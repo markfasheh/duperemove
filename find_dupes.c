@@ -528,10 +528,10 @@ static int add_compares(struct dupe_blocks_list *dups)
 	struct rb_node *node;
 	struct file_hash_head *fh;
 
-	vprintf("Gather files from hash: ");
-	if (verbose)
+	dprintf("Gather files from hash: ");
+	if (debug)
 		debug_print_digest_short(stdout, dups->dl_hash);
-	vprintf(" (%llu identical extents)\n", dups->dl_num_elem);
+	dprintf(" (%llu identical extents)\n", dups->dl_num_elem);
 
 	for (node = rb_first(&dups->dl_files_root); node; node = rb_next(node)) {
 		fh = rb_entry(node, struct file_hash_head, h_node);
