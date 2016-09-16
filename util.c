@@ -213,6 +213,8 @@ static int detect_ht(void)
 		/* Strip leading and trailing whitespace from val. */
 		while (isspace(*val) && *val != '\0')
 			val++;
+		if (*val == '\0')
+			continue;
 		c = &val[strlen(val) - 1];
 		while (isspace(*c) && c >= val) {
 			*c = '\0';
@@ -230,7 +232,10 @@ static int detect_ht(void)
 				c = strchr(flag, FLAGS_DELIM);
 				if (c) {
 					*c = '\0';
-					c++;
+					if (c < &line[LINE_MAX])
+						c++;
+					else
+						c = NULL;
 				}
 //				printf("\"flag: %s\"\n", flag);
 				if (!strcmp(flag, HT_FLAG))
