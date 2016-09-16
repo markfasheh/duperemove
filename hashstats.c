@@ -252,7 +252,7 @@ static int major, minor;
 static void print_file_info(void)
 {
 	printf("Raw header info for \"%s\":\n", serialize_fname);
-	printf("  version: %u.%u\tblock_size: %u\n", major, minor,
+	printf("  version: %d.%d\tblock_size: %u\n", major, minor,
 	       disk_blocksize);
 	printf("  num_files: %"PRIu64"\tnum_hashes: %"PRIu64"\n",
 	       disk_files, disk_hashes);

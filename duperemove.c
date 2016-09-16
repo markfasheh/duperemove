@@ -50,10 +50,10 @@
 /* exported via debug.h */
 int verbose = 0, debug = 0;
 
-#define MIN_BLOCKSIZE	(4*1024)
+#define MIN_BLOCKSIZE	(4U*1024)
 /* max blocksize is somewhat arbitrary. */
-#define MAX_BLOCKSIZE	(1024*1024)
-#define DEFAULT_BLOCKSIZE	(128*1024)
+#define MAX_BLOCKSIZE	(1024U*1024)
+#define DEFAULT_BLOCKSIZE	(128U*1024)
 unsigned int blocksize = DEFAULT_BLOCKSIZE;
 
 int run_dedupe = 0;

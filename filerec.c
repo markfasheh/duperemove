@@ -676,7 +676,7 @@ int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
 			if (fm_ext[i].fe_flags & FIEMAP_EXTENT_LAST)
 				last = 1;
 #ifndef FILEREC_TEST
-			dprintf("(fiemap) [%d] fe_logical: %llu, "
+			dprintf("(fiemap) [%u] fe_logical: %llu, "
 				"fe_length: %llu, fe_physical: %llu, "
 				"fe_flags: 0x%x\n",
 				i, (unsigned long long)fm_ext[i].fe_logical,
@@ -684,7 +684,7 @@ int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
 				(unsigned long long)fm_ext[i].fe_physical,
 				fm_ext[i].fe_flags);
 #else
-			dprintf("(fiemap) [%d] fe_logical: %llu, "
+			dprintf("(fiemap) [%u] fe_logical: %llu, "
 				"fe_length: %llu, fe_physical: %llu, "
 				"fe_flags: 0x%x %s\n",
 				i, (unsigned long long)fm_ext[i].fe_logical,
