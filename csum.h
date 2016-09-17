@@ -73,7 +73,6 @@ struct csum_module {
 	struct csum_module_ops *ops;
 };
 
-extern struct csum_module csum_module_sha256;
 extern struct csum_module csum_module_xxhash;
 extern struct csum_module csum_module_murmur3;
 

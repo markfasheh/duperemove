@@ -9,13 +9,12 @@ MANPAGES=duperemove.8 btrfs-extent-same.8 hashstats.8 show-shared-extents.8
 HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
 	btrfs-ioctl.h filerec.h btrfs-util.h debug.h util.h \
 	memstats.h file_scan.h find_dupes.h run_dedupe.h xxhash.h \
-	sha256.h sha256-config.h bswap.h dbfile.h interval_tree.h \
-	interval_tree_generic.h rbtree_augmented.h list_sort.h \
-	stats.h
+	bswap.h dbfile.h interval_tree.h interval_tree_generic.h \
+	rbtree_augmented.h list_sort.h stats.h
 CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
 	btrfs-util.c util.c memstats.c file_scan.c find_dupes.c run_dedupe.c \
 	csum.c dbfile.c interval_tree.c list_sort.c stats.c debug.c
-hash_CFILES=csum-xxhash.c xxhash.c csum-murmur3.c csum-sha256.c sha256.c
+hash_CFILES=csum-xxhash.c xxhash.c csum-murmur3.c
 
 CFILES += $(hash_CFILES)
 

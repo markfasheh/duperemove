@@ -28,7 +28,6 @@ char		hash_type[8];
 
 static struct csum_module *modules[] = {
 	&csum_module_murmur3,
-	&csum_module_sha256,
 	&csum_module_xxhash,
 	NULL,
 };
