@@ -150,9 +150,12 @@ int filerecs_compared(struct filerec *file1, struct filerec *file2)
 		test = file1;
 	}
 
-	if (find_filerec_token_rb(&file->comparisons, test))
+	g_mutex_lock(&file->tree_mutex);
+	if (find_filerec_token_rb(&file->comparisons, test)) {
+		g_mutex_unlock(&file->tree_mutex);
 		return 1;
-
+	}
+	g_mutex_unlock(&file->tree_mutex);
 	return 0;
 }
 
@@ -167,14 +170,26 @@ int mark_filerecs_compared(struct filerec *file1, struct filerec *file2)
 		test = file1;
 	}
 
-	if (find_filerec_token_rb(&file->comparisons, test))
+	g_mutex_lock(&file->tree_mutex);
+	if (find_filerec_token_rb(&file->comparisons, test)) {
+		g_mutex_unlock(&file->tree_mutex);
 		return 0;
+	}
+	g_mutex_unlock(&file->tree_mutex);
 
 	t = filerec_token_new(test);
 	if (!t)
 		return ENOMEM;
 
+	g_mutex_lock(&file->tree_mutex);
+	if (find_filerec_token_rb(&file->comparisons, test)) {
+		g_mutex_unlock(&file->tree_mutex);
+		filerec_token_free(t);
+		return 0;
+	}
+
 	insert_filerec_token_rb(&file->comparisons, t);
+	g_mutex_unlock(&file->tree_mutex);
 
 	return 0;
 }
@@ -327,7 +342,7 @@ static struct filerec *filerec_alloc_insert(const char *filename,
 		file->comparisons = RB_ROOT;
 		file->size = size;
 		file->mtime = mtime;
-		g_mutex_init(&file->extent_tree_mutex);
+		g_mutex_init(&file->tree_mutex);
 
 		insert_filerec(file);
 		insert_filerec_by_name(file);

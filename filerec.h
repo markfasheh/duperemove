@@ -48,10 +48,12 @@ struct filerec {
 
 	struct list_head	tmp_list;
 
+	/* protects comparisons and extent_tree trees */
+	GMutex			tree_mutex;
+
 	struct rb_root		comparisons;
 
 	/* interval tree of dup-extents belonging to this file */
-	GMutex			extent_tree_mutex;
 	struct rb_root		extent_tree;
 #ifdef	ITDEBUG
 	uint64_t		num_extents;
