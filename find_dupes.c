@@ -466,60 +466,27 @@ static void find_file_dupes(struct filerec *file, struct filerec *walk_file,
 	}
 }
 
-static int find_dupes_worker(struct filerec_compare *compare,
+struct find_dupes_cmp {
+	struct filerec *file1;
+	struct filerec *file2;
+};
+declare_alloc_tracking(find_dupes_cmp);
+
+static int find_dupes_worker(struct find_dupes_cmp *cmp,
 			     struct results_tree *res)
 {
-	find_file_dupes(compare->c_file_high, compare->c_file_low, res);
-	free_filerec_compare(compare);
+	struct filerec *file1 = cmp->file1;
+	struct filerec *file2 = cmp->file1;
+
+	free_find_dupes_cmp(cmp);
+
+	find_file_dupes(file1, file2, res);
 	update_extent_search_status(1);
-	return 0;
+
+	return mark_filerecs_compared(file1, file2);
 }
 
-static int run_compares(struct results_tree *res)
-{
-	struct rb_node *node;
-	struct rb_root *root = &compare_tree.root;
-	struct filerec_compare *compare;
-	GError *err = NULL;
-	GThreadPool *pool = NULL;
-
-	init_extent_search_status(compare_tree.num_compares);
-
-	dprintf("%llu compares to process\n", compare_tree.num_compares);
-
-	pool = g_thread_pool_new((GFunc) find_dupes_worker, res,
-				 cpu_threads, TRUE, &err);
-	if (err) {
-		fprintf(stderr,
-			"Unable to create find file dupes thread pool: %s\n",
-			err->message);
-		g_error_free(err);
-		return ENOMEM;
-	}
-
-	while ((node = rb_first(root)) != NULL) {
-		compare = rb_entry(node, struct filerec_compare, c_node);
-		rb_erase(&compare->c_node, root);
-
-		g_thread_pool_push(pool, compare, &err);
-		if (err) {
-			free_filerec_compare(compare);
-
-			fprintf(stderr, "Fatal error while finding dupe "
-				"extents: %s\n", err->message);
-			g_error_free(err);
-			return ENOMEM;
-		}
-	}
-
-	wait_update_extent_search_status(pool);
-
-	g_thread_pool_free(pool, FALSE, TRUE);
-
-	return 0;
-}
-
-static int add_compares(struct dupe_blocks_list *dups)
+static int push_compares(GThreadPool *pool, struct dupe_blocks_list *dups)
 {
 	int ret;
 	struct filerec *file1, *file2, *tmp1, *tmp2;
@@ -527,6 +494,7 @@ static int add_compares(struct dupe_blocks_list *dups)
 	unsigned int cmp_tot = 0;
 	struct rb_node *node;
 	struct file_hash_head *fh;
+	GError *err = NULL;
 
 	dprintf("Gather files from hash: ");
 	if (debug)
@@ -551,13 +519,30 @@ static int add_compares(struct dupe_blocks_list *dups)
 			if (filerec_deduped(file1) && filerec_deduped(file2))
 				continue;
 
-			if (find_filerec_compare(file1, file2))
+			if (filerecs_compared(file1, file2))
 				continue;
 
 			if (dedupe_same_file || file1 != file2) {
-				ret = add_filerec_compare(file1, file2);
-				if (ret)
-					goto out;
+				/* fire this off to a worker */
+				struct find_dupes_cmp *cmp;
+
+				cmp = malloc_find_dupes_cmp();
+				if (!cmp)
+					return ENOMEM;
+
+				cmp->file1 = file1;
+				cmp->file2 = file2;
+
+				g_thread_pool_push(pool, cmp, &err);
+				if (err) {
+					free_find_dupes_cmp(cmp);
+
+					fprintf(stderr,
+						"Error from thread pool: %s\n ",
+						err->message);
+					g_error_free(err);
+					return ENOMEM;
+				}
 			}
 		}
 
@@ -566,7 +551,7 @@ static int add_compares(struct dupe_blocks_list *dups)
 	}
 
 	ret = 0;
-out:
+
 	list_for_each_entry_safe(file1, tmp1, &cmp_files, tmp_list)
 		list_del_init(&file1->tmp_list);
 
@@ -580,9 +565,21 @@ static int find_all_dupes_filewise(struct hash_tree *tree,
 	struct rb_root *root = &tree->root;
 	struct rb_node *node = rb_first(root);
 	struct dupe_blocks_list *dups;
+	GError *err = NULL;
+	GThreadPool *pool = NULL;
 
 	printf("Hashing completed. Using %u threads to calculate duplicate "
 	       "extents. This may take some time.\n", cpu_threads);
+
+	pool = g_thread_pool_new((GFunc) find_dupes_worker, res,
+				 cpu_threads, TRUE, &err);
+	if (err) {
+		fprintf(stderr,
+			"Unable to create find file dupes thread pool: %s\n",
+			err->message);
+		g_error_free(err);
+		return ENOMEM;
+	}
 
 	while (1) {
 		if (node == NULL)
@@ -591,18 +588,21 @@ static int find_all_dupes_filewise(struct hash_tree *tree,
 		dups = rb_entry(node, struct dupe_blocks_list, dl_node);
 
 		if (dups->dl_num_elem > 1) {
-			ret = add_compares(dups);
-			if (ret)
+			ret = push_compares(pool, dups);
+			if (ret) {
+				fprintf(stderr,
+					"Error: %s while comparing files",
+					strerror(ret));
 				goto out;
+			}
+			       
 		}
 
 		node = rb_next(node);
 	}
 
-	ret = run_compares(res);
-
 out:
-	free_filerec_compares();
+	g_thread_pool_free(pool, FALSE, TRUE);
 
 	return ret;
 }

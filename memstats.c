@@ -38,6 +38,7 @@ void print_mem_stats(void)
 	show_allocs_filerec_token();
 	show_allocs_file_hash_head();
 	show_allocs_filerec_compare();
+	show_allocs_find_dupes_cmp();
 	sqlite3_highwater = sqlite3_memory_highwater(0);
 	sqlite3_memused = sqlite3_memory_used();
 	printf("Sqlite3 used: %"PRIu64"  highwater: %"PRIu64"\n",

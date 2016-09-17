@@ -79,6 +79,7 @@ declare_alloc_tracking_header(filerec);
 declare_alloc_tracking_header(filerec_token);
 declare_alloc_tracking_header(file_hash_head);
 declare_alloc_tracking_header(filerec_compare);
+declare_alloc_tracking_header(find_dupes_cmp);
 /* Can be called anywhere we want to dump the above statistics */
 void print_mem_stats(void);
 
