@@ -135,6 +135,65 @@ struct filerec_token *filerec_token_new(struct filerec *file)
 	return token;
 }
 
+int filerecs_compared(struct filerec *file1, struct filerec *file2)
+{
+	struct filerec *file = file1;
+	struct filerec *test = file2;
+
+	/*
+	 * We can store only one pointer if we make a rule that we
+	 * always search the filerec with the lower pointer value for
+	 * the one with the higher pointer value.
+	 */
+	if (file1 > file2) {
+		file = file2;
+		test = file1;
+	}
+
+	if (find_filerec_token_rb(&file->comparisons, test))
+		return 1;
+
+	return 0;
+}
+
+int mark_filerecs_compared(struct filerec *file1, struct filerec *file2)
+{
+	struct filerec_token *t;
+	struct filerec *file = file1;
+	struct filerec *test = file2;
+
+	if (file1 > file2) {
+		file = file2;
+		test = file1;
+	}
+
+	if (find_filerec_token_rb(&file->comparisons, test))
+		return 0;
+
+	t = filerec_token_new(test);
+	if (!t)
+		return ENOMEM;
+
+	insert_filerec_token_rb(&file->comparisons, t);
+
+	return 0;
+}
+
+static void free_compared_tree(struct filerec *file)
+{
+	struct rb_node *n = rb_first(&file->comparisons);
+	struct filerec_token *t;
+
+	while (n) {
+		t = rb_entry(n, struct filerec_token, t_node);
+		n = rb_next(n);
+		rb_erase(&t->t_node, &file->comparisons);
+		filerec_token_free(t);
+	}
+
+	abort_on(!RB_EMPTY_ROOT(&file->comparisons));
+}
+
 static int cmp_filerecs(struct filerec *file1, uint64_t file2_inum,
 			uint64_t file2_subvolid)
 {
@@ -254,8 +313,10 @@ static struct filerec *filerec_alloc_insert(const char *filename,
 
 	if (file) {
 		file->filename = strdup(filename);
-		if (!file->filename)
+		if (!file->filename) {
+			free_compared_tree(file);
 			return NULL;
+		}
 
 		file->fd = -1;
 		file->block_tree = RB_ROOT;
@@ -263,6 +324,7 @@ static struct filerec *filerec_alloc_insert(const char *filename,
 		rb_init_node(&file->inum_node);
 		file->inum = inum;
 		file->subvolid = subvolid;
+		file->comparisons = RB_ROOT;
 		file->size = size;
 		file->mtime = mtime;
 		g_mutex_init(&file->extent_tree_mutex);
@@ -302,6 +364,7 @@ void filerec_free(struct filerec *file)
 			rb_erase(&file->inum_node, &filerec_by_inum);
 		if (!RB_EMPTY_NODE(&file->name_node))
 			rb_erase(&file->name_node, &filerec_by_name);
+		free_compared_tree(file);
 		free_filerec(file);
 		num_filerecs--;
 	}
