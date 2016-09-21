@@ -201,7 +201,11 @@ restart:
 
 static void usage(const char *prog)
 {
-	printf("duperemove %s\n", VERSTRING);
+	char *s = NULL;
+#ifdef	DEBUG_BUILD
+	s = " (debug build)";
+#endif
+	printf("duperemove %s%s\n", VERSTRING, s ? s : "");
 	if (version_only)
 		return;
 
@@ -563,6 +567,9 @@ static void print_header(void)
 {
 	printf("Using %uK blocks\n", blocksize / 1024);
 	printf("Using hash: %s\n", csum_mod->name);
+#ifdef	DEBUG_BUILD
+	printf("Debug build, performance may be impacted.\n");
+#endif
 	printf("Gathering file list...\n");
 }
 
