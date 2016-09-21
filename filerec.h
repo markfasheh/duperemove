@@ -142,7 +142,7 @@ struct filerec_token *filerec_token_new(struct filerec *file);
 
 int filerecs_compared(struct filerec *file1, struct filerec *file2);
 int mark_filerecs_compared(struct filerec *file1, struct filerec *file2);
-
+void free_all_filerec_compared(void);
 
 struct fiemap_ctxt;
 struct fiemap_ctxt *alloc_fiemap_ctxt(void);

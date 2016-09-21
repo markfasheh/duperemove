@@ -209,6 +209,14 @@ static void free_compared_tree(struct filerec *file)
 	abort_on(!RB_EMPTY_ROOT(&file->comparisons));
 }
 
+void free_all_filerec_compared(void)
+{
+	struct filerec *file;
+
+	list_for_each_entry(file, &filerec_list, rec_list)
+		free_compared_tree(file);
+}
+
 static int cmp_filerecs(struct filerec *file1, uint64_t file2_inum,
 			uint64_t file2_subvolid)
 {

@@ -472,9 +472,12 @@ static int find_all_dupes_filewise(struct hash_tree *tree,
 	wait_update_extent_search_status(pool);
 
 out:
-
 	g_thread_pool_free(pool, FALSE, TRUE);
-
+	/*
+	 * Save memory by freeing each filerec compared tree once all
+	 * threads have finished.
+	 */
+	free_all_filerec_compared();
 	return ret;
 }
 
