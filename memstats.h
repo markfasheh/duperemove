@@ -17,6 +17,8 @@
 #ifndef	__MEMSTATS_H__
 #define	__MEMSTATS_H__
 
+#include "glib.h"
+
 /*
  * Rudimentary tracking of object allocation. Use this within a c file
  * to declare the tracking variable and the print function body.
@@ -27,38 +29,54 @@
  */
 static inline void increment_counters(unsigned long long *num_type,
 				      unsigned long long *max_type,
-				      unsigned long long count)
+				      unsigned long long count, GMutex *mutex)
 {
+#ifdef	DEBUG_BUILD
+	g_mutex_lock(mutex);
+#endif
 	(*num_type) += count;
 	if ((*num_type) > (*max_type))
 		(*max_type) = *num_type;
+#ifdef	DEBUG_BUILD
+	g_mutex_unlock(mutex);
+#endif
 }
-static inline void decrement_counters(unsigned long long *num_type)
+static inline void decrement_counters(unsigned long long *num_type,
+				      GMutex *mutex)
 {
+#ifdef	DEBUG_BUILD
+	g_mutex_lock(mutex);
+#endif
 	(*num_type)--;
+#ifdef	DEBUG_BUILD
+	g_mutex_unlock(mutex);
+#endif
 }
 
 #define declare_alloc_tracking(_type)					\
+GMutex	alloc_##_mutex;							\
 unsigned long long num_##_type = 0;					\
 unsigned long long max_##_type = 0;					\
 static inline struct _type *malloc_##_type(void)			\
 {									\
 	struct _type *t = malloc(sizeof(struct _type));			\
 	if (t)								\
-		increment_counters(&num_##_type, &max_##_type, 1ULL);	\
+		increment_counters(&num_##_type, &max_##_type, 1ULL,	\
+				   &alloc_##_mutex);			\
 	return t;							\
 }									\
 static inline struct _type *calloc_##_type(int n)			\
 {									\
 	struct _type *t = calloc(n, sizeof(struct _type));		\
 	if (t)								\
-		increment_counters(&num_##_type, &max_##_type, n);	\
+		increment_counters(&num_##_type, &max_##_type, n,	\
+				   &alloc_##_mutex);			\
 	return t;							\
 }									\
 static inline void free_##_type(struct _type *t)			\
 {									\
 	if (t) {							\
-		decrement_counters(&num_##_type);			\
+		decrement_counters(&num_##_type, &alloc_##_mutex);	\
 		free(t);						\
 	}								\
 }									\
