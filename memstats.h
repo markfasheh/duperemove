@@ -25,33 +25,40 @@
  * prototype (see below) and print_mem_stats() in memstats.c needs an
  * update.
  */
+static inline void increment_counters(unsigned long long *num_type,
+				      unsigned long long *max_type,
+				      unsigned long long count)
+{
+	(*num_type) += count;
+	if ((*num_type) > (*max_type))
+		(*max_type) = *num_type;
+}
+static inline void decrement_counters(unsigned long long *num_type)
+{
+	(*num_type)--;
+}
+
 #define declare_alloc_tracking(_type)					\
 unsigned long long num_##_type = 0;					\
 unsigned long long max_##_type = 0;					\
 static inline struct _type *malloc_##_type(void)			\
 {									\
 	struct _type *t = malloc(sizeof(struct _type));			\
-	if (t) {							\
-		num_##_type++;						\
-		if (num_##_type > max_##_type)				\
-			max_##_type = num_##_type;			\
-	}								\
+	if (t)								\
+		increment_counters(&num_##_type, &max_##_type, 1ULL);	\
 	return t;							\
 }									\
 static inline struct _type *calloc_##_type(int n)			\
 {									\
 	struct _type *t = calloc(n, sizeof(struct _type));		\
-	if (t) {							\
-		num_##_type += n;					\
-		if (num_##_type > max_##_type)				\
-			max_##_type = num_##_type;			\
-	}								\
+	if (t)								\
+		increment_counters(&num_##_type, &max_##_type, n);	\
 	return t;							\
 }									\
 static inline void free_##_type(struct _type *t)			\
 {									\
 	if (t) {							\
-		num_##_type--;						\
+		decrement_counters(&num_##_type);			\
 		free(t);						\
 	}								\
 }									\
@@ -81,5 +88,25 @@ declare_alloc_tracking_header(file_hash_head);
 declare_alloc_tracking_header(find_dupes_cmp);
 /* Can be called anywhere we want to dump the above statistics */
 void print_mem_stats(void);
+
+static inline void *malloc_count(size_t size, unsigned long long *num_type,
+				 unsigned long long *max_type)
+{
+	void *obj = malloc(size);
+	if (obj) {
+		(*num_type)++;
+		if (num_type > max_type)
+			*max_type = *num_type;
+	}
+
+	return obj;
+}
+static inline void *calloc_count(size_t size, unsigned long long *num_type)
+{
+	void *obj = malloc(size);
+	if (obj)
+		(*num_type)++;
+	return obj;
+}
 
 #endif	/* __MEMSTATS_H__ */
