@@ -69,8 +69,8 @@ SBINDIR = $(PREFIX)/sbin
 MANDIR = $(SHAREDIR)/man
 
 .c.o:
-	$(check) $(CFLAGS) -c $< -o $@ $(LIBRARY_FLAGS)
-	$(CC) $(CFLAGS) -c $< -o $@ $(LIBRARY_FLAGS)
+	$(check) $(CPPFLAGS) $(CFLAGS) -c $< -o $@ $(LIBRARY_FLAGS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -c $< -o $@ $(LIBRARY_FLAGS)
 
 all: $(progs)
 debug:
@@ -79,7 +79,7 @@ debug:
 #TODO: Replace this with an auto-dependency
 $(objects): $(HEADERS)
 duperemove: $(objects)
-	$(CC) $(CFLAGS) $(objects) -o duperemove $(LIBRARY_FLAGS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(objects) -o duperemove $(LIBRARY_FLAGS)
 
 tarball: clean
 	mkdir -p $(TEMP_INSTALL_DIR)/$(DIST)
@@ -88,7 +88,7 @@ tarball: clean
 	rm -fr $(TEMP_INSTALL_DIR)
 
 btrfs-extent-same: btrfs-extent-same.c
-	$(CC) $(CFLAGS) -o btrfs-extent-same btrfs-extent-same.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o btrfs-extent-same btrfs-extent-same.c
 
 install: $(install_progs) $(MANPAGES)
 	mkdir -p -m 0755 $(DESTDIR)$(SBINDIR)
@@ -101,13 +101,13 @@ install: $(install_progs) $(MANPAGES)
 	done
 
 csum-test: $(csum_test_obj) csum-test.c
-	$(CC) $(CFLAGS) $(csum_test_obj) -o csum-test csum-test.c  $(LIBRARY_FLAGS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(csum_test_obj) -o csum-test csum-test.c  $(LIBRARY_FLAGS)
 
 show-shared-extents: $(show_shared_obj) filerec.c
-	$(CC) $(CFLAGS) -DFILEREC_TEST filerec.c $(show_shared_obj) -o show-shared-extents $(LIBRARY_FLAGS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -DFILEREC_TEST filerec.c $(show_shared_obj) -o show-shared-extents $(LIBRARY_FLAGS)
 
 hashstats: $(hashstats_obj) hashstats.c
-	$(CC) $(CFLAGS) $(hashstats_obj) hashstats.c -o hashstats $(LIBRARY_FLAGS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(hashstats_obj) hashstats.c -o hashstats $(LIBRARY_FLAGS)
 
 clean:
 	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same filerec-test show-shared-extents hashstats csum-*.o *~
