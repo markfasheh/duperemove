@@ -46,8 +46,12 @@ glib_LIBS=$(shell pkg-config --libs glib-2.0)
 sqlite_CFLAGS=$(shell pkg-config --cflags sqlite3)
 sqlite_LIBS=$(shell pkg-config --libs sqlite3)
 
+ifdef DEBUG
+	DEBUG_FLAGS = -ggdb3 -fsanitize=address -fno-omit-frame-pointer	\
+			-DDEBUG_BUILD
+endif
 override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\" \
-	$(hash_CFLAGS) $(glib_CFLAGS) $(sqlite_CFLAGS) -rdynamic
+	$(hash_CFLAGS) $(glib_CFLAGS) $(sqlite_CFLAGS) -rdynamic $(DEBUG_FLAGS)
 LIBRARY_FLAGS += $(hash_LIBS) $(glib_LIBS) $(sqlite_LIBS) -lm
 
 # make C=1 to enable sparse
@@ -69,8 +73,8 @@ MANDIR = $(SHAREDIR)/man
 	$(CC) $(CFLAGS) -c $< -o $@ $(LIBRARY_FLAGS)
 
 all: $(progs)
-debug: CFLAGS += -ggdb3 -fsanitize=address -fno-omit-frame-pointer -DDEBUG_BUILD
-debug: $(progs)
+debug:
+	@echo "Deprecated, use \"make DEBUG=1\" instead please."
 
 #TODO: Replace this with an auto-dependency
 $(objects): $(HEADERS)
