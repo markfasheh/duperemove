@@ -340,7 +340,7 @@ static int find_dupes_worker(struct find_dupes_cmp *cmp,
 			     struct results_tree *res)
 {
 	struct filerec *file1 = cmp->file1;
-	struct filerec *file2 = cmp->file1;
+	struct filerec *file2 = cmp->file2;
 
 	free_find_dupes_cmp(cmp);
 
