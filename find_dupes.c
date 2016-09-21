@@ -55,15 +55,13 @@ struct filerec_compare {
 declare_alloc_tracking(filerec_compare);
 
 /*
- * Extent search status globals. We track by number of compares. This
- * could be an atomic but GCond requires a mutex so we might as well
- * use it...
+ * Extent search status globals. This could be an atomic but GCond
+ * requires a mutex so we might as well use it...
  */
 static unsigned long long	search_total;
 static unsigned long long	search_processed;
 static GMutex			progress_mutex;
 static GCond			progress_updated;
-
 
 int cmp_filerec_compare(struct filerec_compare *cmp1,
 			struct filerec_compare *cmp2)
@@ -187,7 +185,8 @@ static void free_filerec_compares(void)
 	}
 }
 
-static void init_extent_search_status(unsigned long long nr_items)
+/* XXX: This is allowed to be called *after* update_extent_search_status() */
+static void set_extent_search_status_count(unsigned long long nr_items)
 {
 	search_total = nr_items;
 }
@@ -486,7 +485,8 @@ static int find_dupes_worker(struct find_dupes_cmp *cmp,
 	return mark_filerecs_compared(file1, file2);
 }
 
-static int push_compares(GThreadPool *pool, struct dupe_blocks_list *dups)
+static int push_compares(GThreadPool *pool, struct dupe_blocks_list *dups,
+			 unsigned long long *pushed)
 {
 	int ret;
 	struct filerec *file1, *file2, *tmp1, *tmp2;
@@ -543,6 +543,7 @@ static int push_compares(GThreadPool *pool, struct dupe_blocks_list *dups)
 					g_error_free(err);
 					return ENOMEM;
 				}
+				(*pushed)++;
 			}
 		}
 
@@ -567,6 +568,7 @@ static int find_all_dupes_filewise(struct hash_tree *tree,
 	struct dupe_blocks_list *dups;
 	GError *err = NULL;
 	GThreadPool *pool = NULL;
+	unsigned long long pushed = 0;
 
 	printf("Hashing completed. Using %u threads to calculate duplicate "
 	       "extents. This may take some time.\n", cpu_threads);
@@ -588,20 +590,24 @@ static int find_all_dupes_filewise(struct hash_tree *tree,
 		dups = rb_entry(node, struct dupe_blocks_list, dl_node);
 
 		if (dups->dl_num_elem > 1) {
-			ret = push_compares(pool, dups);
+			ret = push_compares(pool, dups, &pushed);
 			if (ret) {
 				fprintf(stderr,
 					"Error: %s while comparing files",
 					strerror(ret));
 				goto out;
 			}
-			       
 		}
 
 		node = rb_next(node);
+
 	}
 
+	set_extent_search_status_count(pushed);
+	wait_update_extent_search_status(pool);
+
 out:
+
 	g_thread_pool_free(pool, FALSE, TRUE);
 
 	return ret;
