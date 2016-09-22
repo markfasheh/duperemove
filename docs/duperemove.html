@@ -240,7 +240,11 @@ but can prevent deduplication of zeroed files.
 <p class="tp1"><b>-b size</b>
 </p>
 
-<p class="tp2 j">Use the specified block size. The default is <b>128K</b>.
+<p class="tp2 j">Use the specified block size. Raising the block size will consume less
+memory but may miss some duplicate blocks. Conversely, lowering the
+blocksize consumes more memory and may find more duplicate blocks. The
+default blocksize of <b>128K</b> was chosen with these parameters in
+mind.
 <br />
 <br />
 </p>

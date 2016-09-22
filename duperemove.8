@@ -136,7 +136,11 @@ but can prevent deduplication of zeroed files.
 
 .TP
 \fB\-b size\fR
-Use the specified block size. The default is \fB128K\fR.
+Use the specified block size. Raising the block size will consume less
+memory but may miss some duplicate blocks. Conversely, lowering the
+blocksize consumes more memory and may find more duplicate blocks. The
+default blocksize of \fB128K\fR was chosen with these parameters in
+mind.
 
 .TP
 \fB\--io-threads=N\fR
