@@ -388,7 +388,11 @@ deduped from.
 <p class="tp1"><b>--hash=alg</b>
 </p>
 
-<p class="tp2 j">Supported alg: sha256, xxhash, murmur3
+<p class="tp2 j">You can choose between murmur3 and xxhash. The default is murmur3 as
+it is very fast and can generate 128 bit digests for a very small
+chance of collision. Xxhash may be faster but generates only 64 bit
+digests. Both hashes are fast enough that the default should work well
+for the overwhelming majority of users.
 <br />
 <br />
 </p>
