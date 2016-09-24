@@ -411,6 +411,17 @@ static int push_compares(GThreadPool *pool, struct dupe_blocks_list *dups,
 				(*pushed)++;
 			}
 		}
+		/*
+		 * Throttle how many compares we're allocating and
+		 * queuing, otherwise we run the risk of running into
+		 * an ENOMEM. We can abuse the progress conditional
+		 * wait queue for this as each worker thread will
+		 * activate it on the way out.
+		 */
+		g_mutex_lock(&progress_mutex);
+		while (g_thread_pool_unprocessed(pool) >= 4096)
+			g_cond_wait(&progress_updated, &progress_mutex);
+		g_mutex_unlock(&progress_mutex);
 
 		cmp_tot--;
 		list_del_init(&file1->tmp_list);
@@ -465,7 +476,6 @@ static int find_all_dupes_filewise(struct hash_tree *tree,
 		}
 
 		node = rb_next(node);
-
 	}
 
 	set_extent_search_status_count(pushed);
