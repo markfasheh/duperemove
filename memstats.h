@@ -27,28 +27,31 @@
  * prototype (see below) and print_mem_stats() in memstats.c needs an
  * update.
  */
+#ifdef	DEBUG_BUILD
+#define	LOCK_MEMSTATS
+#endif
 static inline void increment_counters(unsigned long long *num_type,
 				      unsigned long long *max_type,
 				      unsigned long long count, GMutex *mutex)
 {
-#ifdef	DEBUG_BUILD
+#ifdef	LOCK_MEMSTATS
 	g_mutex_lock(mutex);
 #endif
 	(*num_type) += count;
 	if ((*num_type) > (*max_type))
 		(*max_type) = *num_type;
-#ifdef	DEBUG_BUILD
+#ifdef	LOCK_MEMSTATS
 	g_mutex_unlock(mutex);
 #endif
 }
 static inline void decrement_counters(unsigned long long *num_type,
 				      GMutex *mutex)
 {
-#ifdef	DEBUG_BUILD
+#ifdef	LOCK_MEMSTATS
 	g_mutex_lock(mutex);
 #endif
 	(*num_type)--;
-#ifdef	DEBUG_BUILD
+#ifdef	LOCK_MEMSTATS
 	g_mutex_unlock(mutex);
 #endif
 }
