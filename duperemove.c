@@ -56,7 +56,7 @@ unsigned int blocksize = DEFAULT_BLOCKSIZE;
 int run_dedupe = 0;
 int recurse_dirs = 0;
 int one_file_system = 1;
-int block_dedupe = 0;
+int block_dedupe = 1;
 int dedupe_same_file = 0;
 int skip_zeroes = 0;
 

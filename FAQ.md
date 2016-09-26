@@ -2,7 +2,7 @@
 
 ### Is there an upper limit to the amount of data duperemove can process?
 
-Duperemove v0.10 is fast at reading and cataloging data. Dedupe runs
+Duperemove v0.11 is fast at reading and cataloging data. Dedupe runs
 will be memory limited unless the '--hashfile' option is used. '--hashfile'
 allows duperemove to temporarily store duplicated hashes to disk, thus removing
 the large memory overhead and allowing for a far larger amount of data to be
@@ -11,13 +11,6 @@ your disks and cpu.
 
 Actual performance numbers are dependent on hardware - up to date
 testing information is kept [on the wiki](https://github.com/markfasheh/duperemove/wiki/Performance-Numbers)
-
-
-### Why does it not print out all duplicate extents?
-
-Internally duperemove is classifying extents based on various criteria
-like length, number of identical extents, etc. The printout we give is
-based on the results of that classification.
 
 
 ### How can I find out my space savings after a dedupe?

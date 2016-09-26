@@ -8,7 +8,7 @@ duperemove \- Find duplicate extents and print them to stdout
 \fBduperemove\fR is a simple tool for finding duplicated extents and
 submitting them for deduplication. When given a list of files it will
 hash their contents on a block by block basis and compare those hashes
-to each other, finding and categorizing extents that match each
+to each other, finding and categorizing blocks that match each
 other. When given the \fB-d\fR option, \fBduperemove\fR will submit
 those extents for deduplication using the Linux kernel extent-same
 ioctl.
@@ -35,10 +35,6 @@ candidates for deduplication. As a result, readonly mode is useful for
 seeing what duperemove might do when run with \fB-d\fR. The output could
 also be used by some other software to submit the extents for
 deduplication at a later time.
-
-It is important to note that this mode will not print out \fBall\fR
-instances of matching extents, just those it would consider for
-deduplication.
 
 Generally, duperemove does not concern itself with the underlying
 representation of the extents it processes. Some of them could be
@@ -186,10 +182,14 @@ fiemap during the file scan stage, you will also want to use the
 \fB--lookup-extents=no\fR option.
 .TP
 \fB[no]block\fR
-Defaults to \fBoff\fR. Dedupe by block - don't optimize our data into
-extents before dedupe. Generally this is undesirable as it will
-greatly increase the total number of dedupe requests. There is also a
-larger potential for file fragmentation.
+Defaults to \fBon\fR. Duperemove submits duplicate blocks directly to
+the dedupe engine.
+
+Duperemove can optionally optimize the duplicate block lists into
+larger extents prior to dedupe submission. The search algorithm used
+for this however has a very high memory and cpu overhead, but may
+reduce the number of extent references created during dedupe. If you'd
+like to try this, run with 'noblock'.
 .RE
 
 .TP
