@@ -114,6 +114,9 @@ void run_filerec_stats(void)
 {
 	struct filerec *file;
 	uint64_t dupe_bytes, deduped_bytes;
+	uint64_t total_dupe, total_deduped;
+
+	total_dupe = total_deduped = 0;
 
 	printf("---- FIND DUPES STATS ----\n");
 	printf("<filename>, <dupe bytes found>, <dupe bytes to submit>\n");
@@ -134,7 +137,11 @@ void run_filerec_stats(void)
 			print_all_blocks(file);
 			print_all_extents(file);
 		}
+		total_dupe += dupe_bytes;
+		total_deduped += deduped_bytes;
 	}
-
+	printf("Total bytes to submit: %"PRIu64"\t Total dupe bytes: %"PRIu64
+	       "\t%%%.0f deduped.\n", total_deduped, total_dupe,
+	       (double)total_deduped / (double)total_dupe * 100);
 	printf("---- END FIND DUPES STATS ----\n");
 }
