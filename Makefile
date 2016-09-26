@@ -25,7 +25,7 @@ csum_test_CFILES=csum-test.c
 DIST_CFILES:=$(CFILES) $(hashstats_CFILES) $(btrfs_extent_same_CFILES) \
 	$(csum_test_CFILES)
 DIST_SOURCES:=$(DIST_CFILES) $(HEADERS) LICENSE LICENSE.xxhash Makefile \
-	rbtree.txt README.md $(MANPAGES) SubmittingPatches FAQ.md docs/duperemove.html
+	rbtree.txt README.md $(MANPAGES) SubmittingPatches docs/duperemove.html
 DIST=duperemove-$(VER)
 DIST_TARBALL=$(RELEASE).tar.gz
 TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)

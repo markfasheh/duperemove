@@ -468,21 +468,93 @@ recently added to foo.
 
 <h1><a name="10"></a>"FAQ"</h1>
 
+<h2><a name="11"></a>Is there an upper limit to the amount of data duperemove can process?</h2>
+
 <br />
 <br />
-<p class="pp j">Please see the <b>FAQ.md</b> file which should have been included with your duperemove package.
+<p class="pp j">Duperemove v0.11 is fast at reading and cataloging data. Dedupe runs
+will be memory limited unless the '--hashfile' option is used. '--hashfile'
+allows duperemove to temporarily store duplicated hashes to disk, thus removing
+the large memory overhead and allowing for a far larger amount of data to be
+scanned and deduped. Realistically though you will be limited by the speed of
+your disks and cpu.
+<br />
+<br />
+Actual performance numbers are dependent on hardware - up to date
+testing information is kept on the duperemove wiki (see below for the link).
 <br />
 <br />
 </p>
 
-<h1><a name="11"></a>"NOTES"</h1>
+<h2><a name="12"></a>How can I find out my space savings after a dedupe?</h2>
+
+<br />
+<br />
+<p class="pp j">Duperemove will print out an estimate of the saved space after a
+dedupe operation for you.
+<br />
+<br />
+You can get a more accurate picture by running 'btrfs fi df' before
+and after each duperemove run.
+<br />
+<br />
+Be careful about using the 'df' tool on btrfs - it is common for space
+reporting to be 'behind' while delayed updates get processed, so an
+immediate df after deduping might not show any savings.
+<br />
+<br />
+</p>
+
+<h2><a name="13"></a>Why is the total deduped data report an estimate?</h2>
+
+<br />
+<br />
+<p class="pp j">At the moment duperemove can detect that some underlying extents are
+shared with other files, but it can not resolve which files those
+extents are shared with.
+<br />
+<br />
+Imagine duperemove is examing a series of files and it notes a shared
+data region in one of them. That data could be shared with a file
+outside of the series. Since duperemove can't resolve that information
+it will account the shared data against our dedupe operation while in
+reality, the kernel might deduplicate it further for us.
+<br />
+<br />
+</p>
+
+<h2><a name="14"></a>Why are my files showing dedupe but my disk space is not shrinking?</h2>
+
+<br />
+<br />
+<p class="pp j">This is a little complicated, but it comes down to a feature in Btrfs
+called _bookending_. The Btrfs wiki explains this in detail:
+http://en.wikipedia.org/wiki/Btrfs#Extents.
+<br />
+<br />
+Essentially though, the underlying representation of an extent in
+Btrfs can not be split (with small exception). So sometimes we can end
+up in a situation where a file extent gets partially deduped (and the
+extents marked as shared) but the underlying extent item is not freed
+or truncated.
+<br />
+<br />
+</p>
+
+<h1><a name="15"></a>"NOTES"</h1>
 
 <p class="pp j">Deduplication is currently only supported by the <i>btrfs</i> and <i>xfs</i> filesystem.
 <br />
 <br />
+The Duperemove project page can be found at http://github.com/markfasheh/duperemove
+<br />
+<br />
+There is also a wiki at http://github.com/markfasheh/duperemove/wiki
+<br />
+<br />
 </p>
 
-<h1><a name="12"></a>"SEE ALSO"</h1>
+<h1><a name="16"></a>"SEE ALSO"</h1>
 
 <p class="pp j"><b>hashstats(8)</b> <b>filesystems(5)</b> <b>btrfs(8)</b> <b>xfs(8)</b> <b>fdupes(1)</b> </p>
 
@@ -493,6 +565,8 @@ recently added to foo.
 <li><a href="#4">"Readonly / Non-deduplicating Mode"</a></li><li><a href="#5">"Deduping Mode"</a></li></ol>
 <li><a href="#6">"OPTIONS"</a></li><li><a href="#7">"EXAMPLES"</a></li><ol>
 <li><a href="#8">"Simple Usage"</a></li><li><a href="#9">"Using Hashfiles"</a></li></ol>
-<li><a href="#10">"FAQ"</a></li><li><a href="#11">"NOTES"</a></li><li><a href="#12">"SEE ALSO"</a></li></ol>
+<li><a href="#10">"FAQ"</a></li><ol>
+<li><a href="#11">Is there an upper limit to the amount of data duperemove can process?</a></li><li><a href="#12">How can I find out my space savings after a dedupe?</a></li><li><a href="#13">Why is the total deduped data report an estimate?</a></li><li><a href="#14">Why are my files showing dedupe but my disk space is not shrinking?</a></li></ol>
+<li><a href="#15">"NOTES"</a></li><li><a href="#16">"SEE ALSO"</a></li></ol>
 </body>
 </html>

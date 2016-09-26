@@ -31,8 +31,7 @@ Libraries: Duperemove uses glib2 and sqlite3.
 
 # FAQ
 
-Please see the FAQ file [provided in the duperemove
-source](https://github.com/markfasheh/duperemove/blob/master/FAQ.md)
+Please see the FAQ section in [the duperemove man page](http://markfasheh.github.io/duperemove/duperemove.html)
 
 For bug reports and feature requests please use [the github issue tracker](https://github.com/markfasheh/duperemove/issues)
 
