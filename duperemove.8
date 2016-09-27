@@ -284,12 +284,13 @@ duperemove -L --hashfile=foo.hash
 .SH "FAQ"
 .SS Is there an upper limit to the amount of data duperemove can process?
 
-Duperemove v0.11 is fast at reading and cataloging data. Dedupe runs
-will be memory limited unless the '--hashfile' option is used. '--hashfile'
-allows duperemove to temporarily store duplicated hashes to disk, thus removing
-the large memory overhead and allowing for a far larger amount of data to be
+Duperemove v0.11 is fast at reading and cataloging data. Dedupe runs will be
+memory limited unless the '--hashfile' option is used. '--hashfile' allows
+duperemove to temporarily store duplicated hashes to disk, thus removing the
+large memory overhead and allowing for a far larger amount of data to be
 scanned and deduped. Realistically though you will be limited by the speed of
-your disks and cpu.
+your disks and cpu. In those situations where resources are limited you may
+have success by breaking up the input data set into smaller pieces.
 
 Actual performance numbers are dependent on hardware - up to date
 testing information is kept on the duperemove wiki (see below for the link).

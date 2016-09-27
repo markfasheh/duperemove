@@ -472,12 +472,13 @@ recently added to foo.
 
 <br />
 <br />
-<p class="pp j">Duperemove v0.11 is fast at reading and cataloging data. Dedupe runs
-will be memory limited unless the '--hashfile' option is used. '--hashfile'
-allows duperemove to temporarily store duplicated hashes to disk, thus removing
-the large memory overhead and allowing for a far larger amount of data to be
+<p class="pp j">Duperemove v0.11 is fast at reading and cataloging data. Dedupe runs will be
+memory limited unless the '--hashfile' option is used. '--hashfile' allows
+duperemove to temporarily store duplicated hashes to disk, thus removing the
+large memory overhead and allowing for a far larger amount of data to be
 scanned and deduped. Realistically though you will be limited by the speed of
-your disks and cpu.
+your disks and cpu. In those situations where resources are limited you may
+have success by breaking up the input data set into smaller pieces.
 <br />
 <br />
 Actual performance numbers are dependent on hardware - up to date
@@ -508,8 +509,6 @@ Using a real world example of 1TB (8388608 128K blocks) of data over 1000 files:
 <br />
 <br />
 8388608 * 90 + 270 * 1000 = 755244720 or about <b>720MB for 1TB spread over 1000 files.</b>
-<br />
-<br />
 <br />
 <br />
 </p>
