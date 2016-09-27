@@ -292,6 +292,13 @@ scanned and deduped. Realistically though you will be limited by the speed of
 your disks and cpu. In those situations where resources are limited you may
 have success by breaking up the input data set into smaller pieces.
 
+When using a hashfile, duperemove will only store duplicate hashes in
+memory. During normal operation then the hash tree will make up the
+largest portion of dupremoves memory usage. As of Duperemove v0.11
+hash entries are 88 bytes in size. If you know the number of duplicate
+blocks in your data set you can get a rough approximation of memory
+usage by multiplying with the hash entry size.
+
 Actual performance numbers are dependent on hardware - up to date
 testing information is kept on the duperemove wiki (see below for the link).
 
