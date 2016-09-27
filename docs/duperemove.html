@@ -486,7 +486,35 @@ testing information is kept on the duperemove wiki (see below for the link).
 <br />
 </p>
 
-<h2><a name="12"></a>How can I find out my space savings after a dedupe?</h2>
+<h2><a name="12"></a>How large of a hashfile will duperemove create?</h2>
+
+<br />
+<br />
+<p class="pp j">Hashfiles are essentially sqlite3 database files with several tables,
+the largest of which are the files and hashes tables. Each hashes
+table entry is under 90 bytes though that may grow as features are
+added. The size of a files table entry depends on the file path but a
+good estimate is around 270 bytes per file.
+<br />
+<br />
+If you know the total number of blocks and files in your data set then
+you can calculate the hashfile size as:
+<br />
+<br />
+<b>Hashfile Size = Num Hashes X 90 + Num Files X 270</b>
+<br />
+<br />
+Using a real world example of 1TB (8388608 128K blocks) of data over 1000 files:
+<br />
+<br />
+8388608 * 90 + 270 * 1000 = 755244720 or about <b>720MB for 1TB spread over 1000 files.</b>
+<br />
+<br />
+<br />
+<br />
+</p>
+
+<h2><a name="13"></a>How can I find out my space savings after a dedupe?</h2>
 
 <br />
 <br />
@@ -505,7 +533,7 @@ immediate df after deduping might not show any savings.
 <br />
 </p>
 
-<h2><a name="13"></a>Why is the total deduped data report an estimate?</h2>
+<h2><a name="14"></a>Why is the total deduped data report an estimate?</h2>
 
 <br />
 <br />
@@ -523,7 +551,7 @@ reality, the kernel might deduplicate it further for us.
 <br />
 </p>
 
-<h2><a name="14"></a>Why are my files showing dedupe but my disk space is not shrinking?</h2>
+<h2><a name="15"></a>Why are my files showing dedupe but my disk space is not shrinking?</h2>
 
 <br />
 <br />
@@ -541,7 +569,7 @@ or truncated.
 <br />
 </p>
 
-<h1><a name="15"></a>"NOTES"</h1>
+<h1><a name="16"></a>"NOTES"</h1>
 
 <p class="pp j">Deduplication is currently only supported by the <i>btrfs</i> and <i>xfs</i> filesystem.
 <br />
@@ -554,7 +582,7 @@ There is also a wiki at http://github.com/markfasheh/duperemove/wiki
 <br />
 </p>
 
-<h1><a name="16"></a>"SEE ALSO"</h1>
+<h1><a name="17"></a>"SEE ALSO"</h1>
 
 <p class="pp j"><b>hashstats(8)</b> <b>filesystems(5)</b> <b>btrfs(8)</b> <b>xfs(8)</b> <b>fdupes(1)</b> </p>
 
@@ -566,7 +594,7 @@ There is also a wiki at http://github.com/markfasheh/duperemove/wiki
 <li><a href="#6">"OPTIONS"</a></li><li><a href="#7">"EXAMPLES"</a></li><ol>
 <li><a href="#8">"Simple Usage"</a></li><li><a href="#9">"Using Hashfiles"</a></li></ol>
 <li><a href="#10">"FAQ"</a></li><ol>
-<li><a href="#11">Is there an upper limit to the amount of data duperemove can process?</a></li><li><a href="#12">How can I find out my space savings after a dedupe?</a></li><li><a href="#13">Why is the total deduped data report an estimate?</a></li><li><a href="#14">Why are my files showing dedupe but my disk space is not shrinking?</a></li></ol>
-<li><a href="#15">"NOTES"</a></li><li><a href="#16">"SEE ALSO"</a></li></ol>
+<li><a href="#11">Is there an upper limit to the amount of data duperemove can process?</a></li><li><a href="#12">How large of a hashfile will duperemove create?</a></li><li><a href="#13">How can I find out my space savings after a dedupe?</a></li><li><a href="#14">Why is the total deduped data report an estimate?</a></li><li><a href="#15">Why are my files showing dedupe but my disk space is not shrinking?</a></li></ol>
+<li><a href="#16">"NOTES"</a></li><li><a href="#17">"SEE ALSO"</a></li></ol>
 </body>
 </html>

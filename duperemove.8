@@ -294,6 +294,23 @@ your disks and cpu.
 Actual performance numbers are dependent on hardware - up to date
 testing information is kept on the duperemove wiki (see below for the link).
 
+.SS How large of a hashfile will duperemove create?
+
+Hashfiles are essentially sqlite3 database files with several tables,
+the largest of which are the files and hashes tables. Each hashes
+table entry is under 90 bytes though that may grow as features are
+added. The size of a files table entry depends on the file path but a
+good estimate is around 270 bytes per file.
+
+If you know the total number of blocks and files in your data set then
+you can calculate the hashfile size as:
+
+\fBHashfile Size = Num Hashes X 90 + Num Files X 270\fR
+
+Using a real world example of 1TB (8388608 128K blocks) of data over 1000 files:
+
+8388608 * 90 + 270 * 1000 = 755244720 or about \fB720MB for 1TB spread over 1000 files.\fR
+
 .SS How can I find out my space savings after a dedupe?
 
 Duperemove will print out an estimate of the saved space after a
