@@ -319,6 +319,13 @@ Using a real world example of 1TB (8388608 128K blocks) of data over 1000 files:
 
 8388608 * 90 + 270 * 1000 = 755244720 or about \fB720MB for 1TB spread over 1000 files.\fR
 
+.SS Is is safe to interrupt the program (Ctrl-C)?
+
+Yes, Duperemove uses a transactional database engine and organizes db
+changes to take advantage of those features. The result is that you
+should be able to ctrl-c the program at any point and re-run without
+experiencing corruption of your hashfile.
+
 .SS How can I find out my space savings after a dedupe?
 
 Duperemove will print out an estimate of the saved space after a
