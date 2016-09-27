@@ -22,7 +22,7 @@ See [the duperemove man page](http://markfasheh.github.io/duperemove/duperemove.
 
 # Requirements
 
-The latest stable code (v0.11) can be found in [master branch](https://github.com/markfasheh/duperemove/tree/).
+The latest stable code (v0.11) can be found in [master branch](https://github.com/markfasheh/duperemove).
 
 Kernel: Duperemove needs a kernel version equal to or greater than 3.13
 
@@ -31,7 +31,7 @@ Libraries: Duperemove uses glib2 and sqlite3.
 
 # FAQ
 
-Please see the FAQ section in [the duperemove man page](http://markfasheh.github.io/duperemove/duperemove.html)
+Please see the FAQ section in [the duperemove man page](http://markfasheh.github.io/duperemove/duperemove.html#10)
 
 For bug reports and feature requests please use [the github issue tracker](https://github.com/markfasheh/duperemove/issues)
 
