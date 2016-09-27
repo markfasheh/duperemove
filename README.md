@@ -22,7 +22,7 @@ See [the duperemove man page](http://markfasheh.github.io/duperemove/duperemove.
 
 # Requirements
 
-The latest stable code can be found in [v0.10-branch](https://github.com/markfasheh/duperemove/tree/v0.10-branch).
+The latest stable code (v0.11) can be found in [master branch](https://github.com/markfasheh/duperemove/tree/).
 
 Kernel: Duperemove needs a kernel version equal to or greater than 3.13
 
