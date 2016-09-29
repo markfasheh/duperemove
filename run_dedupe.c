@@ -512,7 +512,7 @@ static void free_bdl(struct block_dedupe_list *bdl);
 static int __block_dedupe(struct block_dedupe_list *bdl,
 			  struct results_tree *res,
 			  struct filerec *tgt_file,
-			  uint64_t tgt_off,
+			  uint64_t tgt_off, uint64_t tgt_len,
 			  uint64_t *fiemap_bytes,
 			  uint64_t *kern_bytes, unsigned long long passno)
 {
@@ -523,7 +523,7 @@ static int __block_dedupe(struct block_dedupe_list *bdl,
 	if (tgt_file) {
 		/* Insert this first so it gets picked as target. */
 		ret = insert_one_result(res, bdl->bd_hash, tgt_file, tgt_off,
-					blocksize);
+					tgt_len);
 		if (ret)
 			return ret;
 
@@ -548,7 +548,7 @@ static int __block_dedupe(struct block_dedupe_list *bdl,
 		}
 
 		ret = insert_one_result(res, bdl->bd_hash, block->b_file,
-					block->b_loff, blocksize);
+					block->b_loff, block_len(block));
 		if (ret)
 			goto out;
 	}
@@ -587,21 +587,24 @@ out:
  */
 static void pick_target_files(struct block_dedupe_list *bdl,
 			      struct filerec **tgt1, uint64_t *loff1,
-			      struct filerec **tgt2, uint64_t *loff2)
+			      uint64_t *tlen1, struct filerec **tgt2,
+			      uint64_t *loff2, uint64_t *tlen2)
 {
 	struct filerec *file1, *file2;
-	uint64_t off1, off2;
+	uint64_t off1, off2, len1, len2;
 	struct file_block *block;
 
 	file1 = file2 = NULL;
-	off1 = off2 = 0;
+	off1 = off2 = len1 = len2 = 0;
 	list_for_each_entry(block, &bdl->bd_block_list, b_list) {
 		if (!file1) {
 			file1 = block->b_file;
 			off1 = block->b_loff;
+			len1 = block_len(block);
 		} else if (file1 != block->b_file) {
 			file2 = block->b_file;
 			off2 = block->b_loff;
+			len2 = block_len(block);
 		}
 
 		if (file1 && file2)
@@ -612,6 +615,8 @@ static void pick_target_files(struct block_dedupe_list *bdl,
 	*tgt2 = file2;
 	*loff1 = off1;
 	*loff2 = off2;
+	*tlen1 = len1;
+	*tlen2 = len2;
 	return;
 }
 
@@ -622,11 +627,12 @@ static int block_dedupe_nosame(struct block_dedupe_list *bdl,
 {
 	int ret;
 	struct filerec *tgt_file1, *tgt_file2;
-	uint64_t tgt_off1, tgt_off2;
+	uint64_t tgt_off1, tgt_off2, tgt_len1, tgt_len2;
 
 	tgt_off1 = tgt_off2 = 0;
 
-	pick_target_files(bdl, &tgt_file1, &tgt_off1, &tgt_file2, &tgt_off2);
+	pick_target_files(bdl, &tgt_file1, &tgt_off1, &tgt_len1,
+			  &tgt_file2, &tgt_off2, &tgt_len2);
 
 	if (!tgt_file2) {
 		/* Can't dedupe this in nosame mode */
@@ -639,10 +645,10 @@ static int block_dedupe_nosame(struct block_dedupe_list *bdl,
 		return 0;
 	}
 
-	ret = __block_dedupe(bdl, res, tgt_file1, tgt_off1, fiemap_bytes,
-			     kern_bytes, passno);
+	ret = __block_dedupe(bdl, res, tgt_file1, tgt_off1, tgt_len1,
+			     fiemap_bytes, kern_bytes, passno);
 	if (!ret)
-		ret = __block_dedupe(bdl, res, tgt_file2, tgt_off2,
+		ret = __block_dedupe(bdl, res, tgt_file2, tgt_off2, tgt_len2,
 				     fiemap_bytes, kern_bytes, passno);
 
 	return ret;
@@ -661,7 +667,7 @@ static int block_dedupe_worker(struct block_dedupe_list *bdl,
 		ret = block_dedupe_nosame(bdl, &res, fiemap_bytes,
 					  kern_bytes, passno);
 	else
-		ret = __block_dedupe(bdl, &res, NULL, 0, fiemap_bytes,
+		ret = __block_dedupe(bdl, &res, NULL, 0, 0, fiemap_bytes,
 				     kern_bytes, passno);
 	free_bdl(bdl);
 	return ret;
