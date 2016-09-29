@@ -353,6 +353,7 @@ int remove_hashed_block(struct hash_tree *tree,
 	if (head && list_empty(&head->h_blocks))
 		free_one_hash_head(blocklist, head);
 
+	abort_on(blocklist->dl_num_elem == 0);
 	blocklist->dl_num_elem--;
 	if (blocklist->dl_num_elem == 0) {
 		rb_erase(&blocklist->dl_node, &tree->root);

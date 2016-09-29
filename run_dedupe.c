@@ -814,11 +814,17 @@ out:
 
 static int push_blocks(struct hash_tree *hashes)
 {
-	struct dupe_blocks_list *dups;
+	struct dupe_blocks_list *dups, *tmp;
 
-	list_for_each_entry(dups, &hashes->size_list, dl_size_list) {
+	list_for_each_entry_safe(dups, tmp, &hashes->size_list, dl_size_list) {
 		if (dups->dl_num_elem < 2)
 			continue;
+		/*
+		 * Do this here because we don't want one of the
+		 * worker threads removing it from the size list for
+		 * us when they free the dups structure.
+		 */
+		list_del_init(&dups->dl_size_list);
 
 		if (__push_blocks(hashes, dups))
 			return 1;
