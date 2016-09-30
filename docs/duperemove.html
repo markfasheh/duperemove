@@ -588,7 +588,32 @@ or truncated.
 <br />
 </p>
 
-<h1><a name="17"></a>"NOTES"</h1>
+<h2><a name="17"></a>Is duperemove safe for my data?</h2>
+
+<br />
+<br />
+<p class="pp j">Yes. To be specific, duperemove does not deduplicate the data itself.
+It simply finds candidates for dedupe and submits them to the Linux
+kernel extent-same ioctl. In order to ensure data integrity, the
+kernel locks out other access to the file and does a byte-by-byte
+compare before proceeding with the dedupe.
+<br />
+<br />
+</p>
+
+<h2><a name="18"></a>What is the cost of deduplication?</h2>
+
+<br />
+<br />
+<p class="pp j">Deduplication will lead to increased fragmentation. The blocksize
+chosen can have an effect on this. Larger blocksizes will fragment
+less but may not save you as much space. Conversely, smaller block
+sizes may save more space at the cost of increased fragmentation.
+<br />
+<br />
+</p>
+
+<h1><a name="19"></a>"NOTES"</h1>
 
 <p class="pp j">Deduplication is currently only supported by the <i>btrfs</i> and <i>xfs</i> filesystem.
 <br />
@@ -601,7 +626,7 @@ There is also a wiki at http://github.com/markfasheh/duperemove/wiki
 <br />
 </p>
 
-<h1><a name="18"></a>"SEE ALSO"</h1>
+<h1><a name="20"></a>"SEE ALSO"</h1>
 
 <p class="pp j"><b>hashstats(8)</b> <b>filesystems(5)</b> <b>btrfs(8)</b> <b>xfs(8)</b> <b>fdupes(1)</b> </p>
 
@@ -613,7 +638,7 @@ There is also a wiki at http://github.com/markfasheh/duperemove/wiki
 <li><a href="#6">"OPTIONS"</a></li><li><a href="#7">"EXAMPLES"</a></li><ol>
 <li><a href="#8">"Simple Usage"</a></li><li><a href="#9">"Using Hashfiles"</a></li></ol>
 <li><a href="#10">"FAQ"</a></li><ol>
-<li><a href="#11">Is there an upper limit to the amount of data duperemove can process?</a></li><li><a href="#12">How large of a hashfile will duperemove create?</a></li><li><a href="#13">Is is safe to interrupt the program (Ctrl-C)?</a></li><li><a href="#14">How can I find out my space savings after a dedupe?</a></li><li><a href="#15">Why is the total deduped data report an estimate?</a></li><li><a href="#16">Why are my files showing dedupe but my disk space is not shrinking?</a></li></ol>
-<li><a href="#17">"NOTES"</a></li><li><a href="#18">"SEE ALSO"</a></li></ol>
+<li><a href="#11">Is there an upper limit to the amount of data duperemove can process?</a></li><li><a href="#12">How large of a hashfile will duperemove create?</a></li><li><a href="#13">Is is safe to interrupt the program (Ctrl-C)?</a></li><li><a href="#14">How can I find out my space savings after a dedupe?</a></li><li><a href="#15">Why is the total deduped data report an estimate?</a></li><li><a href="#16">Why are my files showing dedupe but my disk space is not shrinking?</a></li><li><a href="#17">Is duperemove safe for my data?</a></li><li><a href="#18">What is the cost of deduplication?</a></li></ol>
+<li><a href="#19">"NOTES"</a></li><li><a href="#20">"SEE ALSO"</a></li></ol>
 </body>
 </html>

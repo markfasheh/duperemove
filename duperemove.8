@@ -362,6 +362,21 @@ up in a situation where a file extent gets partially deduped (and the
 extents marked as shared) but the underlying extent item is not freed
 or truncated.
 
+.SS Is duperemove safe for my data?
+
+Yes. To be specific, duperemove does not deduplicate the data itself.
+It simply finds candidates for dedupe and submits them to the Linux
+kernel extent-same ioctl. In order to ensure data integrity, the
+kernel locks out other access to the file and does a byte-by-byte
+compare before proceeding with the dedupe.
+
+.SS What is the cost of deduplication?
+
+Deduplication will lead to increased fragmentation. The blocksize
+chosen can have an effect on this. Larger blocksizes will fragment
+less but may not save you as much space. Conversely, smaller block
+sizes may save more space at the cost of increased fragmentation.
+
 .SH "NOTES"
 Deduplication is currently only supported by the \fIbtrfs\fR and \fIxfs\fR filesystem.
 
