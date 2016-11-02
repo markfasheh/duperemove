@@ -85,6 +85,12 @@ static int create_tables(sqlite3 *db)
 	if (ret)
 		goto out;
 
+#define	CREATE_TABLE_DIGEST					\
+"CREATE TABLE digest(digest BLOB KEY NOT NULL, refCounter INTEGER);"
+	ret = sqlite3_exec(db, CREATE_TABLE_DIGEST, NULL, NULL, NULL);
+	if (ret)
+		goto out;
+
 out:
 	return ret;
 }
@@ -92,9 +98,9 @@ out:
 int create_indexes(sqlite3 *db)
 {
 	int ret;
-#define	CREATE_DIGEST_INDEX						\
-"create index if not exists idx_digest on hashes(digest);"
-	ret = sqlite3_exec(db, CREATE_DIGEST_INDEX, NULL, NULL, NULL);
+#define	CREATE_HASH_DIGEST_INDEX						\
+"create index if not exists idx_hash_digest on hashes(digest);"
+	ret = sqlite3_exec(db, CREATE_HASH_DIGEST_INDEX, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
@@ -758,6 +764,34 @@ int dbfile_sync_files(sqlite3 *db)
 	return ret;
 }
 
+static int __dbfile_decrement_digest(sqlite3_stmt *stmt, uint64_t ino,
+				       uint64_t subvol)
+{
+	int ret;
+
+	ret = sqlite3_bind_int64(stmt, 1, ino);
+	if (ret) {
+		perror_sqlite(ret, "binding inode");
+		goto out;
+	}
+
+	ret = sqlite3_bind_int64(stmt, 2, subvol);
+	if (ret) {
+		perror_sqlite(ret, "binding subvol");
+		goto out;
+	}
+
+	ret = sqlite3_step(stmt);
+	if (ret != SQLITE_DONE) {
+		perror_sqlite(ret, "executing statement");
+		goto out;
+	}
+
+	ret = 0;
+out:
+	return ret;
+}
+
 static int __dbfile_remove_file_hashes(sqlite3_stmt *stmt, uint64_t ino,
 				       uint64_t subvol)
 {
@@ -789,19 +823,37 @@ out:
 static int dbfile_remove_file_hashes(sqlite3 *db, struct filerec *file)
 {
 	int ret;
-	sqlite3_stmt *stmt = NULL;
+	sqlite3_stmt *stmtDecrementDigest = NULL;
+	sqlite3_stmt *stmtRemoveFileHashes = NULL;
 
-#define	REMOVE_FILE_HASHES						\
-	"delete from hashes where ino = ?1 and subvol = ?2;"
-	ret = sqlite3_prepare_v2(db, REMOVE_FILE_HASHES, -1, &stmt, NULL);
+#define	DECREMENT_DIGEST						\
+	"update digest set refCounter = max(refCounter-1,0) where digest = (select digest from hashes where ino = ?1 and subvol = ?2);"
+	ret = sqlite3_prepare_v2(db, DECREMENT_DIGEST, -1, &stmtDecrementDigest, NULL);
 	if (ret) {
 		perror_sqlite(ret, "preparing hash insert statement");
 		return ret;
 	}
 
-	ret = __dbfile_remove_file_hashes(stmt, file->inum, file->subvolid);
+	ret = __dbfile_decrement_digest(stmtDecrementDigest, file->inum, file->subvolid);
+	if (ret)
+		goto out;
+		
+#define	REMOVE_FILE_HASHES						\
+	"delete from hashes where ino = ?1 and subvol = ?2;"
+	ret = sqlite3_prepare_v2(db, REMOVE_FILE_HASHES, -1, &stmtRemoveFileHashes, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing hash insert statement");
+		return ret;
+	}
 
-	sqlite3_finalize(stmt);
+	ret = __dbfile_remove_file_hashes(stmtRemoveFileHashes, file->inum, file->subvolid);
+
+out:
+	if (stmtDecrementDigest)
+		sqlite3_finalize(stmtDecrementDigest);
+	if (stmtRemoveFileHashes)
+		sqlite3_finalize(stmtRemoveFileHashes);
+		
 	return ret;
 }
 
@@ -810,7 +862,9 @@ int dbfile_write_hashes(sqlite3 *db, struct filerec *file, uint64_t nb_hash,
 {
 	int ret;
 	uint64_t i;
-	sqlite3_stmt *stmt = NULL;
+	sqlite3_stmt *stmtInsertHashes = NULL;
+    sqlite3_stmt *stmtInsertDigest = NULL;
+    sqlite3_stmt *stmtUpdateDigestRefCounter = NULL;
 	uint64_t loff;
 	uint32_t flags;
 	unsigned char *digest;
@@ -821,11 +875,28 @@ int dbfile_write_hashes(sqlite3 *db, struct filerec *file, uint64_t nb_hash,
 			return ret;
 	}
 
-#define	UPDATE_HASH						\
+#define	INSERT_HASH						\
 "INSERT INTO hashes (ino, subvol, loff, flags, digest) VALUES (?1, ?2, ?3, ?4, ?5);"
-	ret = sqlite3_prepare_v2(db, UPDATE_HASH, -1, &stmt, NULL);
+#define	INSERT_DIGEST						\
+"INSERT OR IGNORE INTO digest (digest, refCounter) VALUES (?1, 0);"
+#define	UPDATE_DIGEST_REFCOUNTER						\
+"UPDATE digest SET refCounter = refCounter + 1 where digest = ?1;"
+
+	ret = sqlite3_prepare_v2(db, INSERT_HASH, -1, &stmtInsertHashes, NULL);
 	if (ret) {
 		perror_sqlite(ret, "preparing hash insert statement");
+		goto out_error;
+	}
+
+	ret = sqlite3_prepare_v2(db, INSERT_DIGEST, -1, &stmtInsertDigest, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing digest insert statement");
+		goto out_error;
+	}
+
+	ret = sqlite3_prepare_v2(db, UPDATE_DIGEST_REFCOUNTER, -1, &stmtUpdateDigestRefCounter, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing digest update statement");
 		goto out_error;
 	}
 
@@ -834,34 +905,56 @@ int dbfile_write_hashes(sqlite3 *db, struct filerec *file, uint64_t nb_hash,
 		flags = hashes[i].flags;
 		digest = hashes[i].digest;
 
-		ret = sqlite3_bind_int64(stmt, 1, file->inum);
+		ret = sqlite3_bind_int64(stmtInsertHashes, 1, file->inum);
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_bind_int64(stmt, 2, file->subvolid);
+		ret = sqlite3_bind_int64(stmtInsertHashes, 2, file->subvolid);
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_bind_int64(stmt, 3, loff);
+		ret = sqlite3_bind_int64(stmtInsertHashes, 3, loff);
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_bind_int(stmt, 4, flags);
+		ret = sqlite3_bind_int(stmtInsertHashes, 4, flags);
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_bind_blob(stmt, 5, digest, digest_len,
-					SQLITE_STATIC);
+		ret = sqlite3_bind_blob(stmtInsertHashes, 5, digest, digest_len, SQLITE_STATIC);
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_step(stmt);
+		ret = sqlite3_bind_blob(stmtInsertDigest, 1, digest, digest_len, SQLITE_STATIC);
+		if (ret)
+			goto bind_error;
+
+		ret = sqlite3_bind_blob(stmtUpdateDigestRefCounter, 1, digest, digest_len, SQLITE_STATIC);
+		if (ret)
+			goto bind_error;
+
+		ret = sqlite3_step(stmtInsertHashes);
 		if (ret != SQLITE_DONE) {
-			perror_sqlite(ret, "executing statement");
+			perror_sqlite(ret, "executing statement (stmtInsertHashes)");
 			goto out_error;
 		}
 
-		sqlite3_reset(stmt);
+		ret = sqlite3_step(stmtInsertDigest);
+		if (ret != SQLITE_DONE) {
+			perror_sqlite(ret, "executing statement (stmtInsertDigest");
+			goto out_error;
+		}
+
+		ret = sqlite3_step(stmtUpdateDigestRefCounter);
+		if (ret != SQLITE_DONE) {
+			perror_sqlite(ret, "executing statement (stmtUpdateDigestRefCounter)");
+			goto out_error;
+		}
+
+
+		sqlite3_reset(stmtInsertHashes);
+		sqlite3_reset(stmtInsertDigest);
+		sqlite3_reset(stmtUpdateDigestRefCounter);
 	}
 
 	ret = 0;
@@ -870,7 +963,9 @@ bind_error:
 		perror_sqlite(ret, "binding values");
 out_error:
 
-	sqlite3_finalize(stmt);
+	sqlite3_finalize(stmtInsertHashes);
+	sqlite3_finalize(stmtInsertDigest);
+	sqlite3_finalize(stmtUpdateDigestRefCounter);
 	return ret;
 }
 
@@ -973,7 +1068,8 @@ static int dbfile_del_orphans(struct sqlite3 *db, struct list_head *orphans)
 {
 	int ret;
 	sqlite3_stmt *files_stmt = NULL;
-	sqlite3_stmt *hashes_stmt = NULL;
+	sqlite3_stmt *del_hashes_stmt = NULL;
+	sqlite3_stmt *decrement_digest_stmt = NULL;
 	struct orphan_file *o, *tmp;
 
 #define	DELETE_FILE	"delete from files where filename = ?1;"
@@ -983,7 +1079,13 @@ static int dbfile_del_orphans(struct sqlite3 *db, struct list_head *orphans)
 		goto out;
 	}
 
-	ret = sqlite3_prepare_v2(db, REMOVE_FILE_HASHES, -1, &hashes_stmt, NULL);
+	ret = sqlite3_prepare_v2(db, REMOVE_FILE_HASHES, -1, &del_hashes_stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing hashes statement");
+		goto out;
+	}
+
+	ret = sqlite3_prepare_v2(db, DECREMENT_DIGEST, -1, &decrement_digest_stmt, NULL);
 	if (ret) {
 		perror_sqlite(ret, "preparing hashes statement");
 		goto out;
@@ -993,7 +1095,11 @@ static int dbfile_del_orphans(struct sqlite3 *db, struct list_head *orphans)
 		dprintf("Remove file \"%s\" from the db\n",
 			o->filename);
 
-		ret = __dbfile_remove_file_hashes(hashes_stmt, o->ino, o->subvol);
+		ret = __dbfile_decrement_digest(decrement_digest_stmt, o->ino, o->subvol);
+		if (ret)
+			goto out;
+
+		ret = __dbfile_remove_file_hashes(del_hashes_stmt, o->ino, o->subvol);
 		if (ret)
 			goto out;
 
@@ -1010,7 +1116,8 @@ static int dbfile_del_orphans(struct sqlite3 *db, struct list_head *orphans)
 			goto out;
 		}
 
-		sqlite3_reset(hashes_stmt);
+		sqlite3_reset(decrement_digest_stmt);
+		sqlite3_reset(del_hashes_stmt);
 		sqlite3_reset(files_stmt);
 
 		list_del(&o->list);
@@ -1021,9 +1128,11 @@ static int dbfile_del_orphans(struct sqlite3 *db, struct list_head *orphans)
 out:
 	if (files_stmt)
 		sqlite3_finalize(files_stmt);
-	if (hashes_stmt)
-		sqlite3_finalize(hashes_stmt);
-
+	if (del_hashes_stmt)
+		sqlite3_finalize(del_hashes_stmt);
+	if (decrement_digest_stmt)
+		sqlite3_finalize(decrement_digest_stmt);
+		
 	return ret;
 }
 
@@ -1137,10 +1246,9 @@ int dbfile_load_hashes(struct hash_tree *hash_tree)
 		return ret;
 
 #define GET_DUPLICATE_HASHES \
-	"SELECT hashes.digest, ino, subvol, loff, flags FROM hashes " \
-	"JOIN (SELECT digest FROM hashes GROUP BY digest " \
-				"HAVING count(*) > 1) AS duplicate_hashes " \
-	"on hashes.digest = duplicate_hashes.digest;"
+	"SELECT hashes.digest, ino, subvol, loff, flags " \
+	"FROM hashes " \
+	"WHERE digest IN (SELECT digest FROM digest WHERE refCounter > 1);"
 
 	ret = sqlite3_prepare_v2(db, GET_DUPLICATE_HASHES, -1, &stmt, NULL);
 	if (ret) {
