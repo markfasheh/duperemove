@@ -104,6 +104,12 @@ int create_indexes(sqlite3 *db)
 	if (ret)
 		goto out;
 
+#define	CREATE_DIGEST_REFCOUNTER_INDEX						\
+"create index if not exists idx_digest_refcounter on digest(refCounter);"
+	ret = sqlite3_exec(db, CREATE_DIGEST_REFCOUNTER_INDEX, NULL, NULL, NULL);
+	if (ret)
+		goto out;
+
 #define	CREATE_HASHES_INO_INDEX						\
 "create index if not exists idx_hashes_inosub on hashes(ino, subvol);"
 	ret = sqlite3_exec(db, CREATE_HASHES_INO_INDEX, NULL, NULL, NULL);
