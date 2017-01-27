@@ -8,6 +8,7 @@
 #include <inttypes.h>
 #include <stddef.h>
 #include <sys/types.h>
+#include <sys/sysmacros.h>
 
 #include "csum.h"
 #include "filerec.h"
