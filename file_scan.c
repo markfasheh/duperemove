@@ -660,7 +660,7 @@ static void csum_whole_file_init(GMutex **mutex, void *location,
 	unsigned long long cur_scan_files;
 	*mutex = g_dataset_get_data(location, "mutex");
 
-	cur_scan_files = __sync_add_and_fetch(&_cur_scan_files, 1);
+	cur_scan_files = __atomic_fetch_add(&_cur_scan_files, 1, __ATOMIC_SEQ_CST);
 
 	printf("[%0*llu/%llu] (%05.2f%%) csum: %s\n",
 	       leading_spaces, cur_scan_files, files_to_scan,

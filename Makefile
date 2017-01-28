@@ -52,7 +52,8 @@ ifdef DEBUG
 endif
 override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\" \
 	$(hash_CFLAGS) $(glib_CFLAGS) $(sqlite_CFLAGS) -rdynamic $(DEBUG_FLAGS)
-LIBRARY_FLAGS += $(hash_LIBS) $(glib_LIBS) $(sqlite_LIBS) -lm
+LIBRARY_FLAGS += -Wl,--as-needed -latomic -lm
+LIBRARY_FLAGS += $(hash_LIBS) $(glib_LIBS) $(sqlite_LIBS)
 
 # make C=1 to enable sparse
 ifdef C
