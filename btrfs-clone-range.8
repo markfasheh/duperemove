@@ -1,0 +1,14 @@
+.TH "btrfs-clone-range" "8" "January 2016" "Version 0.01"
+.SH "NAME"
+btrfs-clone-range \- directly access the btrfs-clone-range ioctl
+.SH "SYNOPSIS"
+\fBbtrfs-clone-range\fR \fIextent-len\fI \fIsrc-file\fI \fIsrc-offset\fI \fIdest-file\fI \fIdest-offset\fI
+.SH "DESCRIPTION"
+.PP
+\fBbtrfs-clone-range\fR 
+\fIextent-len\fR and both offsets should be specified in bytes.
+
+.SH "SEE ALSO"
+.BR btrfs-extent-same(8)
+.BR filesystems(5)
+.BR btrfs(8)

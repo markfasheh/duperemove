@@ -20,10 +20,11 @@ CFILES += $(hash_CFILES)
 
 hashstats_CFILES=hashstats.c
 btrfs_extent_same_CFILES=btrfs-extent-same.c
+btrfs_clone_range_CFILES=btrfs-clone-range.c
 csum_test_CFILES=csum-test.c
 
 DIST_CFILES:=$(CFILES) $(hashstats_CFILES) $(btrfs_extent_same_CFILES) \
-	$(csum_test_CFILES)
+	$(btrfs_clone_range_CFILES) $(csum_test_CFILES)
 DIST_SOURCES:=$(DIST_CFILES) $(HEADERS) LICENSE LICENSE.xxhash Makefile \
 	rbtree.txt README.md $(MANPAGES) SubmittingPatches docs/duperemove.html
 DIST=duperemove-$(VER)
@@ -38,7 +39,8 @@ hashstats_obj = $(hash_obj) rbtree.o hash-tree.o filerec.o util.o \
 show_shared_obj = rbtree.o util.o debug.o
 csum_test_obj = $(hash_obj) util.o csum.o debug.o
 
-install_progs = duperemove hashstats btrfs-extent-same show-shared-extents
+install_progs = duperemove hashstats btrfs-extent-same btrfs-clone-range \
+	show-shared-extents
 progs = $(install_progs) csum-test
 
 glib_CFLAGS=$(shell pkg-config --cflags glib-2.0)
@@ -91,6 +93,9 @@ tarball: clean
 btrfs-extent-same: btrfs-extent-same.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o btrfs-extent-same btrfs-extent-same.c
 
+btrfs-clone-range: btrfs-clone-range.c
+	$(CC) $(CFLAGS) -o btrfs-clone-range btrfs-clone-range.c
+
 install: $(install_progs) $(MANPAGES)
 	mkdir -p -m 0755 $(DESTDIR)$(SBINDIR)
 	for prog in $(install_progs); do \
@@ -111,4 +116,4 @@ hashstats: $(hashstats_obj) hashstats.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(hashstats_obj) hashstats.c -o hashstats $(LIBRARY_FLAGS)
 
 clean:
-	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same filerec-test show-shared-extents hashstats csum-*.o *~
+	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same btrfs-clone-range filerec-test show-shared-extents hashstats csum-*.o *~
