@@ -1,6 +1,8 @@
 #ifndef	__FILE_SCAN_H__
 #define	__FILE_SCAN_H__
 
+#include "list.h"
+
 /* from duperemove.c */
 extern int run_dedupe;
 extern int one_file_system;
@@ -38,6 +40,11 @@ struct block {
 	uint64_t	loff;
 	unsigned int	flags;
 	unsigned char	digest[DIGEST_LEN_MAX];
+};
+
+struct exclude_file {
+	char *pattern;
+	struct list_head list;
 };
 
 #endif	/* __FILE_SCAN_H__ */

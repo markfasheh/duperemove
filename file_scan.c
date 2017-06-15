@@ -33,6 +33,7 @@
 #include <inttypes.h>
 #include <linux/magic.h>
 #include <sys/statfs.h>
+#include <fnmatch.h>
 
 #include <glib.h>
 
@@ -66,6 +67,8 @@ struct thread_params {
 	int num_files;           /* Total number of files we hashed */
 	int num_hashes;          /* Total number of hashes we hashed */
 };
+
+LIST_HEAD(exclude_list);
 
 static void set_filerec_scan_flags(struct filerec *file)
 {
@@ -146,6 +149,18 @@ static int get_dirent_type(struct dirent *entry, int fd)
 	return DT_UNKNOWN;
 }
 
+static int is_excluded(const char *name) {
+	struct exclude_file *exclude, *tmp;
+	list_for_each_entry_safe(exclude, tmp, &exclude_list, list) {
+		if (fnmatch(exclude->pattern, name, FNM_PATHNAME) == 0) {
+			vprintf("Excluding: %s (matches %s)\n", name, exclude->pattern);
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
 static int walk_dir(const char *name)
 {
 	int ret = 0;
@@ -166,6 +181,9 @@ static int walk_dir(const char *name)
 		if (entry) {
 			if (strcmp(entry->d_name, ".") == 0
 			    || strcmp(entry->d_name, "..") == 0)
+				continue;
+
+			if (is_excluded(entry->d_name))
 				continue;
 
 			type = get_dirent_type(entry, dirfd(dirp));
