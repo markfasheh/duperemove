@@ -171,13 +171,13 @@ the dedupe stage to optimize out already deduped extents as well as to
 provide an estimate of the space saved after dedupe operations are
 complete.
 
-Unfortunately, some versions of Btrfs exhibit extrmely poor
+Unfortunately, some versions of Btrfs exhibit extremely poor
 performance in fiemap as the number of references on a file extent
 goes up. If you are experiencing the dedupe phase slowing down
 or 'locking up' this option may give you a significant amount of
 performance back.
 
-\fBNote:\fR This does not turn off all useage of fiemap, to disable
+\fBNote:\fR This does not turn off all usage of fiemap, to disable
 fiemap during the file scan stage, you will also want to use the
 \fB--lookup-extents=no\fR option.
 .TP
@@ -294,7 +294,7 @@ have success by breaking up the input data set into smaller pieces.
 
 When using a hashfile, duperemove will only store duplicate hashes in
 memory. During normal operation then the hash tree will make up the
-largest portion of dupremoves memory usage. As of Duperemove v0.11
+largest portion of duperemove memory usage. As of Duperemove v0.11
 hash entries are 88 bytes in size. If you know the number of duplicate
 blocks in your data set you can get a rough approximation of memory
 usage by multiplying with the hash entry size.
@@ -380,9 +380,9 @@ sizes may save more space at the cost of increased fragmentation.
 .SH "NOTES"
 Deduplication is currently only supported by the \fIbtrfs\fR and \fIxfs\fR filesystem.
 
-The Duperemove project page can be found at http://github.com/markfasheh/duperemove
+The Duperemove project page can be found at https://github.com/markfasheh/duperemove
 
-There is also a wiki at http://github.com/markfasheh/duperemove/wiki
+There is also a wiki at https://github.com/markfasheh/duperemove/wiki
 
 .SH "SEE ALSO"
 .BR hashstats(8)
