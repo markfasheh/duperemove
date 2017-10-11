@@ -17,6 +17,8 @@
 #ifndef	__DEDUPE_H__
 #define	__DEDUPE_H__
 
+#include <time.h>
+
 #include "list.h"
 #include "btrfs-ioctl.h"
 

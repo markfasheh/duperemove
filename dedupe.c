@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <sys/stat.h>
 #include <sys/vfs.h>
 
 #include <errno.h>
@@ -315,15 +316,31 @@ static void process_dedupes(struct dedupe_ctxt *ctxt,
 int dedupe_extents(struct dedupe_ctxt *ctxt)
 {
 	int ret = 0;
+	struct stat st;
+	struct timespec times[2] = { { .tv_nsec = UTIME_OMIT } };
 
 	while (!list_empty(&ctxt->queued)) {
 		/* Convert the queued list into an actual request */
 		populate_dedupe_request(ctxt, ctxt->same);
 
+		ret = fstat(ctxt->ioctl_file->fd, &st);
+		if (ret == -1)
+			st.st_mtime = 0;
+
+
 retry:
 		ret = btrfs_extent_same(ctxt->ioctl_file->fd, ctxt->same);
 		if (ret)
 			break;
+
+		if (st.st_mtime) {
+			times[1].tv_sec = st.st_mtime;
+			ret = futimens(ctxt->ioctl_file->fd, times);
+			if (ret)
+				fprintf(stderr,
+					"Unable to restore file MTIME: %d: %s\n",
+					errno, ctxt->ioctl_file->filename);
+		}
 
 		if (debug)
 			print_btrfs_same_info(ctxt);
