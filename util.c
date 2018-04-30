@@ -238,8 +238,10 @@ static int detect_ht(void)
 						c = NULL;
 				}
 //				printf("\"flag: %s\"\n", flag);
-				if (!strcmp(flag, HT_FLAG))
-					return 1;
+				if (!strcmp(flag, HT_FLAG)) {
+					ret = 1;
+					goto out_close;
+				}
 			}
 			/* No 'ht' in flags? We're done. */
 			goto out_close;
