@@ -213,7 +213,7 @@ static int walk_dupe_block(struct filerec *orig_file,
 	struct file_block *orig = orig_file_block;
 	struct file_block *block = walk_file_block;
 	struct file_block *start[2] = { orig, block };
-	struct file_block *end[2];
+	struct file_block *end[2] = { NULL, NULL };
 	struct running_checksum *csum;
 	unsigned char match_id[DIGEST_LEN_MAX] = {0, };
 	uint64_t orig_blkno, walk_blkno;
