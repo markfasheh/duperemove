@@ -101,6 +101,14 @@ install: $(install_progs) $(MANPAGES)
 		install -m 0644 $$man $(DESTDIR)$(MANDIR)/man8; \
 	done
 
+uninstall:
+	for prog in $(install_progs); do \
+		rm -f $(DESTDIR)$(SBINDIR)/$$prog; \
+	done
+	for man in $(MANPAGES); do \
+		rm -f $(DESTDIR)$(MANDIR)/man8/$$man; \
+	done
+
 csum-test: $(csum_test_obj) csum-test.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(csum_test_obj) -o csum-test csum-test.c  $(LIBRARY_FLAGS)
 
