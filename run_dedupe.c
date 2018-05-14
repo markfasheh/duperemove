@@ -476,7 +476,7 @@ static int extent_dedupe_worker(struct dupe_extents *dext,
 				uint64_t *fiemap_bytes, uint64_t *kern_bytes)
 {
 	int ret;
-	unsigned long long passno = __atomic_fetch_add(&curr_dedupe_pass, 1, __ATOMIC_SEQ_CST);
+	unsigned long long passno = __atomic_add_fetch(&curr_dedupe_pass, 1, __ATOMIC_SEQ_CST);
 
 	ret = dedupe_extent_list(dext, fiemap_bytes, kern_bytes, passno);
 	if (ret) {
@@ -659,7 +659,7 @@ static int block_dedupe_worker(struct block_dedupe_list *bdl,
 {
 	int ret;
 	struct results_tree res;
-	unsigned long long passno =  __atomic_fetch_add(&curr_dedupe_pass, 1, __ATOMIC_SEQ_CST);
+	unsigned long long passno =  __atomic_add_fetch(&curr_dedupe_pass, 1, __ATOMIC_SEQ_CST);
 
 	init_results_tree(&res);
 
@@ -804,7 +804,7 @@ static int __push_blocks(struct hash_tree *hashes,
 						goto out;
 					bdl = NULL;
 
-					 __atomic_fetch_add(
+					 __atomic_add_fetch(
 						&total_dedupe_passes, 1, __ATOMIC_SEQ_CST);
 					break;
 				}
