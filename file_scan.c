@@ -119,7 +119,7 @@ static int get_dirent_type(struct dirent *entry, int fd)
 	 * fashioned way. We translate mode to DT_* for the
 	 * convenience of the caller.
 	 */
-	ret = fstatat(fd, entry->d_name, &st, 0);
+	ret = fstatat(fd, entry->d_name, &st, AT_SYMLINK_NOFOLLOW);
 	if (ret) {
 		fprintf(stderr,
 			"Error %d: %s while getting type of file %s/%s. "
@@ -323,7 +323,7 @@ int add_file(const char *name, int dirfd)
 		goto out;
 	}
 
-	ret = stat(abspath, &st);
+	ret = lstat(abspath, &st);
 	if (ret) {
 		fprintf(stderr, "Error %d: %s while stating file %s. "
 			"Skipping.\n",
@@ -448,7 +448,7 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 			return 0;
 		}
 		/* Go to disk and look up by filename */
-		ret = stat(filename, &st);
+		ret = lstat(filename, &st);
 		if (ret == -1 && errno == ENOENT) {
 			vprintf("File path %s no longer exists. Skipping.\n",
 				filename);

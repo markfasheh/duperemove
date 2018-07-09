@@ -857,7 +857,7 @@ static int get_size(struct filerec *file)
 	int ret;
 	struct stat st;
 
-	ret = stat(file->filename, &st);
+	ret = lstat(file->filename, &st);
 	if (ret == -1)
 		return errno;
 
