@@ -13,7 +13,7 @@
 #include "csum.h"
 #include "filerec.h"
 #include "hash-tree.h"
-
+#include "results-tree.h"
 #include "file_scan.h"
 #include "debug.h"
 
@@ -83,6 +83,12 @@ static int create_tables(sqlite3 *db)
 #define	CREATE_TABLE_HASHES					\
 "CREATE TABLE hashes(digest BLOB KEY NOT NULL, ino INTEGER, subvol INTEGER, loff INTEGER, flags INTEGER);"
 	ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, NULL);
+	if (ret)
+		goto out;
+
+#define	CREATE_TABLE_EXTENTS						\
+"CREATE TABLE extents(digest BLOB KEY NOT NULL, ino INTEGER, subvol INTEGER, loff INTEGER, poff INTEGER, len INTEGER, flags INTEGER);"
+	ret = sqlite3_exec(db, CREATE_TABLE_EXTENTS, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
@@ -801,13 +807,28 @@ static int dbfile_remove_file_hashes(sqlite3 *db, struct filerec *file)
 	}
 
 	ret = __dbfile_remove_file_hashes(stmt, file->inum, file->subvolid);
+	if (ret) {
+		perror_sqlite(ret, "removing from block hashes table");
+		return ret;
+	}
+	sqlite3_finalize(stmt);
+
+#define	REMOVE_EXTENT_HASHES					\
+	"delete from extents where ino = ?1 and subvol = ?2;"
+	ret = sqlite3_prepare_v2(db, REMOVE_FILE_HASHES, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing hash insert statement");
+		return ret;
+	}
+
+	ret = __dbfile_remove_file_hashes(stmt, file->inum, file->subvolid);
 
 	sqlite3_finalize(stmt);
 	return ret;
 }
 
-int dbfile_write_hashes(sqlite3 *db, struct filerec *file, uint64_t nb_hash,
-			struct block *hashes)
+int dbfile_write_block_hashes(sqlite3 *db, struct filerec *file,
+			      uint64_t nb_hash, struct block_csum *hashes)
 {
 	int ret;
 	uint64_t i;
@@ -852,6 +873,91 @@ int dbfile_write_hashes(sqlite3 *db, struct filerec *file, uint64_t nb_hash,
 			goto bind_error;
 
 		ret = sqlite3_bind_blob(stmt, 5, digest, digest_len,
+					SQLITE_STATIC);
+		if (ret)
+			goto bind_error;
+
+		ret = sqlite3_step(stmt);
+		if (ret != SQLITE_DONE) {
+			perror_sqlite(ret, "executing statement");
+			goto out_error;
+		}
+
+		sqlite3_reset(stmt);
+	}
+
+	ret = 0;
+bind_error:
+	if (ret)
+		perror_sqlite(ret, "binding values");
+out_error:
+
+	sqlite3_finalize(stmt);
+	return ret;
+}
+
+int dbfile_write_extent_hashes(sqlite3 *db, struct filerec *file,
+			       uint64_t nb_hash, struct extent_csum *hashes)
+{
+	int ret;
+	uint64_t i;
+	sqlite3_stmt *stmt = NULL;
+	uint64_t loff, poff;
+	uint32_t flags, len;
+	unsigned char *digest;
+
+	if (file->flags & FILEREC_IN_DB) {
+		ret = dbfile_remove_file_hashes(db, file);
+		if (ret)
+			return ret;
+	}
+
+	dprintf("db: write %d hashes for file %s\n", (int)nb_hash,
+		file->filename);
+#define	UPDATE_EXTENTS						\
+"INSERT INTO extents (ino, subvol, loff, poff, len, flags, digest) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);"
+	ret = sqlite3_prepare_v2(db, UPDATE_EXTENTS, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing extents insert statement");
+		goto out_error;
+	}
+
+	for (i = 0; i < nb_hash; i++) {
+		loff = hashes[i].loff;
+		poff = hashes[i].poff;
+		len = hashes[i].len;
+		flags = hashes[i].flags;
+		digest = hashes[i].digest;
+
+		ret = sqlite3_bind_int64(stmt, 1, file->inum);
+		if (ret)
+			goto bind_error;
+
+		ret = sqlite3_bind_int64(stmt, 2, file->subvolid);
+		if (ret)
+			goto bind_error;
+
+		ret = sqlite3_bind_int64(stmt, 3, loff);
+		if (ret)
+			goto bind_error;
+
+		ret = sqlite3_bind_int64(stmt, 4, poff);
+		if (ret)
+			goto bind_error;
+
+		/*
+		 * XXX: Should len really be u64? I think fiemap uses
+		 * 32 bits here
+		 */
+		ret = sqlite3_bind_int(stmt, 5, len);
+		if (ret)
+			goto bind_error;
+
+		ret = sqlite3_bind_int(stmt, 6, flags);
+		if (ret)
+			goto bind_error;
+
+		ret = sqlite3_bind_blob(stmt, 7, digest, digest_len,
 					SQLITE_STATIC);
 		if (ret)
 			goto bind_error;
@@ -1119,7 +1225,7 @@ out:
 	return ret;
 }
 
-int dbfile_load_hashes(struct hash_tree *hash_tree)
+int dbfile_load_block_hashes(struct hash_tree *hash_tree)
 {
 	int ret;
 	sqlite3 *db;
@@ -1178,6 +1284,81 @@ int dbfile_load_hashes(struct hash_tree *hash_tree)
 	sqlite3_reset(stmt);
 
 	sort_file_hash_heads(hash_tree);
+
+	ret = 0;
+out:
+	if (stmt)
+		sqlite3_finalize(stmt);
+
+	return ret;
+}
+
+int dbfile_load_extent_hashes(struct results_tree *res)
+{
+	int ret;
+	sqlite3 *db;
+	sqlite3_stmt *stmt = NULL;
+	uint64_t subvol, ino, loff;
+	unsigned int len;
+	unsigned char *digest;
+	int flags;
+	struct filerec *file;
+
+	db = dbfile_get_handle();
+	if (!db)
+		return ENOENT;
+
+	ret = dbfile_check_version(db);
+	if (ret)
+		return ret;
+
+	/*
+	 * We need to select on both digest and len, otherwise we
+	 * could run into a situation where a single extent with a
+	 * colliding hash but different length gets placed into the
+	 * results tree, which will get very angry when it has a
+	 * result of only one extent.
+	 */
+#define GET_DUPLICATE_EXTENTS					      \
+	"SELECT extents.digest, ino, subvol, loff, poff, len, flags FROM extents " \
+	"JOIN (SELECT digest FROM extents GROUP BY digest " \
+				"HAVING count(*) > 1) AS duplicate_extents " \
+	"on extents.digest = duplicate_extents.digest;"
+
+	ret = sqlite3_prepare_v2(db, GET_DUPLICATE_EXTENTS, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing statement");
+		return ret;
+	}
+
+	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
+		digest = (unsigned char *)sqlite3_column_blob(stmt, 0);
+		ino = sqlite3_column_int64(stmt, 1);
+		subvol = sqlite3_column_int64(stmt, 2);
+		loff = sqlite3_column_int64(stmt, 3);
+		len = sqlite3_column_int(stmt, 4);
+		flags = sqlite3_column_int(stmt, 5);
+
+		file = filerec_find(ino, subvol);
+		if (!file) {
+			ret = dbfile_load_one_filerec(db, ino, subvol, &file);
+			if (ret) {
+				fprintf(stderr, "Error loading filerec (%"
+					PRIu64",%"PRIu64") from db\n",
+					ino, subvol);
+				goto out;
+			}
+		}
+
+		ret = insert_one_result(res, digest, file, loff, len);
+		if (ret)
+			return ENOMEM;
+	}
+	if (ret != SQLITE_DONE) {
+		perror_sqlite(ret, "looking up hash");
+		goto out;
+	}
+	sqlite3_reset(stmt);
 
 	ret = 0;
 out:

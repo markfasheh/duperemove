@@ -3,7 +3,9 @@
 
 #include <sqlite3.h>
 struct filerec;
-struct block;
+struct block_csum;
+struct extent_csum;
+struct results_tree;
 
 int dbfile_create(char *filename, int *dbfile_is_new);
 int dbfile_open(char *filename);
@@ -27,7 +29,8 @@ int create_indexes(sqlite3 *db);
  * Load hashes into hash_tree only if they have a duplicate in the db.
  * The extent search is later run on the resulting hash_tree.
  */
-int dbfile_load_hashes(struct hash_tree *hash_tree);
+int dbfile_load_block_hashes(struct hash_tree *hash_tree);
+int dbfile_load_extent_hashes(struct results_tree *res);
 
 /* Scan files based on db contents. Removes any orphaned file records. */
 int dbfile_scan_files(void);
@@ -41,8 +44,10 @@ int dbfile_sync_files(sqlite3 *db);
  */
 sqlite3 *dbfile_get_handle(void);
 int dbfile_write_file_info(sqlite3 *db, struct filerec *file);
-int dbfile_write_hashes(sqlite3 *db, struct filerec *file,
-			uint64_t nb_hash, struct block *hashes);
+int dbfile_write_block_hashes(sqlite3 *db, struct filerec *file,
+			      uint64_t nb_hash, struct block_csum *hashes);
+int dbfile_write_extent_hashes(sqlite3 *db, struct filerec *file,
+			       uint64_t nb_hash, struct extent_csum *hashes);
 int dbfile_begin_trans(sqlite3 *db);
 int dbfile_commit_trans(sqlite3 *db);
 
