@@ -150,6 +150,9 @@ void fiemap_ctxt_init(struct fiemap_ctxt *ctxt);
 int fiemap_iter_get_flags(struct fiemap_ctxt *ctxt, struct filerec *file,
 			  uint64_t blkno, unsigned int *flags,
 			  unsigned int *hole);
+int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, struct filerec *file,
+			    uint64_t *poff, uint64_t *loff, uint32_t *len,
+			    unsigned int *flags);
 
 #define	NANOSECONDS	1000000000
 static inline uint64_t timespec_to_nano(struct timespec *t)

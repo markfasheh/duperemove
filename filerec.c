@@ -509,12 +509,11 @@ static inline void fc_set_last(struct fiemap_ctxt *fc, unsigned int flags,
 
 struct fiemap_ctxt *alloc_fiemap_ctxt(void)
 {
-	struct fiemap_ctxt *ctxt = malloc(sizeof(*ctxt));
+	struct fiemap_ctxt *ctxt = calloc(1, sizeof(*ctxt));
 
 	if (ctxt) {
 		ctxt->fiemap = (struct fiemap *) ctxt->buf;
 		ctxt->idx = -1;
-		ctxt->last_flags = ctxt->last_hole = 0;
 	}
 	return ctxt;
 }
@@ -543,11 +542,48 @@ static int do_fiemap(struct fiemap *fiemap, struct filerec *file,
 		for (i = 0; i < fiemap->fm_mapped_extents; i++) {
 			extent = &fiemap->fm_extents[i];
 
-			dprintf("[%d] logical: %llu, length: %llu\n",
-				i, (unsigned long long)extent->fe_logical,
-				(unsigned long long)extent->fe_length);
+			dprintf("[%d] logical: %llu, physical: %llu length: %llu\n",
+			       i, (unsigned long long)extent->fe_logical,
+			       (unsigned long long)extent->fe_physical,
+			       (unsigned long long)extent->fe_length);
 		}
 	}
+	return 0;
+}
+
+int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, struct filerec *file,
+			    uint64_t *poff, uint64_t *loff,
+			    uint32_t *len, unsigned int *flags)
+{
+	int ret;
+	uint64_t fiestart = 0;
+	int idx = ctxt->idx;
+	struct fiemap *fiemap = ctxt->fiemap;
+	struct fiemap_extent *extent;
+
+	if (idx == -1 || idx >= fiemap->fm_mapped_extents) {
+		if (idx != -1) {
+			extent = &fiemap->fm_extents[idx];
+			fiestart = extent->fe_logical + extent->fe_length;
+		}
+		ret = do_fiemap(fiemap, file, fiestart);
+		if (ret)
+			return ret;
+		idx = ctxt->idx = 0;
+	}
+
+	fiemap = ctxt->fiemap;
+	extent = &fiemap->fm_extents[idx];
+
+	*len = extent->fe_length;
+	*poff = extent->fe_physical;
+	*loff = extent->fe_logical;
+	*flags = extent->fe_flags;
+
+	dprintf("fiemap_iter: filename \"%s\" idx %d return poff %"PRIu64" "
+		"loff %"PRIu64" len %u flags 0x%x\n", file->filename, idx,
+		*poff, *loff, *len, *flags);
+	ctxt->idx++;
 	return 0;
 }
 
@@ -869,8 +905,8 @@ static int test_iter(struct filerec *file)
 {
 	int ret, bs = 128*1024;
 	struct fiemap_ctxt *fc = alloc_fiemap_ctxt();
-	unsigned int flags, hole;
-	uint64_t blkno;
+	unsigned int flags;
+	uint64_t loff, poff, len;
 
 	debug = 1;	/* Want prints from filerec_count_shared */
 
@@ -881,13 +917,17 @@ static int test_iter(struct filerec *file)
 	if (ret)
 		goto out;
 
-	for(blkno = 0; blkno < file->size; blkno += bs) {
-		ret = fiemap_iter_get_flags(fc, file, blkno, &flags, &hole);
+	flags = 0;
+	loff = len = 0;
+	while (!(flags & FIEMAP_EXTENT_LAST) && loff + len < file->size) {
+		ret = fiemap_iter_next_extent(fc, file, &poff, &loff, &len,
+					      &flags);
 		if (ret)
 			return ret;
 
-		printf("(test_iter) %s: block: %"PRIu64" hole: %d flags: %s\n",
-		       file->filename, blkno, hole, fiemap_flags_str(flags));
+		printf("(test_iter) %s: poff: %"PRIu64" loff: %"PRIu64" len: %"
+		       PRIu64" flags: %s\n",
+		       file->filename, poff, loff, len, fiemap_flags_str(flags));
 	}
 
 out:
