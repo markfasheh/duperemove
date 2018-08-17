@@ -146,10 +146,6 @@ void free_all_filerec_compared(void);
 
 struct fiemap_ctxt;
 struct fiemap_ctxt *alloc_fiemap_ctxt(void);
-void fiemap_ctxt_init(struct fiemap_ctxt *ctxt);
-int fiemap_iter_get_flags(struct fiemap_ctxt *ctxt, struct filerec *file,
-			  uint64_t blkno, unsigned int *flags,
-			  unsigned int *hole);
 int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, struct filerec *file,
 			    uint64_t *poff, uint64_t *loff, uint32_t *len,
 			    unsigned int *flags);

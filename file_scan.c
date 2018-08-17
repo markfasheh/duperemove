@@ -575,92 +575,12 @@ static inline int is_block_zeroed(void *buf, ssize_t buf_size)
 	return 1;
 }
 
-struct csum_block {
-	ssize_t bytes;
-	unsigned int flags;
-	char *buf;
-	struct filerec *file;
-	unsigned char digest[DIGEST_LEN_MAX];
-};
-
 struct csum_ctxt {
 	uint64_t blocks_recorded;
 	char *buf;
 	struct filerec *file;
 	unsigned char digest[DIGEST_LEN_MAX];
 };
-
-static inline int csum_next_block(struct csum_block *data, uint64_t *off,
-				  struct fiemap_ctxt **in_fc)
-{
-	struct fiemap_ctxt *fc = NULL;
-	ssize_t stored_bytes = data->bytes;
-	ssize_t bytes_read;
-	int ret = 0;
-	unsigned int hole;
-	int partial = 0;
-
-	if (in_fc)
-		fc = *in_fc;
-
-	bytes_read = read(data->file->fd, data->buf + stored_bytes,
-				blocksize - stored_bytes);
-	if (bytes_read < 0) {
-		ret = errno;
-		fprintf(stderr, "Unable to read file %s: %s\n",
-			data->file->filename, strerror(ret));
-		return -1;
-	}
-
-	/* Handle EOF */
-	if (bytes_read == 0)
-		return 0;
-
-	data->bytes += bytes_read;
-
-	/* Handle partial read */
-	if (bytes_read < blocksize) {
-		/*
-		 * Don't want to store the len of each block, so
-		 * hash-tree makes the assumption that a partial block
-		 * is the last one.
-		 */
-		if (bytes_read + *off != data->file->size)
-			return -1;
-		partial = FILE_BLOCK_PARTIAL;
-	}
-	data->flags = hole = partial;
-	if (fc) {
-		unsigned int fieflags = 0;
-
-		ret = fiemap_iter_get_flags(fc, data->file, *off, &fieflags,
-					    &hole);
-		if (ret) {
-			fprintf(stderr,
-				"Fiemap error %d while scanning file "
-				"\"%s\": %s\n", ret, data->file->filename,
-				strerror(ret));
-
-			free(fc);
-			fc = *in_fc = NULL;
-		} else {
-			if (skip_zeroes && fieflags & FIEMAP_EXTENT_UNWRITTEN)
-				return 3;
-			if (hole)
-				return 3;
-			if (fieflags & FIEMAP_SKIP_FLAGS)
-				data->flags |= FILE_BLOCK_SKIP_COMPARE;
-		}
-	}
-
-	if (skip_zeroes && is_block_zeroed(data->buf, data->bytes))
-		return 3;
-
-	checksum_block(data->buf, data->bytes, data->digest);
-	if (data->flags & FILE_BLOCK_PARTIAL)
-		return 1;
-	return 2;
-}
 
 static int csum_extent(struct csum_ctxt *data, uint64_t *extent_off,
 		       unsigned int extent_len)

@@ -494,18 +494,7 @@ struct fiemap_ctxt {
 	struct fiemap		*fiemap;
 	char			buf[FIEMAP_BUF_SIZE];
 	int			idx;
-
-	unsigned int		last_flags;
-	unsigned int		last_hole;
 };
-
-static inline void fc_set_last(struct fiemap_ctxt *fc, unsigned int flags,
-				 unsigned int hole)
-{
-	fc->last_flags = flags;
-	fc->last_hole = hole;
-	fc->fiemap = NULL;
-}
 
 struct fiemap_ctxt *alloc_fiemap_ctxt(void)
 {
@@ -584,97 +573,6 @@ int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, struct filerec *file,
 		"loff %"PRIu64" len %u flags 0x%x\n", file->filename, idx,
 		*poff, *loff, *len, *flags);
 	ctxt->idx++;
-	return 0;
-}
-
-/*
- * Assumes that we always call with blkno in ascending order
- */
-int fiemap_iter_get_flags(struct fiemap_ctxt *ctxt, struct filerec *file,
-			  uint64_t blkno, unsigned int *flags,
-			  unsigned int *hole)
-{
-	int err;
-	uint64_t fiestart = 0;
-	struct fiemap *fiemap;
-	struct fiemap_extent *extent;
-
-	*flags = 0;
-	*hole = 0;
-
-	if (ctxt == NULL)
-		return 0;
-	/* we had a previous error or have no more extents to look up */
-	if (ctxt->fiemap == NULL) {
-		*hole = ctxt->last_hole;
-		*flags = ctxt->last_flags;
-		return 0;
-	}
-
-	fiemap = ctxt->fiemap;
-
-	if (ctxt->idx == -1) {
-		err = do_fiemap(fiemap, file, fiestart);
-		if (err) {
-			fc_set_last(ctxt, 0, 0);
-			return err;
-		}
-		if (fiemap->fm_mapped_extents == 0) {
-			*hole = 1;
-			fc_set_last(ctxt, 0, 1);
-			return 0;
-		}
-		ctxt->idx = 0;
-	}
-
-	/* Find first extent that ends past blkno */
-	extent = &fiemap->fm_extents[ctxt->idx];
-	while ((extent->fe_logical + extent->fe_length) <= blkno) {
-		if (extent->fe_flags & FIEMAP_EXTENT_LAST)
-			break;
-
-		ctxt->idx++;
-
-		if (ctxt->idx == fiemap->fm_mapped_extents) {
-			fiestart = extent->fe_logical + extent->fe_length;
-			err = do_fiemap(fiemap, file, fiestart);
-			if (err) {
-				fc_set_last(ctxt, 0, 0);
-				return err;
-			}
-			if (fiemap->fm_mapped_extents == 0) {
-				*hole = 1;
-				fc_set_last(ctxt, 0, 1);
-				return 0;
-			}
-			ctxt->idx = 0;
-		}
-		extent = &fiemap->fm_extents[ctxt->idx];
-	}
-
-	if (blkno < extent->fe_logical) {
-		/*
-		 * Extent starts after blkno. Don't have to worry
-		 * about EXTENT_LAST here, we'll hit this extent on a
-		 * future call.
-		 */
-		*hole = 1;
-		return 0;
-	}
-
-	/*
-	 * No more extents for us to look for
-	 * Let's assume - that all following data is a hole
-	 */
-	if (extent->fe_flags & FIEMAP_EXTENT_LAST
-	    && blkno >= (extent->fe_logical + extent->fe_length)) {
-		*hole = 1;
-		fc_set_last(ctxt, 0, 1);
-		return 0;
-	}
-
-	*flags = extent->fe_flags;
-
 	return 0;
 }
 
