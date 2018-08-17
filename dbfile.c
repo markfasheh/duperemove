@@ -664,7 +664,7 @@ static int dbfile_check_version(sqlite3 *db)
 	return 0;
 }
 
-static int __dbfile_write_file_info(sqlite3 *db, sqlite3_stmt *stmt,
+static int __dbfile_store_file_info(sqlite3 *db, sqlite3_stmt *stmt,
 				    struct filerec *file)
 {
 	int ret;
@@ -711,7 +711,7 @@ out_error:
 	return ret;
 }
 
-int dbfile_write_file_info(sqlite3 *db, struct filerec *file)
+int dbfile_store_file_info(sqlite3 *db, struct filerec *file)
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
@@ -724,7 +724,7 @@ int dbfile_write_file_info(sqlite3 *db, struct filerec *file)
 		return ret;
 	}
 
-	ret = __dbfile_write_file_info(db, stmt, file);
+	ret = __dbfile_store_file_info(db, stmt, file);
 
 	sqlite3_finalize(stmt);
 	return ret;
@@ -751,7 +751,7 @@ int dbfile_sync_files(sqlite3 *db)
 			dprintf("File \"%s\" still needs update in db\n",
 				file->filename);
 
-			ret = __dbfile_write_file_info(db, stmt, file);
+			ret = __dbfile_store_file_info(db, stmt, file);
 			if (ret)
 				break;
 
@@ -827,7 +827,7 @@ static int dbfile_remove_file_hashes(sqlite3 *db, struct filerec *file)
 	return ret;
 }
 
-int dbfile_write_block_hashes(sqlite3 *db, struct filerec *file,
+int dbfile_store_block_hashes(sqlite3 *db, struct filerec *file,
 			      uint64_t nb_hash, struct block_csum *hashes)
 {
 	int ret;
@@ -896,7 +896,7 @@ out_error:
 	return ret;
 }
 
-int dbfile_write_extent_hashes(sqlite3 *db, struct filerec *file,
+int dbfile_store_extent_hashes(sqlite3 *db, struct filerec *file,
 			       uint64_t nb_hash, struct extent_csum *hashes)
 {
 	int ret;

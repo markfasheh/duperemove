@@ -891,21 +891,21 @@ static void csum_whole_file(struct filerec *file,
 		goto err;
 	}
 
-	ret = dbfile_write_file_info(db, file);
+	ret = dbfile_store_file_info(db, file);
 	if (ret) {
 		g_mutex_unlock(&io_mutex);
 		goto err;
 	}
 
 	if (block_dedupe) {
-		ret = dbfile_write_block_hashes(db, file, nb_hash,
+		ret = dbfile_store_block_hashes(db, file, nb_hash,
 						block_hashes);
 		if (ret) {
 			g_mutex_unlock(&io_mutex);
 			goto err;
 		}
 	} else {
-		ret = dbfile_write_extent_hashes(db, file, nb_hash,
+		ret = dbfile_store_extent_hashes(db, file, nb_hash,
 						 extent_hashes);
 		if (ret) {
 			g_mutex_unlock(&io_mutex);
@@ -926,7 +926,7 @@ static void csum_whole_file(struct filerec *file,
 	g_mutex_unlock(mutex);
 
 	file->flags &= ~(FILEREC_NEEDS_SCAN|FILEREC_UPDATE_DB);
-	/* Set 'IN_DB' flag *after* we call dbfile_write_hashes() */
+	/* Set 'IN_DB' flag *after* we call dbfile_store_hashes() */
 	file->flags |= FILEREC_IN_DB;
 
 	filerec_close(file);

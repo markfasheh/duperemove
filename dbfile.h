@@ -43,10 +43,10 @@ int dbfile_sync_files(sqlite3 *db);
  * the database.
  */
 sqlite3 *dbfile_get_handle(void);
-int dbfile_write_file_info(sqlite3 *db, struct filerec *file);
-int dbfile_write_block_hashes(sqlite3 *db, struct filerec *file,
+int dbfile_store_file_info(sqlite3 *db, struct filerec *file);
+int dbfile_store_block_hashes(sqlite3 *db, struct filerec *file,
 			      uint64_t nb_hash, struct block_csum *hashes);
-int dbfile_write_extent_hashes(sqlite3 *db, struct filerec *file,
+int dbfile_store_extent_hashes(sqlite3 *db, struct filerec *file,
 			       uint64_t nb_hash, struct extent_csum *hashes);
 int dbfile_begin_trans(sqlite3 *db);
 int dbfile_commit_trans(sqlite3 *db);
