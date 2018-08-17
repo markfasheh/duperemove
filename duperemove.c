@@ -759,9 +759,15 @@ int main(int argc, char **argv)
 
 	printf("Loading only duplicated hashes from hashfile.\n");
 
-	ret = dbfile_load_block_hashes(&dups_tree);
-	if (ret)
-		goto out;
+	if (block_dedupe) {
+		ret = dbfile_load_block_hashes(&dups_tree);
+		if (ret)
+			goto out;
+	} else {
+		ret = dbfile_load_extent_hashes(&res);
+		if (ret)
+			goto out;
+	}
 
 	ret = find_all_dupes(&dups_tree, &res);
 	if (ret) {
