@@ -56,8 +56,8 @@ unsigned int blocksize = DEFAULT_BLOCKSIZE;
 int run_dedupe = 0;
 int recurse_dirs = 0;
 int one_file_system = 1;
-int block_dedupe = 1;
-int dedupe_same_file = 0;
+int block_dedupe = 0;
+int dedupe_same_file = 1;
 int skip_zeroes = 0;
 
 int target_rw = 1;
@@ -80,7 +80,7 @@ unsigned int io_threads;
 unsigned int cpu_threads;
 int io_threads_opt = 0;
 int cpu_threads_opt = 0;
-int do_lookup_extents = 0;
+int do_lookup_extents = 1;
 int fiemap_during_dedupe = 1;
 
 int stdout_is_tty = 0;
