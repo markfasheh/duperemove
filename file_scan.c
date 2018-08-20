@@ -786,9 +786,7 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 	if (fc == NULL)
 		return ENOMEM;
 
-//	off = 0;
 	flags = 0;
-//	while (off < file->size) {
 	while (!(flags & FIEMAP_EXTENT_LAST)) {
 		ret = fiemap_helper(fc, file, &poff, &loff, &len, &flags);
 		if (ret < 0)
@@ -796,13 +794,8 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 
 		if (ret == 1) {
 			/* Skip reading this extent */
-//			off = loff + len;
 			continue;
 		}
-//		if (off < loff) {
-//			/* Hole, start read at next extent */
-//			off = loff;
-//		}
 
 		off = loff;
 		ret = csum_extent(ctxt, &off, len);
