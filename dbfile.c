@@ -1295,10 +1295,10 @@ out:
 
 int dbfile_load_extent_hashes(struct results_tree *res)
 {
-	int ret;
+	int ret, flags;
 	sqlite3 *db;
 	sqlite3_stmt *stmt = NULL;
-	uint64_t subvol, ino, loff;
+	uint64_t subvol, ino, loff, poff;
 	unsigned int len;
 	unsigned char *digest;
 	struct filerec *file;
@@ -1319,7 +1319,7 @@ int dbfile_load_extent_hashes(struct results_tree *res)
 	 * result of only one extent.
 	 */
 #define GET_DUPLICATE_EXTENTS					      \
-	"SELECT extents.digest, ino, subvol, loff, len, FROM extents " \
+	"SELECT extents.digest, ino, subvol, loff, len, poff, flags FROM extents " \
 	"JOIN (SELECT digest FROM extents GROUP BY digest " \
 				"HAVING count(*) > 1) AS duplicate_extents " \
 	"on extents.digest = duplicate_extents.digest;"
@@ -1336,6 +1336,8 @@ int dbfile_load_extent_hashes(struct results_tree *res)
 		subvol = sqlite3_column_int64(stmt, 2);
 		loff = sqlite3_column_int64(stmt, 3);
 		len = sqlite3_column_int(stmt, 4);
+		poff = sqlite3_column_int64(stmt, 5);
+		flags = sqlite3_column_int(stmt, 6);
 
 		file = filerec_find(ino, subvol);
 		if (!file) {
@@ -1348,7 +1350,7 @@ int dbfile_load_extent_hashes(struct results_tree *res)
 			}
 		}
 
-		ret = insert_one_result(res, digest, file, loff, len);
+		ret = insert_one_result(res, digest, file, loff, len, poff, flags);
 		if (ret)
 			return ENOMEM;
 	}

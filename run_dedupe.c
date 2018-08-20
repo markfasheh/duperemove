@@ -125,30 +125,32 @@ static void process_dedupe_results(struct dedupe_ctxt *ctxt,
 	}
 }
 
+#if 0
 static void get_extent_info(struct dupe_extents *dext)
 {
-	int ret = 0;
-	struct extent *extent;
-	struct filerec *file;
+       int ret = 0;
+       struct extent *extent;
+       struct filerec *file;
 
-	list_for_each_entry(extent, &dext->de_extents, e_list) {
-		file = extent->e_file;
+       list_for_each_entry(extent, &dext->de_extents, e_list) {
+               file = extent->e_file;
 
-		if (filerec_open(file, 0))
-			continue;
+               if (filerec_open(file, 0))
+                       continue;
 
-		extent_shared_bytes(extent) = 0;
-		ret = filerec_count_shared(file, extent->e_loff, dext->de_len,
-					   &extent_shared_bytes(extent),
-					   &extent_poff(extent),
-					   &extent_plen(extent));
-		if (ret) {
-			fprintf(stderr, "%s: fiemap error %d: %s\n",
-				extent->e_file->filename, ret, strerror(ret));
-		}
-		filerec_close(file);
-	}
+               extent_shared_bytes(extent) = 0;
+               ret = filerec_count_shared(file, extent->e_loff, dext->de_len,
+                                          &extent_shared_bytes(extent),
+                                          &extent_poff(extent),
+                                          &extent_plen(extent));
+               if (ret) {
+                       fprintf(stderr, "%s: fiemap error %d: %s\n",
+                               extent->e_file->filename, ret, strerror(ret));
+               }
+               filerec_close(file);
+       }
 }
+#endif
 
 static void add_shared_extents(struct dupe_extents *dext, uint64_t *shared)
 {
@@ -295,10 +297,6 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 	 * the caller knows not to reference dext any more.
 	 */
 	if (fiemap_during_dedupe) {
-		ret = init_all_extent_dedupe_info(dext);
-		if (ret)
-			goto out;
-		get_extent_info(dext);
 		clean_deduped(&dext);
 		if (!dext) {
 			printf("[%p] Skipping - extents are already deduped.\n",
@@ -434,10 +432,9 @@ close_files:
 	abort_on(ctxt != NULL);
 	abort_on(!RB_EMPTY_ROOT(&open_files.root));
 
-	if (fiemap_during_dedupe) {
-		get_extent_info(dext);
+	if (fiemap_during_dedupe)
 		add_shared_extents(dext, &shared_post);
-	}
+
 	/*
 	 * It's entirely possible that some other process is
 	 * manipulating files underneath us. Take care not to
@@ -523,7 +520,7 @@ static int __block_dedupe(struct block_dedupe_list *bdl,
 	if (tgt_file) {
 		/* Insert this first so it gets picked as target. */
 		ret = insert_one_result(res, bdl->bd_hash, tgt_file, tgt_off,
-					tgt_len);
+					tgt_len, 0, 0);
 		if (ret)
 			return ret;
 
@@ -548,7 +545,7 @@ static int __block_dedupe(struct block_dedupe_list *bdl,
 		}
 
 		ret = insert_one_result(res, bdl->bd_hash, block->b_file,
-					block->b_loff, block_len(block));
+					block->b_loff, block_len(block), 0, 0);
 		if (ret)
 			goto out;
 	}

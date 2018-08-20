@@ -33,7 +33,6 @@ void print_mem_stats(void)
 	show_allocs_dupe_blocks_list();
 	show_allocs_dupe_extents();
 	show_allocs_extent();
-	show_allocs_extent_dedupe_info();
 	show_allocs_filerec();
 	show_allocs_filerec_token();
 	show_allocs_file_hash_head();

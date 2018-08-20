@@ -23,6 +23,7 @@
 #ifdef	ITDEBUG
 #include <inttypes.h>
 #endif
+#include <linux/fiemap.h>
 
 #include "kernel.h"
 #include "rbtree.h"
@@ -38,7 +39,6 @@
 
 declare_alloc_tracking(dupe_extents);
 declare_alloc_tracking(extent);
-declare_alloc_tracking(extent_dedupe_info);
 
 static inline uint64_t extent_len(struct extent *extent)
 {
@@ -197,8 +197,6 @@ static void insert_extent_list_free(struct results_tree *res,
 				    struct extent **e)
 {
 	if (insert_extent_list(res, dext, *e)) {
-		if ((*e)->e_info)
-			free_extent_dedupe_info((*e)->e_info);
 		free_extent(*e);
 		*e = NULL;
 	}
@@ -263,13 +261,21 @@ static struct dupe_extents *find_alloc_dext(struct results_tree *res,
  * the dedupe phase of block-dedupe to work properly.
  */
 int insert_one_result(struct results_tree *res, unsigned char *digest,
-		      struct filerec *file, uint64_t startoff, uint64_t len)
+		      struct filerec *file, uint64_t startoff, uint64_t len,
+		      uint64_t poff, int flags)
 {
 	struct extent *extent = alloc_extent(file, startoff);
 	struct dupe_extents *dext;
 
 	if (!extent)
 		return ENOMEM;
+
+	extent_poff(extent) = poff;
+	extent_plen(extent) = len;
+	extent_shared_bytes(extent) = 0;
+	if (!(flags & FIEMAP_EXTENT_DELALLOC)
+	    && flags & FIEMAP_EXTENT_SHARED)
+		extent_shared_bytes(extent) = len; /* XXX: get rid of this */
 
 	dext = find_alloc_dext(res, digest, len, NULL);
 	if (!dext)
@@ -365,8 +371,6 @@ again:
 #ifdef	ITDEBUG
 	extent->e_file->num_extents--;
 #endif
-	if (extent->e_info)
-		free_extent_dedupe_info(extent->e_info);
 	free_extent(extent);
 	res->num_extents--;
 
@@ -386,27 +390,6 @@ again:
 		res->num_dupes--;
 	}
 	return result;
-}
-
-/*
- * Alloc an info item for each extent. No cleanup is done if we
- * ENOMEM - remove_extent() is smart enough to conditionally free
- * these.
- */
-int init_all_extent_dedupe_info(struct dupe_extents *dext)
-{
-	struct rb_node *node;
-	struct extent *extent;
-
-	for (node = rb_first(&dext->de_extents_root); node;
-	     node = rb_next(node)) {
-		extent = rb_entry(node, struct extent, e_node);
-		if (!extent->e_info)
-			extent->e_info = calloc_extent_dedupe_info(1);
-		if (!extent->e_info)
-			return ENOMEM;
-	}
-	return 0;
 }
 
 #ifdef	ITDEBUG

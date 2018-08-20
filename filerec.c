@@ -577,134 +577,33 @@ int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, struct filerec *file,
 }
 
 #ifdef FILEREC_TEST
-static char *fiemap_flags_str(unsigned long long flags);
-#endif
-
-/*
- * Skeleton for this function taken from e2fsprogs.git/misc/filefrag.c
- * which is Copyright 2003 by Theodore Ts'o and released under the GPL.
- */
-int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
-			 uint64_t *shared_bytes, uint64_t *poff,
-			 uint64_t *first_plen)
+static int filerec_count_shared(struct filerec *file, uint64_t *shared_bytes)
 {
-	char buf[16384];
-	struct fiemap *fiemap = (struct fiemap *)buf;
-	struct fiemap_extent *fm_ext = &fiemap->fm_extents[0];
-	int count = (sizeof(buf) - sizeof(*fiemap)) /
-			sizeof(struct fiemap_extent);
-	unsigned int i;
-	int last = 0;
-	int rc;
-	uint64_t search_end = start + len;
-	uint64_t loff, ext_len, ext_end;
+	int ret;
+	struct fiemap_ctxt *ctxt = alloc_fiemap_ctxt();
+	unsigned int flags;
+	uint64_t loff, poff;
+	uint32_t len;
 
-	memset(fiemap, 0, sizeof(struct fiemap));
+	if (!ctxt)
+		return ENOMEM;
 
-	do {
-#ifndef	FILEREC_TEST
-		dprintf("(fiemap) %s: start: %"PRIu64", len: %"PRIu64"\n",
-			file->filename, start, len);
-#endif
+	*shared_bytes = 0;
 
-		/*
-		 * Do search from 0 to EOF. btrfs was doing some weird
-		 * stuff with mapped extent start values when I tried
-		 * to search from user passed start to len. Instead
-		 * the code can just catch extents outside our range
-		 * in the for loop below and do the right thing.
-		 *
-		 * This issue can be revisited at some future point.
-		 */
-		fiemap->fm_length = ~0ULL;
-		fiemap->fm_extent_count = count;
-		fiemap->fm_start = start;
-		rc = ioctl(file->fd, FS_IOC_FIEMAP, (unsigned long) fiemap);
-		if (rc < 0)
-			return errno;
+	while ((ret = fiemap_iter_next_extent(ctxt, file, &poff, &loff, &len,
+					      &flags)) == 0) {
+		if (!(flags & FIEMAP_EXTENT_DELALLOC)
+		    && flags & FIEMAP_EXTENT_SHARED)
+			*shared_bytes += len;
 
-		/* If 0 extents are returned, then more ioctls are not needed */
-		if (fiemap->fm_mapped_extents == 0)
+		if (flags & FIEMAP_EXTENT_LAST)
 			break;
-
-		if (poff)
-			*poff = fiemap->fm_extents[0].fe_physical;
-
-		for (i = 0; i < fiemap->fm_mapped_extents; i++) {
-			if (fm_ext[i].fe_flags & FIEMAP_EXTENT_LAST)
-				last = 1;
-#ifndef FILEREC_TEST
-			dprintf("(fiemap) [%u] fe_logical: %llu, "
-				"fe_length: %llu, fe_physical: %llu, "
-				"fe_flags: 0x%x\n",
-				i, (unsigned long long)fm_ext[i].fe_logical,
-				(unsigned long long)fm_ext[i].fe_length,
-				(unsigned long long)fm_ext[i].fe_physical,
-				fm_ext[i].fe_flags);
-#else
-			dprintf("(fiemap) [%u] fe_logical: %llu, "
-				"fe_length: %llu, fe_physical: %llu, "
-				"fe_flags: 0x%x %s\n",
-				i, (unsigned long long)fm_ext[i].fe_logical,
-				(unsigned long long)fm_ext[i].fe_length,
-				(unsigned long long)fm_ext[i].fe_physical,
-				fm_ext[i].fe_flags,
-				fiemap_flags_str(fm_ext[i].fe_flags));
-#endif
-
-			loff = fm_ext[i].fe_logical;
-			ext_len = fm_ext[i].fe_length;
-			ext_end = loff + ext_len;
-
-			if (first_plen) {
-				*first_plen = ext_len;
-				first_plen = NULL;/* Only return the first one */
-			}
-
-			if (ext_end <= start) {
-				/* extent is before our search area */
-				continue;
-			}
-			if (loff >= search_end) {
-				/* extent starts after our search area */
-				last = 1;
-				i++; /* inc this so the math below works out */
-				break;
-			}
-
-			/*
-			 * First extent loff could begin before our
-			 * search start. If so just shift our extent over.
-			 */
-			if (loff < start) {
-				ext_len -= start - loff;
-				loff = start;
-			}
-			/*
-			 * Last extent could end past our intended
-			 * range, trim length
-			 */
-			if (ext_end > search_end) {
-				ext_len = search_end - loff;
-				last = 1;
-			}
-
-//			dprintf("(fiemap) loff: %"PRIu64" ext_len: %"PRIu64
-//				" flags: 0x%x\n",
-//				loff, ext_len, fm_ext[i].fe_flags);
-
-			if (!(fm_ext[i].fe_flags & FIEMAP_EXTENT_DELALLOC)
-				&& fm_ext[i].fe_flags & FIEMAP_EXTENT_SHARED)
-				*shared_bytes += ext_len;
-		}
-
-		start = (fm_ext[i - 1].fe_logical + fm_ext[i - 1].fe_length);
-	} while (last == 0);
-
-	return 0;
+	}
+	free(ctxt);
+	return ret;
 }
 
-#ifdef FILEREC_TEST
+#ifdef	TEST_FIEMAP_ITER
 #define	FLAG_STR_LEN	4096
 static char flagstr[FLAG_STR_LEN];
 /* This function is not thread-safe */
@@ -785,7 +684,6 @@ static char *fiemap_flags_str(unsigned long long flags)
 	return flagstr;
 }
 
-#ifdef	TEST_FIEMAP_ITER
 static int get_size(struct filerec *file)
 {
 	int ret;
@@ -863,7 +761,7 @@ int main(int argc, char **argv)
 #else
 
 		shared = 0;
-		ret = filerec_count_shared(file, 0, -1ULL, &shared, NULL, NULL);
+		ret = filerec_count_shared(file, &shared);
 		filerec_close(file);
 		if (ret) {
 			fprintf(stderr, "fiemap error %d: %s\n", ret, strerror(ret));
