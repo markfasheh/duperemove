@@ -747,6 +747,8 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 
 		block_hashes[nb_hash].loff = loff;
 		block_hashes[nb_hash].flags = flags;
+		memcpy(block_hashes[nb_hash].digest, ctxt->digest,
+		       DIGEST_LEN_MAX);
 		nb_hash++;
 
 		if (bytes_read < blocksize) {
