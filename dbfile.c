@@ -111,6 +111,18 @@ int create_indexes(sqlite3 *db)
 	if (ret)
 		goto out;
 
+#define	CREATE_EXTENTS_DIGEST_INDEX					\
+"create index if not exists idx_extent_digest on extents(digest);"
+	ret = sqlite3_exec(db, CREATE_EXTENTS_DIGEST_INDEX, NULL, NULL, NULL);
+	if (ret)
+		goto out;
+
+#define	CREATE_EXTENTS_INOSUB_INDEX					\
+"create index if not exists idx_extents_inosub on extents(ino, subvol);"
+	ret = sqlite3_exec(db, CREATE_EXTENTS_INOSUB_INDEX, NULL, NULL, NULL);
+	if (ret)
+		goto out;
+
 #define	CREATE_INO_INDEX						\
 "create index if not exists idx_inosub on files(ino, subvol);"
 	ret = sqlite3_exec(db, CREATE_INO_INDEX, NULL, NULL, NULL);
@@ -815,7 +827,7 @@ static int dbfile_remove_file_hashes(sqlite3 *db, struct filerec *file)
 
 #define	REMOVE_EXTENT_HASHES					\
 	"delete from extents where ino = ?1 and subvol = ?2;"
-	ret = sqlite3_prepare_v2(db, REMOVE_FILE_HASHES, -1, &stmt, NULL);
+	ret = sqlite3_prepare_v2(db, REMOVE_EXTENT_HASHES, -1, &stmt, NULL);
 	if (ret) {
 		perror_sqlite(ret, "preparing hash insert statement");
 		return ret;
