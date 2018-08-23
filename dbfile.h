@@ -6,18 +6,25 @@ struct filerec;
 struct block_csum;
 struct extent_csum;
 struct results_tree;
+struct dbfile_config;
 
-int dbfile_create(char *filename, int *dbfile_is_new);
-int dbfile_open(char *filename);
+int dbfile_create(char *filename, int *dbfile_is_new, struct dbfile_config *cfg);
+int dbfile_open(char *filename, struct dbfile_config *cfg);
 void dbfile_close(void);
 
-/* TODO: Clean up this ridiculous prototype. */
-int dbfile_get_config(unsigned int *block_size, uint64_t *num_hashes,
-		      uint64_t *num_files, dev_t *onefs_dev,
-		      uint64_t *onefs_fsid, int *major, int *minor,
-		      char *db_hash_type, unsigned int *db_dedupe_seq);
-int dbfile_sync_config(unsigned int block_size, dev_t onefs_dev,
-		       uint64_t onefs_fsid, unsigned int seq);
+struct dbfile_config {
+	unsigned int	blocksize;
+	uint64_t	num_hashes;
+	uint64_t	num_files;
+	dev_t		onefs_dev;
+	uint64_t	onefs_fsid;
+	int		major;
+	int		minor;
+	char		hash_type[8];
+	unsigned int	dedupe_seq;
+};
+int dbfile_get_config(struct dbfile_config *cfg);
+int dbfile_sync_config(struct dbfile_config *cfg);
 
 struct hash_tree;
 struct hash_file_header;

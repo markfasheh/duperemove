@@ -42,7 +42,7 @@ static int print_blocks = 0;
 static int num_to_print = 10;
 static int print_file_list = 0;
 static char *serialize_fname = NULL;
-static uint64_t disk_files, disk_hashes;
+static struct dbfile_config dbfile_cfg;
 
 static sqlite3_stmt *top_hashes_stmt = NULL;
 static sqlite3_stmt *files_count_stmt = NULL;
@@ -235,7 +235,7 @@ static void print_filerecs(void)
 "select ino, subvol, blocks, size, filename from files;"
 
 	printf("Showing %"PRIu64" files.\nInode\tSubvol ID\tBlocks Stored\tSize\tFilename\n",
-		disk_files);
+		dbfile_cfg.num_files);
 
 	ret = sqlite3_exec(gdb, LIST_FILES, print_files_cb, gdb, &errorstr);
 	if (ret) {
@@ -245,16 +245,13 @@ static void print_filerecs(void)
 	}
 }
 
-static unsigned int disk_blocksize;
-static int major, minor;
-
 static void print_file_info(void)
 {
 	printf("Raw header info for \"%s\":\n", serialize_fname);
-	printf("  version: %d.%d\tblock_size: %u\n", major, minor,
-	       disk_blocksize);
+	printf("  version: %d.%d\tblock_size: %u\n", dbfile_cfg.major,
+	       dbfile_cfg.minor, dbfile_cfg.blocksize);
 	printf("  num_files: %"PRIu64"\tnum_hashes: %"PRIu64"\n",
-	       disk_files, disk_hashes);
+	       dbfile_cfg.num_files, dbfile_cfg.num_hashes);
 }
 
 static void usage(const char *prog)
@@ -345,16 +342,11 @@ int main(int argc, char **argv)
 	if (init_csum_module(DEFAULT_HASH_STR))
 		return ENOMEM;
 
-	ret = dbfile_open(serialize_fname);
+	ret = dbfile_open(serialize_fname, &dbfile_cfg);
 	if (ret)
 		return ret;
 
-	ret = dbfile_get_config(&disk_blocksize, &disk_hashes, &disk_files,
-				NULL, NULL, &major, &minor, NULL, NULL);
-	if (ret)
-		return ret;
-
-	blocksize = disk_blocksize;
+	blocksize = dbfile_cfg.blocksize;
 
 	ret = prepare_statements();
 	if (ret)

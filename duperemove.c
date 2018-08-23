@@ -67,6 +67,7 @@ static int fdupes_mode = 0;
 static int stdin_filelist = 0;
 static unsigned int list_only_opt = 0;
 static unsigned int rm_only_opt = 0;
+static struct dbfile_config dbfile_cfg;
 
 static enum {
 	H_READ,
@@ -99,7 +100,7 @@ static int list_db_files(char *filename)
 {
 	int ret;
 
-	ret = dbfile_open(filename);
+	ret = dbfile_open(filename, &dbfile_cfg);
 	if (ret) {
 		fprintf(stderr, "Error: Could not open \"%s\"\n", filename);
 		return ret;
@@ -166,7 +167,7 @@ static int rm_db_files(char *dbfilename)
 	int ret, err = 0;
 	struct rm_file *rm, *tmp;
 
-	ret = dbfile_open(dbfilename);
+	ret = dbfile_open(dbfilename, &dbfile_cfg);
 	if (ret) {
 		fprintf(stderr, "Error: Could not open \"%s\"\n", dbfilename);
 		return ret;
@@ -573,45 +574,44 @@ static void print_header(void)
 	printf("Gathering file list...\n");
 }
 
+static int update_config_from_dbfile(void)
+{
+	dedupe_seq = dbfile_cfg.dedupe_seq;
+
+	if (strncasecmp(dbfile_cfg.hash_type, hash_type, 8)) {
+		fprintf(stderr,
+			"Error: Hashfile %s uses %.*s. for checksums "
+			"but we are using %.*s.\nTry running with "
+			"--hash=%.*s\n", serialize_fname, 8,
+			dbfile_cfg.hash_type, 8, hash_type,
+			8, dbfile_cfg.hash_type);
+		return EINVAL;
+	}
+
+	if (dbfile_cfg.blocksize != blocksize) {
+		vprintf("Using blocksize %uK from hashfile (%uK "
+			"blocksize requested).\n", dbfile_cfg.blocksize/1024,
+			blocksize/1024);
+		blocksize = dbfile_cfg.blocksize;
+	}
+
+	return 0;
+}
+
 static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 {
 	int ret;
 	int dbfile_is_new = 0;
 
-	ret = dbfile_create(serialize_fname, &dbfile_is_new);
+	ret = dbfile_create(serialize_fname, &dbfile_is_new, &dbfile_cfg);
 	if (ret)
 		goto out;
 
 	if (!dbfile_is_new) {
-		dev_t dev;
-		uint64_t fsid;
-		unsigned db_blocksize;
-		char db_hash_type[8];
-
-		ret = dbfile_get_config(&db_blocksize, NULL, NULL, &dev, &fsid,
-					NULL, NULL, db_hash_type, &dedupe_seq);
+		ret = update_config_from_dbfile();
 		if (ret)
 			goto out;
-
-		if (strncasecmp(db_hash_type, hash_type, 8)) {
-			fprintf(stderr,
-				"Error: Hashfile %s uses %.*s. for checksums "
-				"but we are using %.*s.\nTry running with "
-				"--hash=%.*s\n", serialize_fname, 8,
-				db_hash_type, 8, hash_type,
-				8, db_hash_type);
-			ret = EINVAL;
-			goto out;
-		}
-
-		if (db_blocksize != blocksize) {
-			vprintf("Using blocksize %uK from hashfile (%uK "
-				"blocksize requested).\n", db_blocksize/1024,
-				blocksize/1024);
-			blocksize = db_blocksize;
-		}
-
-		fs_set_onefs(dev, fsid);
+		fs_set_onefs(dbfile_cfg.onefs_dev, dbfile_cfg.onefs_fsid);
 	}
 
 	print_header();
@@ -625,8 +625,11 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 		goto out;
 
 	if (dbfile_is_new) {
-		ret = dbfile_sync_config(blocksize, fs_onefs_dev(),
-					 fs_onefs_id(), dedupe_seq);
+		dbfile_cfg.blocksize = blocksize;
+		dbfile_cfg.onefs_dev = fs_onefs_dev();
+		dbfile_cfg.onefs_fsid = fs_onefs_id();
+		dbfile_cfg.dedupe_seq = dedupe_seq;
+		ret = dbfile_sync_config(&dbfile_cfg);
 		if (ret)
 			goto out;
 	} else {
@@ -733,7 +736,7 @@ int main(int argc, char **argv)
 		}
 		break;
 	case H_READ:
-		ret = dbfile_open(serialize_fname);
+		ret = dbfile_open(serialize_fname, &dbfile_cfg);
 		if (ret) {
 			fprintf(stderr, "Error: Could not open dbfile %s.\n",
 				serialize_fname);
@@ -744,12 +747,11 @@ int main(int argc, char **argv)
 		 * Skips the file scan, used to isolate the
 		 * extent-find and dedupe stages
 		 */
-		ret = dbfile_get_config(&blocksize, NULL, NULL, NULL, NULL,
-					NULL, NULL, NULL, &dedupe_seq);
-		if (ret) {
-			fprintf(stderr, "Error: initializing dbfile config\n");
+		blocksize = dbfile_cfg.blocksize;
+		ret = update_config_from_dbfile();
+		if (ret)
 			goto out;
-		}
+
 		print_header();
 		break;
 	default:
@@ -791,8 +793,11 @@ int main(int argc, char **argv)
 		dedupe_seq++;
 
 		/* Sync to get new dedupe_seq written. */
-		ret = dbfile_sync_config(blocksize, fs_onefs_dev(),
-					 fs_onefs_id(), dedupe_seq);
+		dbfile_cfg.dedupe_seq = dedupe_seq;
+		dbfile_cfg.blocksize = blocksize;
+		dbfile_cfg.onefs_dev = fs_onefs_dev();
+		dbfile_cfg.onefs_fsid = fs_onefs_id();
+		ret = dbfile_sync_config(&dbfile_cfg);
 		if (ret)
 			goto out;
 	} else {

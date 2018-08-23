@@ -50,6 +50,13 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 			       int *major, int *minor, char *db_hash_type,
 			       unsigned int *db_dedupe_seq);
 
+static void dbfile_config_defaults(struct dbfile_config *cfg)
+{
+	memset(cfg, 0, sizeof(*cfg));
+	cfg->blocksize = blocksize;
+	strncpy(cfg->hash_type, hash_type, 8);
+}
+
 #if 0
 static int debug_print_cb(void *priv, int argc, char **argv, char **column)
 {
@@ -146,7 +153,7 @@ static int dbfile_set_modes(sqlite3 *db)
 	return ret;
 }
 
-int dbfile_create(char *filename, int *dbfile_is_new)
+int dbfile_create(char *filename, int *dbfile_is_new, struct dbfile_config *cfg)
 {
 	int ret, inmem = 0, newfile = 0;
 	sqlite3 *db = NULL;
@@ -181,7 +188,12 @@ reopen:
 			sqlite3_close(db);
 			return ret;
 		}
+		/* Config is not written yet, but we can load some defaults. */
+		dbfile_config_defaults(cfg);
+		cfg->major = DB_FILE_MAJOR;
+		cfg->minor = DB_FILE_MINOR;
 	} else {
+		/* Get only version numbers initially */
 		ret = __dbfile_get_config(db, NULL, NULL, NULL, NULL, NULL,
 					  &vmajor, &vminor, NULL, NULL);
 		if (ret && ret != SQLITE_CORRUPT) {
@@ -218,6 +230,8 @@ reopen:
 			sqlite3_close(db);
 			return -EIO;
 		}
+
+		ret = dbfile_get_config(cfg);
 	}
 
 	ret = dbfile_set_modes(db);
@@ -232,7 +246,7 @@ reopen:
 	return 0;
 }
 
-int dbfile_open(char *filename)
+int dbfile_open(char *filename, struct dbfile_config *cfg)
 {
 	int ret;
 	sqlite3 *db;
@@ -247,6 +261,14 @@ int dbfile_open(char *filename)
 	ret = dbfile_set_modes(db);
 	if (ret) {
 		perror_sqlite(ret, "setting journal modes");
+		sqlite3_close(db);
+		return ret;
+	}
+
+	dbfile_config_defaults(cfg);
+	ret = dbfile_get_config(cfg);
+	if (ret) {
+		perror_sqlite(ret, "loading config");
 		sqlite3_close(db);
 		return ret;
 	}
@@ -343,8 +365,7 @@ out:
 	return ret;
 }
 
-int __dbfile_sync_config(sqlite3 *db, unsigned int block_size, dev_t onefs_dev,
-			 uint64_t onefs_fsid, unsigned int seq)
+int __dbfile_sync_config(sqlite3 *db, struct dbfile_config *cfg)
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
@@ -358,33 +379,33 @@ int __dbfile_sync_config(sqlite3 *db, unsigned int block_size, dev_t onefs_dev,
 		return ret;
 	}
 
-	ret = sync_config_text(stmt, "hash_type", hash_type, 8);
+	ret = sync_config_text(stmt, "hash_type", cfg->hash_type, 8);
 	if (ret)
 		goto out;
 
-	ret = sync_config_int(stmt, "block_size", block_size);
+	ret = sync_config_int(stmt, "block_size", cfg->blocksize);
 	if (ret)
 		goto out;
 
-	onefs_major = major(onefs_dev);
+	onefs_major = major(cfg->onefs_dev);
 	ret = sync_config_int(stmt, "onefs_dev_major", onefs_major);
 	if (ret)
 		goto out;
 
-	onefs_minor = minor(onefs_dev);
+	onefs_minor = minor(cfg->onefs_dev);
 	ret = sync_config_int(stmt, "onefs_dev_minor", onefs_minor);
 	if (ret)
 		goto out;
 
-	ret = sync_config_int64(stmt, "onefs_fsid", onefs_fsid);
+	ret = sync_config_int64(stmt, "onefs_fsid", cfg->onefs_fsid);
 	if (ret)
 		goto out;
 
-	ret = sync_config_int(stmt, "dedupe_sequence", seq);
+	ret = sync_config_int(stmt, "dedupe_sequence", cfg->dedupe_seq);
 	if (ret)
 		goto out;
 
-	ret = sync_config_int(stmt, "version_minor", DB_FILE_MINOR);
+	ret = sync_config_int(stmt, "version_minor", cfg->minor);
 	if (ret)
 		goto out;
 
@@ -392,7 +413,7 @@ int __dbfile_sync_config(sqlite3 *db, unsigned int block_size, dev_t onefs_dev,
 	 * Always write version_major last so we have an easy check
 	 * whether the config table was fully written.
 	 */
-	ret = sync_config_int(stmt, "version_major", DB_FILE_MAJOR);
+	ret = sync_config_int(stmt, "version_major", cfg->major);
 	if (ret)
 		goto out;
 
@@ -407,8 +428,7 @@ out:
 	return ret;
 }
 
-int dbfile_sync_config(unsigned int block_size, dev_t onefs_dev,
-		       uint64_t onefs_fsid, unsigned int seq)
+int dbfile_sync_config(struct dbfile_config *cfg)
 {
 	sqlite3 *db;
 	int ret;
@@ -417,7 +437,7 @@ int dbfile_sync_config(unsigned int block_size, dev_t onefs_dev,
 	if (!db)
 		return ENOENT;
 
-	ret = __dbfile_sync_config(db, block_size, onefs_dev, onefs_fsid, seq);
+	ret = __dbfile_sync_config(db, cfg);
 
 	return ret;
 }
@@ -640,16 +660,15 @@ out:
 	return ret;
 }
 
-int dbfile_get_config(unsigned int *block_size, uint64_t *num_hashes,
-		      uint64_t *num_files, dev_t *onefs_dev,
-		      uint64_t *onefs_fsid, int *ver_major, int *ver_minor,
-		      char *db_hash_type, unsigned int *db_dedupe_seq)
+int dbfile_get_config(struct dbfile_config *cfg)
 {
 	int ret;
 
-	ret = __dbfile_get_config(gdb, block_size, num_hashes, num_files,
-				  onefs_dev, onefs_fsid, ver_major, ver_minor,
-				  db_hash_type, db_dedupe_seq);
+	ret = __dbfile_get_config(gdb, &cfg->blocksize, &cfg->num_hashes,
+				  &cfg->num_files, &cfg->onefs_dev,
+				  &cfg->onefs_fsid, &cfg->major,
+				  &cfg->minor, cfg->hash_type,
+				  &cfg->dedupe_seq);
 
 	return ret;
 }
