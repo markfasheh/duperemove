@@ -19,9 +19,6 @@
 
 #include "dbfile.h"
 
-#define DB_FILE_MAJOR	2
-#define DB_FILE_MINOR	0
-
 /* exported for hashstats.c */
 sqlite3 *gdb = NULL;
 
@@ -70,7 +67,7 @@ static int debug_print_cb(void *priv, int argc, char **argv, char **column)
 }
 #endif
 
-static int create_tables(sqlite3 *db)
+static int create_tables(sqlite3 *db, int requested_version)
 {
 	int ret;
 
@@ -87,36 +84,57 @@ static int create_tables(sqlite3 *db)
 	if (ret)
 		goto out;
 
+	switch (requested_version) {
+	case BLOCK_DEDUPE_DBFILE_VER:
 #define	CREATE_TABLE_HASHES					\
 "CREATE TABLE hashes(digest BLOB KEY NOT NULL, ino INTEGER, subvol INTEGER, loff INTEGER, flags INTEGER);"
-	ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, NULL);
-	if (ret)
-		goto out;
-
+		ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, NULL);
+		break;
+	case DB_FILE_MAJOR:
 #define	CREATE_TABLE_EXTENTS						\
 "CREATE TABLE extents(digest BLOB KEY NOT NULL, ino INTEGER, subvol INTEGER, loff INTEGER, poff INTEGER, len INTEGER, flags INTEGER);"
-	ret = sqlite3_exec(db, CREATE_TABLE_EXTENTS, NULL, NULL, NULL);
-	if (ret)
-		goto out;
+		ret = sqlite3_exec(db, CREATE_TABLE_EXTENTS, NULL, NULL, NULL);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
+	}
 
 out:
 	return ret;
 }
 
-int create_indexes(sqlite3 *db)
+int create_indexes_old(sqlite3 *db)
 {
 	int ret;
-#define	CREATE_DIGEST_INDEX						\
+
+#define	CREATE_HASHES_DIGEST_INDEX_OLD				\
 "create index if not exists idx_digest on hashes(digest);"
-	ret = sqlite3_exec(db, CREATE_DIGEST_INDEX, NULL, NULL, NULL);
+	ret = sqlite3_exec(db, CREATE_HASHES_DIGEST_INDEX_OLD, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
-#define	CREATE_HASHES_INO_INDEX						\
+#define	CREATE_HASHES_INOSUB_INDEX_OLD				\
 "create index if not exists idx_hashes_inosub on hashes(ino, subvol);"
-	ret = sqlite3_exec(db, CREATE_HASHES_INO_INDEX, NULL, NULL, NULL);
+	ret = sqlite3_exec(db, CREATE_HASHES_INOSUB_INDEX_OLD, NULL, NULL, NULL);
 	if (ret)
 		goto out;
+
+#define	CREATE_FILES_INOSUB_INDEX_OLD				\
+"create index if not exists idx_inosub on files(ino, subvol);"
+	ret = sqlite3_exec(db, CREATE_FILES_INOSUB_INDEX_OLD, NULL, NULL, NULL);
+out:
+	return ret;
+}
+
+int create_indexes(sqlite3 *db, struct dbfile_config *cfg)
+{
+	int ret;
+
+	if (cfg->major == BLOCK_DEDUPE_DBFILE_VER) {
+		ret = create_indexes_old(db);
+		goto out;
+	}
 
 #define	CREATE_EXTENTS_DIGEST_INDEX					\
 "create index if not exists idx_extent_digest on extents(digest);"
@@ -130,9 +148,9 @@ int create_indexes(sqlite3 *db)
 	if (ret)
 		goto out;
 
-#define	CREATE_INO_INDEX						\
-"create index if not exists idx_inosub on files(ino, subvol);"
-	ret = sqlite3_exec(db, CREATE_INO_INDEX, NULL, NULL, NULL);
+#define	CREATE_FILES_INOSUB_INDEX					\
+"create index if not exists idx_files_inosub on files(ino, subvol);"
+	ret = sqlite3_exec(db, CREATE_FILES_INOSUB_INDEX, NULL, NULL, NULL);
 
 out:
 	if (ret)
@@ -153,7 +171,8 @@ static int dbfile_set_modes(sqlite3 *db)
 	return ret;
 }
 
-int dbfile_create(char *filename, int *dbfile_is_new, struct dbfile_config *cfg)
+int dbfile_create(char *filename, int *dbfile_is_new, int requested_version,
+		  struct dbfile_config *cfg)
 {
 	int ret, inmem = 0, newfile = 0;
 	sqlite3 *db = NULL;
@@ -182,7 +201,7 @@ reopen:
 	}
 
 	if (newfile || inmem) {
-		ret = create_tables(db);
+		ret = create_tables(db, requested_version);
 		if (ret) {
 			perror_sqlite(ret, "creating tables");
 			sqlite3_close(db);
@@ -190,8 +209,8 @@ reopen:
 		}
 		/* Config is not written yet, but we can load some defaults. */
 		dbfile_config_defaults(cfg);
-		cfg->major = DB_FILE_MAJOR;
-		cfg->minor = DB_FILE_MINOR;
+		cfg->major = requested_version;
+		cfg->minor = requested_version == DB_FILE_MAJOR ? DB_FILE_MINOR : 0;
 	} else {
 		/* Get only version numbers initially */
 		ret = __dbfile_get_config(db, NULL, NULL, NULL, NULL, NULL,
@@ -222,7 +241,8 @@ reopen:
 			goto reopen;
 		}
 
-		if (vmajor != DB_FILE_MAJOR) {
+		if (vmajor != BLOCK_DEDUPE_DBFILE_VER &&
+		    vmajor != DB_FILE_MAJOR) {
 			fprintf(stderr, "Error: Hashfile \"%s\" has unknown "
 				"version, %d.%d (I understand %d.%d)\n",
 				filename, vmajor, vminor, DB_FILE_MAJOR,
@@ -231,7 +251,11 @@ reopen:
 			return -EIO;
 		}
 
-		ret = dbfile_get_config(cfg);
+		ret = dbfile_get_config(db, cfg);
+		if (ret) {
+			perror_sqlite(ret, "loading dbfile config");
+			return ret;
+		}
 	}
 
 	ret = dbfile_set_modes(db);
@@ -266,7 +290,7 @@ int dbfile_open(char *filename, struct dbfile_config *cfg)
 	}
 
 	dbfile_config_defaults(cfg);
-	ret = dbfile_get_config(cfg);
+	ret = dbfile_get_config(db, cfg);
 	if (ret) {
 		perror_sqlite(ret, "loading config");
 		sqlite3_close(db);
@@ -459,14 +483,54 @@ static int __dbfile_count_rows(sqlite3_stmt *stmt, uint64_t *num)
 	return 0;
 }
 
-static int dbfile_count_rows(sqlite3 *db, uint64_t *num_hashes,
-			     uint64_t *num_files)
+static int dbfile_count_rows_old(sqlite3 *db, uint64_t *num_hashes,
+				 uint64_t *num_files)
 {
 	int ret = 0;
 	sqlite3_stmt *stmt = NULL;
 
 	if (num_hashes) {
-#define COUNT_HASHES "select COUNT(*) from hashes;"
+#define COUNT_HASHES_OLD "select COUNT(*) from hashes;"
+		ret = sqlite3_prepare_v2(db, COUNT_HASHES_OLD, -1, &stmt, NULL);
+		if (ret)
+			goto out;
+
+		ret = __dbfile_count_rows(stmt, num_hashes);
+		if (ret)
+			goto out;
+
+		sqlite3_finalize(stmt);
+		stmt = NULL;
+	}
+
+	if (num_files) {
+#define COUNT_FILES_OLD "select COUNT(*) from files;"
+		ret = sqlite3_prepare_v2(db, COUNT_FILES_OLD, -1, &stmt, NULL);
+		if (ret)
+			goto out;
+
+		ret = __dbfile_count_rows(stmt, num_files);
+		if (ret)
+			goto out;
+
+		sqlite3_finalize(stmt);
+		stmt = NULL;
+	}
+out:
+	if (stmt)
+		sqlite3_finalize(stmt);
+
+	return ret;
+}
+
+static int dbfile_count_rows_new(sqlite3 *db, uint64_t *num_hashes,
+				 uint64_t *num_files)
+{
+	int ret = 0;
+	sqlite3_stmt *stmt = NULL;
+
+	if (num_hashes) {
+#define COUNT_HASHES "select COUNT(*) from extents;"
 		ret = sqlite3_prepare_v2(db, COUNT_HASHES, -1, &stmt, NULL);
 		if (ret)
 			goto out;
@@ -497,6 +561,15 @@ out:
 		sqlite3_finalize(stmt);
 
 	return ret;
+}
+
+static int dbfile_count_rows(sqlite3 *db, unsigned int ver,
+			     uint64_t *num_hashes, uint64_t *num_files)
+{
+	if (ver == BLOCK_DEDUPE_DBFILE_VER)
+		return dbfile_count_rows_old(db, num_hashes, num_files);
+	else
+		return dbfile_count_rows_new(db, num_hashes, num_files);
 }
 
 static int get_config_int(sqlite3_stmt *stmt, const char *name, int *val)
@@ -596,12 +669,13 @@ static int get_config_text(sqlite3_stmt *stmt, const char *name,
 static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 			       uint64_t *num_hashes, uint64_t *num_files,
 			       dev_t *onefs_dev, uint64_t *onefs_fsid,
-			       int *ver_major, int *ver_minor,
+			       int *ret_ver_major, int *ver_minor,
 			       char *db_hash_type, unsigned int *db_dedupe_seq)
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
 	unsigned int onefs_major, onefs_minor;
+	int ver_major; /* We always query this */
 
 #define SELECT_CONFIG "select keyval from config where keyname=?1;"
 	ret = sqlite3_prepare_v2(db, SELECT_CONFIG, -1, &stmt, NULL);
@@ -619,9 +693,11 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 	if (ret)
 		goto out;
 
-	ret = get_config_int(stmt, "version_major", ver_major);
+	ret = get_config_int(stmt, "version_major", &ver_major);
 	if (ret)
 		goto out;
+	if (ret_ver_major)
+		*ret_ver_major = ver_major;
 
 	ret = get_config_int(stmt, "version_minor", ver_minor);
 	if (ret)
@@ -650,7 +726,7 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 	sqlite3_finalize(stmt);
 	stmt = NULL;
 
-	ret = dbfile_count_rows(db, num_hashes, num_files);
+	ret = dbfile_count_rows(db, ver_major, num_hashes, num_files);
 	if (ret)
 		goto out;
 
@@ -660,11 +736,11 @@ out:
 	return ret;
 }
 
-int dbfile_get_config(struct dbfile_config *cfg)
+int dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg)
 {
 	int ret;
 
-	ret = __dbfile_get_config(gdb, &cfg->blocksize, &cfg->num_hashes,
+	ret = __dbfile_get_config(db, &cfg->blocksize, &cfg->num_hashes,
 				  &cfg->num_files, &cfg->onefs_dev,
 				  &cfg->onefs_fsid, &cfg->major,
 				  &cfg->minor, cfg->hash_type,
@@ -824,42 +900,66 @@ out:
 	return ret;
 }
 
-static int dbfile_remove_file_hashes(sqlite3 *db, struct filerec *file)
+static int remove_file_hashes_prep(sqlite3 *db, struct dbfile_config *cfg,
+				   sqlite3_stmt **stmt)
+{
+	int ret;
+
+	if (cfg->major == BLOCK_DEDUPE_DBFILE_VER) {
+#define	REMOVE_FILE_HASHES						\
+	"delete from hashes where ino = ?1 and subvol = ?2;"
+		ret = sqlite3_prepare_v2(db, REMOVE_FILE_HASHES, -1, stmt,
+					 NULL);
+		if (ret)
+			perror_sqlite(ret, "preparing hash insert statement");
+		return ret;
+	} else if (cfg->major >= DB_FILE_MAJOR) {
+#define	REMOVE_EXTENT_HASHES					\
+	"delete from extents where ino = ?1 and subvol = ?2;"
+		ret = sqlite3_prepare_v2(db, REMOVE_EXTENT_HASHES, -1, stmt,
+					 NULL);
+		if (ret)
+			perror_sqlite(ret, "preparing hash insert statement");
+		return ret;
+	}
+	return EINVAL;
+}
+
+static int dbfile_remove_file_hashes(sqlite3 *db, struct dbfile_config *cfg,
+				     struct filerec *file)
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
 
-#define	REMOVE_FILE_HASHES						\
-	"delete from hashes where ino = ?1 and subvol = ?2;"
-	ret = sqlite3_prepare_v2(db, REMOVE_FILE_HASHES, -1, &stmt, NULL);
+	ret = remove_file_hashes_prep(db, cfg, &stmt);
 	if (ret) {
-		perror_sqlite(ret, "preparing hash insert statement");
+		perror_sqlite(ret, "preparing file hash removal statement");
 		return ret;
 	}
 
-	ret = __dbfile_remove_file_hashes(stmt, file->inum, file->subvolid);
-	if (ret) {
-		perror_sqlite(ret, "removing from block hashes table");
-		return ret;
+	if (cfg->major == BLOCK_DEDUPE_DBFILE_VER) {
+		ret = __dbfile_remove_file_hashes(stmt, file->inum,
+						  file->subvolid);
+		sqlite3_finalize(stmt);
+		if (ret) {
+			perror_sqlite(ret, "removing from block hashes table");
+			return ret;
+		}
+	} else if (cfg->major >= DB_FILE_MAJOR) {
+		ret = __dbfile_remove_file_hashes(stmt, file->inum, file->subvolid);
+		sqlite3_finalize(stmt);
+		if (ret) {
+			perror_sqlite(ret, "removing from extent hashes table");
+			return ret;
+		}
 	}
-	sqlite3_finalize(stmt);
 
-#define	REMOVE_EXTENT_HASHES					\
-	"delete from extents where ino = ?1 and subvol = ?2;"
-	ret = sqlite3_prepare_v2(db, REMOVE_EXTENT_HASHES, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing hash insert statement");
-		return ret;
-	}
-
-	ret = __dbfile_remove_file_hashes(stmt, file->inum, file->subvolid);
-
-	sqlite3_finalize(stmt);
 	return ret;
 }
 
-int dbfile_store_block_hashes(sqlite3 *db, struct filerec *file,
-			      uint64_t nb_hash, struct block_csum *hashes)
+int dbfile_store_block_hashes(sqlite3 *db, struct dbfile_config *cfg,
+			      struct filerec *file, uint64_t nb_hash,
+			      struct block_csum *hashes)
 {
 	int ret;
 	uint64_t i;
@@ -869,7 +969,7 @@ int dbfile_store_block_hashes(sqlite3 *db, struct filerec *file,
 	unsigned char *digest;
 
 	if (file->flags & FILEREC_IN_DB) {
-		ret = dbfile_remove_file_hashes(db, file);
+		ret = dbfile_remove_file_hashes(db, cfg, file);
 		if (ret)
 			return ret;
 	}
@@ -927,8 +1027,9 @@ out_error:
 	return ret;
 }
 
-int dbfile_store_extent_hashes(sqlite3 *db, struct filerec *file,
-			       uint64_t nb_hash, struct extent_csum *hashes)
+int dbfile_store_extent_hashes(sqlite3 *db, struct dbfile_config *cfg,
+			       struct filerec *file, uint64_t nb_hash,
+			       struct extent_csum *hashes)
 {
 	int ret;
 	uint64_t i;
@@ -938,7 +1039,7 @@ int dbfile_store_extent_hashes(sqlite3 *db, struct filerec *file,
 	unsigned char *digest;
 
 	if (file->flags & FILEREC_IN_DB) {
-		ret = dbfile_remove_file_hashes(db, file);
+		ret = dbfile_remove_file_hashes(db, cfg, file);
 		if (ret)
 			return ret;
 	}
@@ -1107,7 +1208,8 @@ out:
 	return ret;
 }
 
-static int dbfile_del_orphans(struct sqlite3 *db, struct list_head *orphans)
+static int dbfile_del_orphans(struct sqlite3 *db, struct dbfile_config *cfg,
+			      struct list_head *orphans)
 {
 	int ret;
 	sqlite3_stmt *files_stmt = NULL;
@@ -1121,7 +1223,7 @@ static int dbfile_del_orphans(struct sqlite3 *db, struct list_head *orphans)
 		goto out;
 	}
 
-	ret = sqlite3_prepare_v2(db, REMOVE_FILE_HASHES, -1, &hashes_stmt, NULL);
+	ret = remove_file_hashes_prep(db, cfg, &hashes_stmt);
 	if (ret) {
 		perror_sqlite(ret, "preparing hashes statement");
 		goto out;
@@ -1179,7 +1281,7 @@ out:
  * inserting stuff during the csum stage. This keeps us from getting
  * into a situation where we've inserted duplicate file records.
  */
-int dbfile_scan_files(void)
+int dbfile_scan_files(struct dbfile_config *cfg)
 {
 	int ret;
 	sqlite3 *db;
@@ -1193,7 +1295,7 @@ int dbfile_scan_files(void)
 	if (ret)
 		goto out;
 
-	ret = dbfile_del_orphans(db, &orphans);
+	ret = dbfile_del_orphans(db, cfg, &orphans);
 
 out:
 	if (!list_empty(&orphans))
@@ -1422,7 +1524,8 @@ int dbfile_iter_files(sqlite3 *db, iter_files_func func)
 	return 0;
 }
 
-int dbfile_remove_file(sqlite3 *db, const char *filename)
+int dbfile_remove_file(sqlite3 *db, struct dbfile_config *cfg,
+		       const char *filename)
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
@@ -1463,7 +1566,7 @@ int dbfile_remove_file(sqlite3 *db, const char *filename)
 	}
 	list_add(&o->list, &orphans);
 
-	ret = dbfile_del_orphans(db, &orphans);
+	ret = dbfile_del_orphans(db, cfg, &orphans);
 
 out:
 	free_orphan_list(&orphans);

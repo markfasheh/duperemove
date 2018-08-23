@@ -65,6 +65,7 @@ static unsigned int leading_spaces;
 struct thread_params {
 	int num_files;           /* Total number of files we hashed */
 	int num_hashes;          /* Total number of hashes we hashed */
+	struct dbfile_config	*dbfile_cfg; /* global dbfile config */
 };
 
 extern int v2_hashfile;
@@ -893,15 +894,15 @@ static void csum_whole_file(struct filerec *file,
 	}
 
 	if (v2_hashfile) {
-		ret = dbfile_store_block_hashes(db, file, nb_hash,
-						block_hashes);
+		ret = dbfile_store_block_hashes(db, params->dbfile_cfg, file,
+						nb_hash, block_hashes);
 		if (ret) {
 			g_mutex_unlock(&io_mutex);
 			goto err;
 		}
 	} else {
-		ret = dbfile_store_extent_hashes(db, file, nb_hash,
-						 extent_hashes);
+		ret = dbfile_store_extent_hashes(db, params->dbfile_cfg, file,
+						 nb_hash, extent_hashes);
 		if (ret) {
 			g_mutex_unlock(&io_mutex);
 			goto err;
@@ -962,11 +963,11 @@ err_noclose:
 	return;
 }
 
-int populate_tree()
+int populate_tree(struct dbfile_config *cfg)
 {
 	GMutex mutex;
 	GThreadPool *pool;
-	struct thread_params params = { 0, 0, };
+	struct thread_params params = { 0, 0, cfg};
 
 	leading_spaces = num_digits(files_to_scan);
 

@@ -185,7 +185,8 @@ restart:
 			 */
 			goto restart;
 		}
-		ret = dbfile_remove_file(dbfile_get_handle(), rm->filename);
+		ret = dbfile_remove_file(dbfile_get_handle(), &dbfile_cfg,
+					 rm->filename);
 		if (ret == 0)
 			vprintf("Removed \"%s\" from hashfile.\n",
 				rm->filename);
@@ -588,7 +589,8 @@ static int update_config_from_dbfile(void)
 		return EINVAL;
 	}
 
-	if (dbfile_cfg.blocksize != blocksize) {
+	if (dbfile_cfg.blocksize != blocksize &&
+	    dbfile_cfg.major == BLOCK_DEDUPE_DBFILE_VER) {
 		vprintf("Using blocksize %uK from hashfile (%uK "
 			"blocksize requested).\n", dbfile_cfg.blocksize/1024,
 			blocksize/1024);
@@ -603,9 +605,13 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 	int ret;
 	int dbfile_is_new = 0;
 
-	ret = dbfile_create(serialize_fname, &dbfile_is_new, &dbfile_cfg);
+	ret = dbfile_create(serialize_fname, &dbfile_is_new, DB_FILE_MAJOR,
+			    &dbfile_cfg);
 	if (ret)
 		goto out;
+
+	if (dbfile_cfg.major == BLOCK_DEDUPE_DBFILE_VER)
+		v2_hashfile = 1;
 
 	if (!dbfile_is_new) {
 		ret = update_config_from_dbfile();
@@ -635,7 +641,7 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 	} else {
 		printf("Adding files from database for hashing.\n");
 
-		ret = dbfile_scan_files();
+		ret = dbfile_scan_files(&dbfile_cfg);
 		if (ret)
 			goto out;
 	}
@@ -646,13 +652,13 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 		goto out;
 	}
 
-	ret = populate_tree();
+	ret = populate_tree(&dbfile_cfg);
 	if (ret) {
 		fprintf(stderr,	"Error while populating extent tree!\n");
 		goto out;
 	}
 
-	ret = create_indexes(dbfile_get_handle());
+	ret = create_indexes(dbfile_get_handle(), &dbfile_cfg);
 	if (ret)
 		goto out;
 
@@ -742,6 +748,9 @@ int main(int argc, char **argv)
 				serialize_fname);
 			goto out;
 		}
+
+		if (dbfile_cfg.major == BLOCK_DEDUPE_DBFILE_VER)
+			v2_hashfile = 1;
 
 		/*
 		 * Skips the file scan, used to isolate the

@@ -31,7 +31,8 @@ void fs_set_onefs(dev_t dev, uint64_t fsid);
 dev_t fs_onefs_dev(void);
 uint64_t fs_onefs_id(void);
 
-int populate_tree();
+struct dbfile_config;
+int populate_tree(struct dbfile_config *cfg);
 
 /* For dbfile.c */
 struct block_csum {
