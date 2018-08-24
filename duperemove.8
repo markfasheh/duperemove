@@ -7,11 +7,10 @@ duperemove \- Find duplicate extents and print them to stdout
 .PP
 \fBduperemove\fR is a simple tool for finding duplicated extents and
 submitting them for deduplication. When given a list of files it will
-hash their contents on a block by block basis and compare those hashes
-to each other, finding and categorizing blocks that match each
-other. When given the \fB-d\fR option, \fBduperemove\fR will submit
-those extents for deduplication using the Linux kernel extent-same
-ioctl.
+hash the contents of their extents and compare those hashes to each
+other, finding and categorizing extents that match each other. When
+given the \fB-d\fR option, \fBduperemove\fR will submit those extents
+for deduplication using the Linux kernel extent-same ioctl.
 
 \fBduperemove\fR can store the hashes it computes in a \fIhashfile\fR. If
 given an existing hashfile, \fBduperemove\fR will only compute hashes
@@ -32,9 +31,7 @@ of the other.
 When run without \fB-d\fR (the default) duperemove will print out one or
 more tables of matching extents it has determined would be ideal
 candidates for deduplication. As a result, readonly mode is useful for
-seeing what duperemove might do when run with \fB-d\fR. The output could
-also be used by some other software to submit the extents for
-deduplication at a later time.
+seeing what duperemove might do when run with \fB-d\fR.
 
 Generally, duperemove does not concern itself with the underlying
 representation of the extents it processes. Some of them could be
@@ -46,7 +43,8 @@ to replicate that work.
 
 This functions similarly to readonly mode with the exception that the
 duplicated extents found in our "read, hash, and compare" step will
-actually be submitted for deduplication. An estimate of the total data
+actually be submitted for deduplication. Extents that have already
+been deduped will be skipped. An estimate of the total data
 deduplicated will be printed after the operation is complete. This
 estimate is calculated by comparing the total amount of shared bytes
 in each file before and after the dedupe.
@@ -64,7 +62,7 @@ Enable recursive dir traversal.
 
 .TP
 \fB\-d\fR
-De-dupe the results - only works on \fIbtrfs\fR and \fIxfs (experimental)\FR.
+De-dupe the results - only works on \fIbtrfs\fR and \fIxfs\FR.
 
 .TP
 \fB\-A\fR
@@ -132,11 +130,7 @@ but can prevent deduplication of zeroed files.
 
 .TP
 \fB\-b size\fR
-Use the specified block size. Raising the block size will consume less
-memory but may miss some duplicate blocks. Conversely, lowering the
-blocksize consumes more memory and may find more duplicate blocks. The
-default blocksize of \fB128K\fR was chosen with these parameters in
-mind.
+Use the specified block size for reading file extents. Defaults to 128K.
 
 .TP
 \fB\--io-threads=N\fR
@@ -182,14 +176,7 @@ fiemap during the file scan stage, you will also want to use the
 \fB--lookup-extents=no\fR option.
 .TP
 \fB[no]block\fR
-Defaults to \fBon\fR. Duperemove submits duplicate blocks directly to
-the dedupe engine.
-
-Duperemove can optionally optimize the duplicate block lists into
-larger extents prior to dedupe submission. The search algorithm used
-for this however has a very high memory and cpu overhead, but may
-reduce the number of extent references created during dedupe. If you'd
-like to try this, run with 'noblock'.
+Deprecated.
 .RE
 
 .TP
@@ -198,7 +185,7 @@ Prints help text.
 
 .TP
 \fB\--lookup-extents=[yes|no]\fR
-Defaults to no. Allows duperemove to skip checksumming some blocks by
+Defaults to \fByes\fR. Allows duperemove to skip checksumming some blocks by
 checking their extent state.
 
 .TP
@@ -305,19 +292,22 @@ testing information is kept on the duperemove wiki (see below for the link).
 .SS How large of a hashfile will duperemove create?
 
 Hashfiles are essentially sqlite3 database files with several tables,
-the largest of which are the files and hashes tables. Each hashes
-table entry is under 90 bytes though that may grow as features are
+the largest of which are the files and extents tables. Each extents
+table entry is about 72 bytes though that may grow as features are
 added. The size of a files table entry depends on the file path but a
-good estimate is around 270 bytes per file.
+good estimate is around 270 bytes per file. The number of extents in a
+data set is directly proportional to file fragmentation level.
 
-If you know the total number of blocks and files in your data set then
+If you know the total number of extents and files in your data set then
 you can calculate the hashfile size as:
 
-\fBHashfile Size = Num Hashes X 90 + Num Files X 270\fR
+\fBHashfile Size = Num Hashes X 72 + Num Files X 270\fR
 
 Using a real world example of 1TB (8388608 128K blocks) of data over 1000 files:
 
-8388608 * 90 + 270 * 1000 = 755244720 or about \fB720MB for 1TB spread over 1000 files.\fR
+8388608 * 72 + 270 * 1000 = 755244720 or about \fB720MB for 1TB spread over 1000 files.\fR
+
+\fBNote that none of this takes database overhead into account.\fR
 
 .SS Is is safe to interrupt the program (Ctrl-C)?
 
