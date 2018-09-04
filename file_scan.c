@@ -529,7 +529,7 @@ static void run_pool(GThreadPool *pool)
 	GError *err = NULL;
 	struct filerec *file, *tmp;
 
-	printf("Using %u threads for file hashing phase\n", io_threads);
+	qprintf("Using %u threads for file hashing phase\n", io_threads);
 
 	list_for_each_entry_safe(file, tmp, &filerec_list, rec_list) {
 		if (file->flags & FILEREC_NEEDS_SCAN) {
@@ -662,10 +662,10 @@ static void csum_whole_file_init(GMutex **mutex, void *location,
 
 	cur_scan_files = __atomic_add_fetch(&_cur_scan_files, 1, __ATOMIC_SEQ_CST);
 
-	printf("[%0*llu/%llu] (%05.2f%%) csum: %s\n",
-	       leading_spaces, cur_scan_files, files_to_scan,
-	       (double)cur_scan_files / (double)files_to_scan * 100,
-	       file->filename);
+	qprintf("[%0*llu/%llu] (%05.2f%%) csum: %s\n",
+		leading_spaces, cur_scan_files, files_to_scan,
+		(double)cur_scan_files / (double)files_to_scan * 100,
+		file->filename);
 
 	if (do_lookup_extents) {
 		*fc = alloc_fiemap_ctxt();
@@ -835,8 +835,8 @@ int populate_tree()
 
 		run_pool(pool);
 
-		printf("Total files:  %d\n", params.num_files);
-		printf("Total hashes: %d\n", params.num_hashes);
+		qprintf("Total files:  %d\n", params.num_files);
+		qprintf("Total hashes: %d\n", params.num_hashes);
 
 		g_dataset_destroy(&params);
 	}
