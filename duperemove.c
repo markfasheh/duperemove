@@ -300,6 +300,7 @@ enum {
 	SKIP_ZEROES_OPTION,
 	FDUPES_OPTION,
 	DEDUPE_OPTS_OPTION,
+	QUIET_OPTION,
 };
 
 static int add_files_from_stdin(int fdupes)
@@ -383,13 +384,14 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		{ "skip-zeroes", 0, NULL, SKIP_ZEROES_OPTION },
 		{ "fdupes", 0, NULL, FDUPES_OPTION },
 		{ "dedupe-options=", 1, NULL, DEDUPE_OPTS_OPTION },
+		{ "quiet", 0, NULL, QUIET_OPTION },
 		{ NULL, 0, NULL, 0}
 	};
 
 	if (argc < 2)
 		return 1;
 
-	while ((c = getopt_long(argc, argv, "Ab:vdDrh?xLR:", long_ops, NULL))
+	while ((c = getopt_long(argc, argv, "Ab:vdDrh?xLR:q", long_ops, NULL))
 	       != -1) {
 		switch (c) {
 		case 'A':
@@ -479,6 +481,10 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		case 'R':
 			rm_only_opt = 1;
 			add_rm_file(optarg);
+			break;
+		case QUIET_OPTION:
+		case 'q':
+			quiet = 1;
 			break;
 		case HELP_OPTION:
 			help_option = 1;
