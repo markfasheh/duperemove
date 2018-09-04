@@ -22,12 +22,14 @@
 
 extern int verbose;
 extern int debug;
+extern int quiet;
 
 #define likely(x)	__builtin_expect(!!(x), 1)
 #define unlikely(x)	__builtin_expect(!!(x), 0)
 
 #define dprintf(args...)	if (debug) printf(args)
 #define vprintf(args...)	if (verbose) printf(args)
+#define qprintf(args...)	if (!quiet) printf(args)
 void print_stack_trace(void);/* defined in util.c */
 #define	abort_lineno()	do {						\
 		printf("ERROR: %s:%d\n", __FILE__, __LINE__);		\

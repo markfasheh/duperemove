@@ -19,3 +19,4 @@
 
 int verbose = 0;
 int debug = 0;
+int quiet = 0;
