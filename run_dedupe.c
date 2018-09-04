@@ -59,6 +59,9 @@ void print_dupes_table(struct results_tree *res)
 	struct dupe_extents *dext;
 	struct extent *extent;
 
+	if (quiet)
+		return;
+
 	printf("Simple read and compare of file data found %u instances of "
 	       "extents that might benefit from deduplication.\n",
 	       res->num_dupes);
@@ -280,12 +283,15 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 	abort_on(dext->de_num_dupes < 2);
 
 	/* Dedupe extents with id %s*/
-	g_mutex_lock(&console_mutex);
-	printf("[%p] (%0*llu/%llu) Try to dedupe extents with id ",
-	       g_thread_self(), leading_spaces, passno, total_dedupe_passes);
-	debug_print_digest_short(stdout, dext->de_hash);
-	printf("\n");
-	g_mutex_unlock(&console_mutex);
+	if (!quiet) {
+		g_mutex_lock(&console_mutex);
+		printf("[%p] (%0*llu/%llu) Try to dedupe extents with id ",
+		       g_thread_self(), leading_spaces, passno,
+		       total_dedupe_passes);
+		debug_print_digest_short(stdout, dext->de_hash);
+		printf("\n");
+		g_mutex_unlock(&console_mutex);
+	}
 
 	shared_prev = shared_post = 0ULL;
 	/*
@@ -301,7 +307,7 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 		get_extent_info(dext);
 		clean_deduped(&dext);
 		if (!dext) {
-			printf("[%p] Skipping - extents are already deduped.\n",
+			qprintf("[%p] Skipping - extents are already deduped.\n",
 			       g_thread_self());
 			return DEDUPE_EXTENTS_CLEANED;
 		}
@@ -392,16 +398,18 @@ run_dedupe:
 		 * case but always do cleanup.
 		 */
 		if (ctxt->num_queued) {
-			g_mutex_lock(&console_mutex);
-			printf("[%p] Dedupe %u extents (id: ", g_thread_self(),
-			       ctxt->num_queued);
-			debug_print_digest_short(stdout, dext->de_hash);
-			printf(") with target: (%s, %s), "
-			       "\"%s\"\n",
-			       pretty_size(ctxt->orig_file_off),
-			       pretty_size(ctxt->orig_len),
-			       ctxt->ioctl_file->filename);
-			g_mutex_unlock(&console_mutex);
+			if (!quiet) {
+				g_mutex_lock(&console_mutex);
+				printf("[%p] Dedupe %u extents (id: ",
+				       g_thread_self(), ctxt->num_queued);
+				debug_print_digest_short(stdout, dext->de_hash);
+				printf(") with target: (%s, %s), "
+				       "\"%s\"\n",
+				       pretty_size(ctxt->orig_file_off),
+				       pretty_size(ctxt->orig_len),
+				       ctxt->ioctl_file->filename);
+				g_mutex_unlock(&console_mutex);
+			}
 
 			ret = dedupe_extents(ctxt);
 			if (ret == 0) {
@@ -888,7 +896,7 @@ void dedupe_results(struct results_tree *res, struct hash_tree *hashes)
 		}
 	}
 
-	printf("Using %u threads for dedupe phase\n", io_threads);
+	qprintf("Using %u threads for dedupe phase\n", io_threads);
 
 	dedupe_pool = g_thread_pool_new((GFunc) dedupe_worker, &counts,
 					io_threads, TRUE, &err);
@@ -918,16 +926,12 @@ void dedupe_results(struct results_tree *res, struct hash_tree *hashes)
 	g_thread_pool_free(dedupe_pool, FALSE, TRUE);
 
 	if (ret == 0) {
-		if (fiemap_during_dedupe) {
-			printf("Kernel processed data (excludes target files): "
-			       "%s\nComparison of extent info shows a net "
+		vprintf("Kernel processed data (excludes target files): "
+			"%s\n", pretty_size(counts.kern_bytes));
+		if (fiemap_during_dedupe)
+			printf("Comparison of extent info shows a net "
 			       "change in shared extents of: %s\n",
-			       pretty_size(counts.kern_bytes),
 			       pretty_size(counts.fiemap_bytes));
-		} else {
-			printf("Kernel processed data (excludes target files): "
-			       "%s\n", pretty_size(counts.kern_bytes));
-		}
 	}
 }
 
@@ -947,7 +951,7 @@ int fdupes_dedupe(void)
 			continue;
 		}
 
-		printf("Queue entire file for dedupe: %s\n", file->filename);
+		qprintf("Queue entire file for dedupe: %s\n", file->filename);
 
 		if (ctxt == NULL) {
 			ctxt = new_dedupe_ctxt(MAX_DEDUPES_PER_IOCTL,

@@ -571,12 +571,12 @@ out_nofiles:
 
 static void print_header(void)
 {
-	printf("Using %uK blocks\n", blocksize / 1024);
-	printf("Using hash: %s\n", csum_mod->name);
+	vprintf("Using %uK blocks\n", blocksize / 1024);
+	vprintf("Using hash: %s\n", csum_mod->name);
 #ifdef	DEBUG_BUILD
 	printf("Debug build, performance may be impacted.\n");
 #endif
-	printf("Gathering file list...\n");
+	qprintf("Gathering file list...\n");
 }
 
 static int create_update_hashfile(int argc, char **argv, int filelist_idx)
@@ -636,7 +636,7 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 		if (ret)
 			goto out;
 	} else {
-		printf("Adding files from database for hashing.\n");
+		qprintf("Adding files from database for hashing.\n");
 
 		ret = dbfile_scan_files();
 		if (ret)
@@ -733,8 +733,8 @@ int main(int argc, char **argv)
 			 * This option is for isolating the file scan
 			 * stage. Exit the program now.
 			 */
-			printf("Hashfile \"%s\" written, exiting.\n",
-			       serialize_fname);
+			qprintf("Hashfile \"%s\" written, exiting.\n",
+				serialize_fname);
 			goto out;
 		}
 		break;
@@ -763,7 +763,7 @@ int main(int argc, char **argv)
 		break;
 	}
 
-	printf("Loading only duplicated hashes from hashfile.\n");
+	qprintf("Loading only duplicated hashes from hashfile.\n");
 
 	ret = dbfile_load_hashes(&dups_tree);
 	if (ret)
