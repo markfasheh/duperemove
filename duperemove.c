@@ -57,6 +57,7 @@ int run_dedupe = 0;
 int recurse_dirs = 0;
 int one_file_system = 1;
 int block_dedupe = 0;
+int v2_hashfile = 0;
 int dedupe_same_file = 1;
 int skip_zeroes = 0;
 
@@ -265,7 +266,7 @@ static int parse_dedupe_opts(const char *opts)
 		if (strcmp(token, "same") == 0) {
 			dedupe_same_file = !invert;
 		} else if (strcmp(token, "block") == 0) {
-			block_dedupe = !invert;
+			; /* This option ignored as of v0.12 */
 		} else if (strcmp(token, "fiemap") == 0) {
 			fiemap_during_dedupe = !invert;
 		} else {
@@ -761,23 +762,23 @@ int main(int argc, char **argv)
 
 	printf("Loading only duplicated hashes from hashfile.\n");
 
-	if (block_dedupe) {
+	if (v2_hashfile) {
 		ret = dbfile_load_block_hashes(&dups_tree);
 		if (ret)
 			goto out;
+
+		ret = find_all_dupes(&dups_tree, &res);
+		if (ret) {
+			/* Only error for this should be enomem */
+			fprintf(stderr,
+				"Error %d: %s while finding duplicate extents.\n",
+				ret, strerror(ret));
+			goto out;
+		}
 	} else {
 		ret = dbfile_load_extent_hashes(&res);
 		if (ret)
 			goto out;
-	}
-
-	ret = find_all_dupes(&dups_tree, &res);
-	if (ret) {
-		/* Only error for this should be enomem */
-		fprintf(stderr,
-			"Error %d: %s while finding duplicate extents.\n",
-			ret, strerror(ret));
-		goto out;
 	}
 
 	if (run_dedupe) {

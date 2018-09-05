@@ -67,7 +67,7 @@ struct thread_params {
 	int num_hashes;          /* Total number of hashes we hashed */
 };
 
-extern int block_dedupe;
+extern int v2_hashfile;
 
 static void set_filerec_scan_flags(struct filerec *file)
 {
@@ -869,7 +869,7 @@ static void csum_whole_file(struct filerec *file,
 	if (ret)
 		goto err_noclose;
 
-	if (block_dedupe)
+	if (v2_hashfile)
 		ret = csum_by_block(&csum_ctxt, fc, &block_hashes, &nb_hash);
 	else
 		ret = csum_by_extent(&csum_ctxt, fc, &extent_hashes, &nb_hash);
@@ -892,7 +892,7 @@ static void csum_whole_file(struct filerec *file,
 		goto err;
 	}
 
-	if (block_dedupe) {
+	if (v2_hashfile) {
 		ret = dbfile_store_block_hashes(db, file, nb_hash,
 						block_hashes);
 		if (ret) {
@@ -978,9 +978,7 @@ int populate_tree()
 		run_pool(pool);
 
 		printf("Total files:  %d\n", params.num_files);
-		printf("Total %s hashes: %d\n",
-		       block_dedupe ? "block" : "extent",
-		       params.num_hashes);
+		printf("Total extent hashes: %d\n", params.num_hashes);
 
 		g_dataset_destroy(&params);
 	}
