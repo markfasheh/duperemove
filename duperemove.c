@@ -56,7 +56,6 @@ unsigned int blocksize = DEFAULT_BLOCKSIZE;
 int run_dedupe = 0;
 int recurse_dirs = 0;
 int one_file_system = 1;
-int block_dedupe = 0;
 int v2_hashfile = 0;
 int dedupe_same_file = 1;
 int skip_zeroes = 0;
@@ -802,10 +801,7 @@ int main(int argc, char **argv)
 		if (ret)
 			goto out;
 	} else {
-		if (block_dedupe)
-			debug_print_hash_tree(&dups_tree);
-		else
-			print_dupes_table(&res);
+		print_dupes_table(&res);
 #ifdef	PRINT_STATS
 		run_filerec_stats();
 #endif
