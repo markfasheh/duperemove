@@ -579,6 +579,28 @@ static void print_header(void)
 	qprintf("Gathering file list...\n");
 }
 
+static void print_all_dupes(struct results_tree *res,
+			    struct hash_tree *hashes)
+{
+	struct filerec *file;
+
+	if (block_dedupe) {
+		printf("Block search algorithm found %s total blocks of "
+		       "duplicate data.\n", pretty_size(hashes->num_blocks));
+		if (!quiet && hashes->num_blocks) {
+			printf("Num Blocks\t\tFilename\n");
+			list_for_each_entry(file, &filerec_list, rec_list) {
+				if (file->num_blocks)
+					printf("%"PRIu64"\t\"%s\"\n",
+					       file->num_blocks,
+					       file->filename);
+			}
+		}
+	} else
+		print_dupes_table(res);
+
+}
+
 static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 {
 	int ret;
@@ -778,10 +800,12 @@ int main(int argc, char **argv)
 		goto out;
 	}
 
-	if (run_dedupe) {
+	print_all_dupes(&res, &dups_tree);
+
 #ifdef	PRINT_STATS
-		run_filerec_stats();
+	run_filerec_stats();
 #endif
+	if (run_dedupe) {
 		dedupe_results(&res, &dups_tree);
 
 		/*
@@ -795,14 +819,6 @@ int main(int argc, char **argv)
 					 fs_onefs_id(), dedupe_seq);
 		if (ret)
 			goto out;
-	} else {
-		if (block_dedupe)
-			debug_print_hash_tree(&dups_tree);
-		else
-			print_dupes_table(&res);
-#ifdef	PRINT_STATS
-		run_filerec_stats();
-#endif
 	}
 
 out:

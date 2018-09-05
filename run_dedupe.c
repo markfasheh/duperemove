@@ -59,14 +59,11 @@ void print_dupes_table(struct results_tree *res)
 	struct dupe_extents *dext;
 	struct extent *extent;
 
-	if (quiet)
-		return;
-
 	printf("Simple read and compare of file data found %u instances of "
 	       "extents that might benefit from deduplication.\n",
 	       res->num_dupes);
 
-	if (res->num_dupes == 0)
+	if (quiet || res->num_dupes == 0)
 		return;
 
 	while (1) {
@@ -887,8 +884,6 @@ void dedupe_results(struct results_tree *res, struct hash_tree *hashes)
 
 	if (!block_dedupe) {
 		results_tree = res;
-
-		print_dupes_table(res);
 
 		if (RB_EMPTY_ROOT(&res->root)) {
 			printf("Nothing to dedupe.\n");
