@@ -583,7 +583,7 @@ struct csum_ctxt {
 	unsigned char digest[DIGEST_LEN_MAX];
 };
 
-static int csum_extent(struct csum_ctxt *data, uint64_t *extent_off,
+static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 		       unsigned int extent_len)
 {
 	int ret = 0;
@@ -600,7 +600,7 @@ static int csum_extent(struct csum_ctxt *data, uint64_t *extent_off,
 		if (readlen > blocksize)
 			readlen = blocksize;
 
-		ret = pread(data->file->fd, data->buf, readlen, *extent_off);
+		ret = pread(data->file->fd, data->buf, readlen, extent_off);
 		if (ret < 0) {
 			ret = errno;
 			fprintf(stderr, "Unable to read file %s: %s\n",
@@ -611,7 +611,7 @@ static int csum_extent(struct csum_ctxt *data, uint64_t *extent_off,
 			break;
 
 		add_to_running_checksum(csum, ret, (unsigned char *)data->buf);
-		*extent_off += ret;
+		extent_off += ret;
 		bytes_read += ret;
 		if (bytes_read >= extent_len)
 			break;
@@ -675,11 +675,10 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			 struct block_csum **ret_block_hashes, int *ret_nb_hash)
 {
 	int ret, bytes_read;
-	uint64_t off, loff, poff;
+	uint64_t loff, poff, fieloff;
 	unsigned int flags, fieflags, fielen;
 	void *retp;
 	int nb_hash = 0;
-	bool inc_loff = false;
 	struct filerec *file = ctxt->file;
 	struct block_csum *block_hashes;
 
@@ -687,30 +686,24 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 	if (block_hashes == NULL)
 		return ENOMEM;
 
-	off = loff = fielen = 0;
+        loff = fieloff = fielen = 0;
 	flags = 0;
-	while (off < file->size) {
-		if (fc && off >= (loff + fielen)) {
-			ret = fiemap_helper(fc, file, &poff, &loff, &fielen,
+	while (loff < file->size) {
+		if (fc && loff >= (fieloff + fielen)) {
+			ret = fiemap_helper(fc, file, &poff, &fieloff, &fielen,
 					    &fieflags);
 			if (ret < 0)
 				goto out;
 			if (ret == 1) {
-				off = loff + fielen;
+				loff = fieloff + fielen;
 				continue;
 			}
-		} else {
-			/*
-			 * No fiemap, so iterate through the file block by
-			 * block.
-			 */
-			if (inc_loff) /* Only increment after the 1st loop */
-				loff += blocksize;
-			inc_loff = true;
+			loff = fieloff;
+			continue;
 		}
-		off = loff;
 
-		ret = csum_extent(ctxt, &off, blocksize);
+//		printf("loff %"PRIu64"\n", loff);
+		ret = csum_extent(ctxt, loff, blocksize);
 		if (ret == 0) /* EOF */
 			break;
 
@@ -726,7 +719,7 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			 * hash-tree makes the assumption that a partial block
 			 * is the last one.
 			 */
-			if (bytes_read + off != file->size) {
+			if (bytes_read + loff != file->size) {
 				ret = -1;
 				goto out;
 			}
@@ -736,7 +729,7 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			flags |= FILE_BLOCK_SKIP_COMPARE;
 
 		if (skip_zeroes && is_block_zeroed(ctxt->buf, bytes_read))
-			continue;
+			goto next_block;
 
 		retp = realloc(block_hashes,
 			       sizeof(struct block_csum) * (nb_hash + 1));
@@ -752,10 +745,12 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 		       DIGEST_LEN_MAX);
 		nb_hash++;
 
+next_block:
 		if (bytes_read < blocksize) {
 			/* Partial read, don't get any more blocks */
 			break;
 		}
+		loff += blocksize;
 	}
 	ret = 0;
 	ctxt->blocks_recorded = nb_hash;
@@ -772,7 +767,7 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			  struct extent_csum **ret_extent_hashes,
 			  int *ret_nb_hash)
 {
-	uint64_t off, poff, loff;
+	uint64_t poff, loff;
 	uint32_t len;
 	int ret = 0;
 	unsigned int flags;
@@ -800,8 +795,7 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			continue;
 		}
 
-		off = loff;
-		ret = csum_extent(ctxt, &off, len);
+		ret = csum_extent(ctxt, loff, len);
 		if (ret == 0) /* EOF */
 			break;
 
@@ -816,6 +810,8 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 		}
 		extent_hashes = retp;
 
+//		printf("loff %"PRIu64" ret %d len %u flags 0x%x\n",
+//		       loff, ret, len, flags);
 		extent_hashes[nb_hash].loff = loff;
 		extent_hashes[nb_hash].poff = poff;
 		/* XXX: put len or actual read length ('ret') in here? */
