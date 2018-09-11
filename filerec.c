@@ -494,27 +494,15 @@ struct fiemap_ctxt {
 	struct fiemap		*fiemap;
 	char			buf[FIEMAP_BUF_SIZE];
 	int			idx;
-
-	unsigned int		last_flags;
-	unsigned int		last_hole;
 };
-
-static inline void fc_set_last(struct fiemap_ctxt *fc, unsigned int flags,
-				 unsigned int hole)
-{
-	fc->last_flags = flags;
-	fc->last_hole = hole;
-	fc->fiemap = NULL;
-}
 
 struct fiemap_ctxt *alloc_fiemap_ctxt(void)
 {
-	struct fiemap_ctxt *ctxt = malloc(sizeof(*ctxt));
+	struct fiemap_ctxt *ctxt = calloc(1, sizeof(*ctxt));
 
 	if (ctxt) {
 		ctxt->fiemap = (struct fiemap *) ctxt->buf;
 		ctxt->idx = -1;
-		ctxt->last_flags = ctxt->last_hole = 0;
 	}
 	return ctxt;
 }
@@ -543,234 +531,92 @@ static int do_fiemap(struct fiemap *fiemap, struct filerec *file,
 		for (i = 0; i < fiemap->fm_mapped_extents; i++) {
 			extent = &fiemap->fm_extents[i];
 
-			dprintf("[%d] logical: %llu, length: %llu\n",
-				i, (unsigned long long)extent->fe_logical,
-				(unsigned long long)extent->fe_length);
+			dprintf("[%d] logical: %llu, physical: %llu length: %llu\n",
+			       i, (unsigned long long)extent->fe_logical,
+			       (unsigned long long)extent->fe_physical,
+			       (unsigned long long)extent->fe_length);
 		}
 	}
 	return 0;
 }
 
-/*
- * Assumes that we always call with blkno in ascending order
- */
-int fiemap_iter_get_flags(struct fiemap_ctxt *ctxt, struct filerec *file,
-			  uint64_t blkno, unsigned int *flags,
-			  unsigned int *hole)
+int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, struct filerec *file,
+			    uint64_t *poff, uint64_t *loff,
+			    uint32_t *len, unsigned int *flags)
 {
-	int err;
+	int ret;
 	uint64_t fiestart = 0;
-	struct fiemap *fiemap;
+	int idx = ctxt->idx;
+	struct fiemap *fiemap = ctxt->fiemap;
 	struct fiemap_extent *extent;
 
-	*flags = 0;
-	*hole = 0;
-
-	if (ctxt == NULL)
-		return 0;
-	/* we had a previous error or have no more extents to look up */
-	if (ctxt->fiemap == NULL) {
-		*hole = ctxt->last_hole;
-		*flags = ctxt->last_flags;
-		return 0;
+	if (idx == -1 || idx >= fiemap->fm_mapped_extents) {
+		if (idx != -1) {
+			extent = &fiemap->fm_extents[idx];
+			fiestart = extent->fe_logical + extent->fe_length;
+		}
+		ret = do_fiemap(fiemap, file, fiestart);
+		if (ret)
+			return ret;
+		idx = ctxt->idx = 0;
 	}
 
 	fiemap = ctxt->fiemap;
+	extent = &fiemap->fm_extents[idx];
 
-	if (ctxt->idx == -1) {
-		err = do_fiemap(fiemap, file, fiestart);
-		if (err) {
-			fc_set_last(ctxt, 0, 0);
-			return err;
-		}
-		if (fiemap->fm_mapped_extents == 0) {
-			*hole = 1;
-			fc_set_last(ctxt, 0, 1);
-			return 0;
-		}
-		ctxt->idx = 0;
-	}
-
-	/* Find first extent that ends past blkno */
-	extent = &fiemap->fm_extents[ctxt->idx];
-	while ((extent->fe_logical + extent->fe_length) <= blkno) {
-		if (extent->fe_flags & FIEMAP_EXTENT_LAST)
-			break;
-
-		ctxt->idx++;
-
-		if (ctxt->idx == fiemap->fm_mapped_extents) {
-			fiestart = extent->fe_logical + extent->fe_length;
-			err = do_fiemap(fiemap, file, fiestart);
-			if (err) {
-				fc_set_last(ctxt, 0, 0);
-				return err;
-			}
-			if (fiemap->fm_mapped_extents == 0) {
-				*hole = 1;
-				fc_set_last(ctxt, 0, 1);
-				return 0;
-			}
-			ctxt->idx = 0;
-		}
-		extent = &fiemap->fm_extents[ctxt->idx];
-	}
-
-	if (blkno < extent->fe_logical) {
-		/*
-		 * Extent starts after blkno. Don't have to worry
-		 * about EXTENT_LAST here, we'll hit this extent on a
-		 * future call.
-		 */
-		*hole = 1;
-		return 0;
-	}
-
-	/*
-	 * No more extents for us to look for
-	 * Let's assume - that all following data is a hole
-	 */
-	if (extent->fe_flags & FIEMAP_EXTENT_LAST
-	    && blkno >= (extent->fe_logical + extent->fe_length)) {
-		*hole = 1;
-		fc_set_last(ctxt, 0, 1);
-		return 0;
-	}
-
+	*len = extent->fe_length;
+	*poff = extent->fe_physical;
+	*loff = extent->fe_logical;
 	*flags = extent->fe_flags;
 
+	dprintf("fiemap_iter: filename \"%s\" idx %d return poff %"PRIu64" "
+		"loff %"PRIu64" len %u flags 0x%x\n", file->filename, idx,
+		*poff, *loff, *len, *flags);
+	ctxt->idx++;
 	return 0;
 }
 
-#ifdef FILEREC_TEST
-static char *fiemap_flags_str(unsigned long long flags);
-#endif
-
-/*
- * Skeleton for this function taken from e2fsprogs.git/misc/filefrag.c
- * which is Copyright 2003 by Theodore Ts'o and released under the GPL.
- */
-int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
-			 uint64_t *shared_bytes, uint64_t *poff,
-			 uint64_t *first_plen)
+int filerec_count_shared(struct filerec *file, uint64_t loff, uint32_t len,
+			 uint64_t *shared)
 {
-	char buf[16384];
-	struct fiemap *fiemap = (struct fiemap *)buf;
-	struct fiemap_extent *fm_ext = &fiemap->fm_extents[0];
-	int count = (sizeof(buf) - sizeof(*fiemap)) /
-			sizeof(struct fiemap_extent);
-	unsigned int i;
-	int last = 0;
-	int rc;
-	uint64_t search_end = start + len;
-	uint64_t loff, ext_len, ext_end;
+	int ret;
+	struct fiemap_ctxt *ctxt = alloc_fiemap_ctxt();
+	unsigned int flags;
+	uint64_t extent_loff, poff;
+	uint32_t extent_len;
+	uint64_t extent_end, end = loff + len - 1;
 
-	memset(fiemap, 0, sizeof(struct fiemap));
+	abort_on(len == 0);
 
-	do {
-#ifndef	FILEREC_TEST
-		dprintf("(fiemap) %s: start: %"PRIu64", len: %"PRIu64"\n",
-			file->filename, start, len);
-#endif
+	if (!ctxt)
+		return ENOMEM;
 
-		/*
-		 * Do search from 0 to EOF. btrfs was doing some weird
-		 * stuff with mapped extent start values when I tried
-		 * to search from user passed start to len. Instead
-		 * the code can just catch extents outside our range
-		 * in the for loop below and do the right thing.
-		 *
-		 * This issue can be revisited at some future point.
-		 */
-		fiemap->fm_length = ~0ULL;
-		fiemap->fm_extent_count = count;
-		fiemap->fm_start = start;
-		rc = ioctl(file->fd, FS_IOC_FIEMAP, (unsigned long) fiemap);
-		if (rc < 0)
-			return errno;
+	*shared = 0;
 
-		/* If 0 extents are returned, then more ioctls are not needed */
-		if (fiemap->fm_mapped_extents == 0)
-			break;
+	while ((ret = fiemap_iter_next_extent(ctxt, file, &poff, &extent_loff,
+					      &extent_len, &flags)) == 0) {
+		extent_end = extent_loff + extent_len - 1;
 
-		if (poff)
-			*poff = fiemap->fm_extents[0].fe_physical;
-
-		for (i = 0; i < fiemap->fm_mapped_extents; i++) {
-			if (fm_ext[i].fe_flags & FIEMAP_EXTENT_LAST)
-				last = 1;
-#ifndef FILEREC_TEST
-			dprintf("(fiemap) [%u] fe_logical: %llu, "
-				"fe_length: %llu, fe_physical: %llu, "
-				"fe_flags: 0x%x\n",
-				i, (unsigned long long)fm_ext[i].fe_logical,
-				(unsigned long long)fm_ext[i].fe_length,
-				(unsigned long long)fm_ext[i].fe_physical,
-				fm_ext[i].fe_flags);
-#else
-			dprintf("(fiemap) [%u] fe_logical: %llu, "
-				"fe_length: %llu, fe_physical: %llu, "
-				"fe_flags: 0x%x %s\n",
-				i, (unsigned long long)fm_ext[i].fe_logical,
-				(unsigned long long)fm_ext[i].fe_length,
-				(unsigned long long)fm_ext[i].fe_physical,
-				fm_ext[i].fe_flags,
-				fiemap_flags_str(fm_ext[i].fe_flags));
-#endif
-
-			loff = fm_ext[i].fe_logical;
-			ext_len = fm_ext[i].fe_length;
-			ext_end = loff + ext_len;
-
-			if (first_plen) {
-				*first_plen = ext_len;
-				first_plen = NULL;/* Only return the first one */
+		if (loff <= extent_end && end >= extent_loff) {
+			if (!(flags & FIEMAP_EXTENT_DELALLOC)
+			    && flags & FIEMAP_EXTENT_SHARED) {
+				if (extent_loff < loff)
+					extent_loff = loff;
+				if (extent_end < end)
+					extent_end = end;
+				*shared += extent_end - extent_loff + 1;
 			}
-
-			if (ext_end <= start) {
-				/* extent is before our search area */
-				continue;
-			}
-			if (loff >= search_end) {
-				/* extent starts after our search area */
-				last = 1;
-				i++; /* inc this so the math below works out */
-				break;
-			}
-
-			/*
-			 * First extent loff could begin before our
-			 * search start. If so just shift our extent over.
-			 */
-			if (loff < start) {
-				ext_len -= start - loff;
-				loff = start;
-			}
-			/*
-			 * Last extent could end past our intended
-			 * range, trim length
-			 */
-			if (ext_end > search_end) {
-				ext_len = search_end - loff;
-				last = 1;
-			}
-
-//			dprintf("(fiemap) loff: %"PRIu64" ext_len: %"PRIu64
-//				" flags: 0x%x\n",
-//				loff, ext_len, fm_ext[i].fe_flags);
-
-			if (!(fm_ext[i].fe_flags & FIEMAP_EXTENT_DELALLOC)
-				&& fm_ext[i].fe_flags & FIEMAP_EXTENT_SHARED)
-				*shared_bytes += ext_len;
 		}
 
-		start = (fm_ext[i - 1].fe_logical + fm_ext[i - 1].fe_length);
-	} while (last == 0);
-
+		if (loff > extent_end || flags & FIEMAP_EXTENT_LAST)
+			break;
+	}
+	free(ctxt);
 	return 0;
 }
 
 #ifdef FILEREC_TEST
+#ifdef	TEST_FIEMAP_ITER
 #define	FLAG_STR_LEN	4096
 static char flagstr[FLAG_STR_LEN];
 /* This function is not thread-safe */
@@ -851,7 +697,37 @@ static char *fiemap_flags_str(unsigned long long flags)
 	return flagstr;
 }
 
-#ifdef	TEST_FIEMAP_ITER
+static int test_iter(struct filerec *file)
+{
+	int ret, bs = 128*1024;
+	struct fiemap_ctxt *fc = alloc_fiemap_ctxt();
+	unsigned int flags;
+	uint64_t loff, poff, len;
+
+	debug = 1;	/* Want prints from filerec_count_shared */
+
+	if (!fc)
+		return ENOMEM;
+
+	flags = 0;
+	loff = len = 0;
+	while (!(flags & FIEMAP_EXTENT_LAST) && loff + len < file->size) {
+		ret = fiemap_iter_next_extent(fc, file, &poff, &loff, &len,
+					      &flags);
+		if (ret)
+			return ret;
+
+		printf("(test_iter) %s: poff: %"PRIu64" loff: %"PRIu64" len: %"
+		       PRIu64" flags: %s\n",
+		       file->filename, poff, loff, len, fiemap_flags_str(flags));
+	}
+
+out:
+	free(fc);
+	return ret;
+}
+#endif	/* TEST_FIEMAP_ITER */
+
 static int get_size(struct filerec *file)
 {
 	int ret;
@@ -864,37 +740,6 @@ static int get_size(struct filerec *file)
 	file->size = st.st_size;
 	return 0;
 }
-
-static int test_iter(struct filerec *file)
-{
-	int ret, bs = 128*1024;
-	struct fiemap_ctxt *fc = alloc_fiemap_ctxt();
-	unsigned int flags, hole;
-	uint64_t blkno;
-
-	debug = 1;	/* Want prints from filerec_count_shared */
-
-	if (!fc)
-		return ENOMEM;
-
-	ret = get_size(file);
-	if (ret)
-		goto out;
-
-	for(blkno = 0; blkno < file->size; blkno += bs) {
-		ret = fiemap_iter_get_flags(fc, file, blkno, &flags, &hole);
-		if (ret)
-			return ret;
-
-		printf("(test_iter) %s: block: %"PRIu64" hole: %d flags: %s\n",
-		       file->filename, blkno, hole, fiemap_flags_str(flags));
-	}
-
-out:
-	free(fc);
-	return ret;
-}
-#endif	/* TEST_FIEMAP_ITER */
 
 int main(int argc, char **argv)
 {
@@ -920,12 +765,16 @@ int main(int argc, char **argv)
 		if (ret)
 			goto out;
 
+		ret = get_size(file);
+		if (ret)
+			goto out;
+
 #ifdef	TEST_FIEMAP_ITER
 		test_iter(file);
 #else
 
 		shared = 0;
-		ret = filerec_count_shared(file, 0, -1ULL, &shared, NULL, NULL);
+		ret = filerec_count_shared(file, 0, file->size, &shared);
 		filerec_close(file);
 		if (ret) {
 			fprintf(stderr, "fiemap error %d: %s\n", ret, strerror(ret));

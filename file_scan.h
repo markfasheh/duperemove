@@ -31,13 +31,20 @@ void fs_set_onefs(dev_t dev, uint64_t fsid);
 dev_t fs_onefs_dev(void);
 uint64_t fs_onefs_id(void);
 
-int populate_tree();
+struct dbfile_config;
+int populate_tree(struct dbfile_config *cfg);
 
 /* For dbfile.c */
-struct block {
+struct block_csum {
 	uint64_t	loff;
 	unsigned int	flags;
 	unsigned char	digest[DIGEST_LEN_MAX];
 };
-
+struct extent_csum {
+	uint64_t	loff;
+	uint64_t	poff;
+	uint32_t	len;
+	unsigned int	flags;
+	unsigned char	digest[DIGEST_LEN_MAX];
+};
 #endif	/* __FILE_SCAN_H__ */

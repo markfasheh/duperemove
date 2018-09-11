@@ -61,6 +61,8 @@ struct filerec {
 	/* mtime in nanoseconds */
 	uint64_t		mtime;
 	unsigned int		dedupe_seq;
+
+	struct fiemap_ctxt	*fiemap;
 };
 
 /*
@@ -119,10 +121,6 @@ int filerec_open_once(struct filerec *file, int write,
 		      struct open_once *open_files);
 void filerec_close_open_list(struct open_once *open_files);
 
-int filerec_count_shared(struct filerec *file, uint64_t start, uint64_t len,
-			 uint64_t *shared_bytes, uint64_t *poff,
-			 uint64_t *first_plen);
-
 /*
  * Track unique filerecs in a tree. Two places in the code use this:
  *	- filerec comparison tracking in filerec.c
@@ -146,10 +144,11 @@ void free_all_filerec_compared(void);
 
 struct fiemap_ctxt;
 struct fiemap_ctxt *alloc_fiemap_ctxt(void);
-void fiemap_ctxt_init(struct fiemap_ctxt *ctxt);
-int fiemap_iter_get_flags(struct fiemap_ctxt *ctxt, struct filerec *file,
-			  uint64_t blkno, unsigned int *flags,
-			  unsigned int *hole);
+int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, struct filerec *file,
+			    uint64_t *poff, uint64_t *loff, uint32_t *len,
+			    unsigned int *flags);
+int filerec_count_shared(struct filerec *file, uint64_t loff, uint32_t len,
+			 uint64_t *shared);
 
 #define	NANOSECONDS	1000000000
 static inline uint64_t timespec_to_nano(struct timespec *t)

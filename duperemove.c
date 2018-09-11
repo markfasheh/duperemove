@@ -56,8 +56,8 @@ unsigned int blocksize = DEFAULT_BLOCKSIZE;
 int run_dedupe = 0;
 int recurse_dirs = 0;
 int one_file_system = 1;
-int block_dedupe = 1;
-int dedupe_same_file = 0;
+int v2_hashfile = 0;
+int dedupe_same_file = 1;
 int skip_zeroes = 0;
 
 int target_rw = 1;
@@ -67,6 +67,8 @@ static int fdupes_mode = 0;
 static int stdin_filelist = 0;
 static unsigned int list_only_opt = 0;
 static unsigned int rm_only_opt = 0;
+static struct dbfile_config dbfile_cfg;
+static bool force_v2_hashfile = false;
 
 static enum {
 	H_READ,
@@ -80,7 +82,7 @@ unsigned int io_threads;
 unsigned int cpu_threads;
 int io_threads_opt = 0;
 int cpu_threads_opt = 0;
-int do_lookup_extents = 0;
+int do_lookup_extents = 1;
 int fiemap_during_dedupe = 1;
 
 int stdout_is_tty = 0;
@@ -99,7 +101,7 @@ static int list_db_files(char *filename)
 {
 	int ret;
 
-	ret = dbfile_open(filename);
+	ret = dbfile_open(filename, &dbfile_cfg);
 	if (ret) {
 		fprintf(stderr, "Error: Could not open \"%s\"\n", filename);
 		return ret;
@@ -166,7 +168,7 @@ static int rm_db_files(char *dbfilename)
 	int ret, err = 0;
 	struct rm_file *rm, *tmp;
 
-	ret = dbfile_open(dbfilename);
+	ret = dbfile_open(dbfilename, &dbfile_cfg);
 	if (ret) {
 		fprintf(stderr, "Error: Could not open \"%s\"\n", dbfilename);
 		return ret;
@@ -184,7 +186,8 @@ restart:
 			 */
 			goto restart;
 		}
-		ret = dbfile_remove_file(dbfile_get_handle(), rm->filename);
+		ret = dbfile_remove_file(dbfile_get_handle(), &dbfile_cfg,
+					 rm->filename);
 		if (ret == 0)
 			vprintf("Removed \"%s\" from hashfile.\n",
 				rm->filename);
@@ -264,7 +267,7 @@ static int parse_dedupe_opts(const char *opts)
 		if (strcmp(token, "same") == 0) {
 			dedupe_same_file = !invert;
 		} else if (strcmp(token, "block") == 0) {
-			block_dedupe = !invert;
+			; /* This option ignored as of v0.12 */
 		} else if (strcmp(token, "fiemap") == 0) {
 			fiemap_during_dedupe = !invert;
 		} else {
@@ -290,6 +293,7 @@ enum {
 	HELP_OPTION,
 	VERSION_OPTION,
 	WRITE_HASHES_OPTION,
+	WRITE_OLD_HASHES_OPTION,
 	READ_HASHES_OPTION,
 	HASHFILE_OPTION,
 	IO_THREADS_OPTION,
@@ -373,6 +377,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		{ "help", 0, NULL, HELP_OPTION },
 		{ "version", 0, NULL, VERSION_OPTION },
 		{ "write-hashes", 1, NULL, WRITE_HASHES_OPTION },
+		{ "write-hashes-v2", 1, NULL, WRITE_OLD_HASHES_OPTION },
 		{ "read-hashes", 1, NULL, READ_HASHES_OPTION },
 		{ "hashfile", 1, NULL, HASHFILE_OPTION },
 		{ "io-threads", 1, NULL, IO_THREADS_OPTION },
@@ -425,6 +430,8 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		case 'h':
 			human_readable = 1;
 			break;
+		case WRITE_OLD_HASHES_OPTION:
+			force_v2_hashfile = true;
 		case WRITE_HASHES_OPTION:
 			write_hashes = 1;
 			serialize_fname = strdup(optarg);
@@ -579,26 +586,29 @@ static void print_header(void)
 	qprintf("Gathering file list...\n");
 }
 
-static void print_all_dupes(struct results_tree *res,
-			    struct hash_tree *hashes)
+static int update_config_from_dbfile(void)
 {
-	struct filerec *file;
+	dedupe_seq = dbfile_cfg.dedupe_seq;
 
-	if (block_dedupe) {
-		printf("Block search algorithm found %s total blocks of "
-		       "duplicate data.\n", pretty_size(hashes->num_blocks));
-		if (!quiet && hashes->num_blocks) {
-			printf("Num Blocks\t\tFilename\n");
-			list_for_each_entry(file, &filerec_list, rec_list) {
-				if (file->num_blocks)
-					printf("%"PRIu64"\t\"%s\"\n",
-					       file->num_blocks,
-					       file->filename);
-			}
-		}
-	} else
-		print_dupes_table(res);
+	if (strncasecmp(dbfile_cfg.hash_type, hash_type, 8)) {
+		fprintf(stderr,
+			"Error: Hashfile %s uses %.*s. for checksums "
+			"but we are using %.*s.\nTry running with "
+			"--hash=%.*s\n", serialize_fname, 8,
+			dbfile_cfg.hash_type, 8, hash_type,
+			8, dbfile_cfg.hash_type);
+		return EINVAL;
+	}
 
+	if (dbfile_cfg.blocksize != blocksize &&
+	    dbfile_cfg.major == BLOCK_DEDUPE_DBFILE_VER) {
+		vprintf("Using blocksize %uK from hashfile (%uK "
+			"blocksize requested).\n", dbfile_cfg.blocksize/1024,
+			blocksize/1024);
+		blocksize = dbfile_cfg.blocksize;
+	}
+
+	return 0;
 }
 
 static int create_update_hashfile(int argc, char **argv, int filelist_idx)
@@ -606,40 +616,27 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 	int ret;
 	int dbfile_is_new = 0;
 
-	ret = dbfile_create(serialize_fname, &dbfile_is_new);
+	ret = dbfile_create(serialize_fname, &dbfile_is_new,
+			    force_v2_hashfile ? BLOCK_DEDUPE_DBFILE_VER : DB_FILE_MAJOR,
+			    &dbfile_cfg);
 	if (ret)
 		goto out;
 
-	if (!dbfile_is_new) {
-		dev_t dev;
-		uint64_t fsid;
-		unsigned db_blocksize;
-		char db_hash_type[8];
+	if (force_v2_hashfile && dbfile_cfg.major != BLOCK_DEDUPE_DBFILE_VER) {
+		ret = EINVAL;
+		fprintf(stderr, "Error: asked to force hashfile version 2 but "
+			"existing hashfile has version %d\n", dbfile_cfg.major);
+		goto out;
+	}
 
-		ret = dbfile_get_config(&db_blocksize, NULL, NULL, &dev, &fsid,
-					NULL, NULL, db_hash_type, &dedupe_seq);
+	if (dbfile_cfg.major == BLOCK_DEDUPE_DBFILE_VER)
+		v2_hashfile = 1;
+
+	if (!dbfile_is_new) {
+		ret = update_config_from_dbfile();
 		if (ret)
 			goto out;
-
-		if (strncasecmp(db_hash_type, hash_type, 8)) {
-			fprintf(stderr,
-				"Error: Hashfile %s uses %.*s. for checksums "
-				"but we are using %.*s.\nTry running with "
-				"--hash=%.*s\n", serialize_fname, 8,
-				db_hash_type, 8, hash_type,
-				8, db_hash_type);
-			ret = EINVAL;
-			goto out;
-		}
-
-		if (db_blocksize != blocksize) {
-			vprintf("Using blocksize %uK from hashfile (%uK "
-				"blocksize requested).\n", db_blocksize/1024,
-				blocksize/1024);
-			blocksize = db_blocksize;
-		}
-
-		fs_set_onefs(dev, fsid);
+		fs_set_onefs(dbfile_cfg.onefs_dev, dbfile_cfg.onefs_fsid);
 	}
 
 	print_header();
@@ -653,14 +650,17 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 		goto out;
 
 	if (dbfile_is_new) {
-		ret = dbfile_sync_config(blocksize, fs_onefs_dev(),
-					 fs_onefs_id(), dedupe_seq);
+		dbfile_cfg.blocksize = blocksize;
+		dbfile_cfg.onefs_dev = fs_onefs_dev();
+		dbfile_cfg.onefs_fsid = fs_onefs_id();
+		dbfile_cfg.dedupe_seq = dedupe_seq;
+		ret = dbfile_sync_config(&dbfile_cfg);
 		if (ret)
 			goto out;
 	} else {
 		qprintf("Adding files from database for hashing.\n");
 
-		ret = dbfile_scan_files();
+		ret = dbfile_scan_files(&dbfile_cfg);
 		if (ret)
 			goto out;
 	}
@@ -671,13 +671,13 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 		goto out;
 	}
 
-	ret = populate_tree();
+	ret = populate_tree(&dbfile_cfg);
 	if (ret) {
 		fprintf(stderr,	"Error while populating extent tree!\n");
 		goto out;
 	}
 
-	ret = create_indexes(dbfile_get_handle());
+	ret = create_indexes(dbfile_get_handle(), &dbfile_cfg);
 	if (ret)
 		goto out;
 
@@ -761,23 +761,25 @@ int main(int argc, char **argv)
 		}
 		break;
 	case H_READ:
-		ret = dbfile_open(serialize_fname);
+		ret = dbfile_open(serialize_fname, &dbfile_cfg);
 		if (ret) {
 			fprintf(stderr, "Error: Could not open dbfile %s.\n",
 				serialize_fname);
 			goto out;
 		}
 
+		if (dbfile_cfg.major == BLOCK_DEDUPE_DBFILE_VER)
+			v2_hashfile = 1;
+
 		/*
 		 * Skips the file scan, used to isolate the
 		 * extent-find and dedupe stages
 		 */
-		ret = dbfile_get_config(&blocksize, NULL, NULL, NULL, NULL,
-					NULL, NULL, NULL, &dedupe_seq);
-		if (ret) {
-			fprintf(stderr, "Error: initializing dbfile config\n");
+		blocksize = dbfile_cfg.blocksize;
+		ret = update_config_from_dbfile();
+		if (ret)
 			goto out;
-		}
+
 		print_header();
 		break;
 	default:
@@ -787,24 +789,29 @@ int main(int argc, char **argv)
 
 	qprintf("Loading only duplicated hashes from hashfile.\n");
 
-	ret = dbfile_load_hashes(&dups_tree);
-	if (ret)
-		goto out;
+	if (v2_hashfile) {
+		ret = dbfile_load_block_hashes(&dups_tree);
+		if (ret)
+			goto out;
 
-	ret = find_all_dupes(&dups_tree, &res);
-	if (ret) {
-		/* Only error for this should be enomem */
-		fprintf(stderr,
-			"Error %d: %s while finding duplicate extents.\n",
-			ret, strerror(ret));
-		goto out;
+		ret = find_all_dupes(&dups_tree, &res);
+		if (ret) {
+			/* Only error for this should be enomem */
+			fprintf(stderr,
+				"Error %d: %s while finding duplicate extents.\n",
+				ret, strerror(ret));
+			goto out;
+		}
+	} else {
+		ret = dbfile_load_extent_hashes(&res);
+		if (ret)
+			goto out;
 	}
-
-	print_all_dupes(&res, &dups_tree);
 
 #ifdef	PRINT_STATS
 	run_filerec_stats();
 #endif
+
 	if (run_dedupe) {
 		dedupe_results(&res, &dups_tree);
 
@@ -815,10 +822,15 @@ int main(int argc, char **argv)
 		dedupe_seq++;
 
 		/* Sync to get new dedupe_seq written. */
-		ret = dbfile_sync_config(blocksize, fs_onefs_dev(),
-					 fs_onefs_id(), dedupe_seq);
+		dbfile_cfg.dedupe_seq = dedupe_seq;
+		dbfile_cfg.blocksize = blocksize;
+		dbfile_cfg.onefs_dev = fs_onefs_dev();
+		dbfile_cfg.onefs_fsid = fs_onefs_id();
+		ret = dbfile_sync_config(&dbfile_cfg);
 		if (ret)
 			goto out;
+	} else {
+		print_dupes_table(&res);
 	}
 
 out:
