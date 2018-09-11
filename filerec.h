@@ -61,6 +61,8 @@ struct filerec {
 	/* mtime in nanoseconds */
 	uint64_t		mtime;
 	unsigned int		dedupe_seq;
+
+	struct fiemap_ctxt	*fiemap;
 };
 
 /*
@@ -145,6 +147,8 @@ struct fiemap_ctxt *alloc_fiemap_ctxt(void);
 int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, struct filerec *file,
 			    uint64_t *poff, uint64_t *loff, uint32_t *len,
 			    unsigned int *flags);
+int filerec_count_shared(struct filerec *file, uint64_t loff, uint32_t len,
+			 uint64_t *shared);
 
 #define	NANOSECONDS	1000000000
 static inline uint64_t timespec_to_nano(struct timespec *t)

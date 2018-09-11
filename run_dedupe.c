@@ -159,6 +159,36 @@ static void add_shared_extents(struct dupe_extents *dext, uint64_t *shared)
 		*shared += extent_shared_bytes(extent);
 }
 
+/*
+ * Fiemap the file and get our post-dedupe extent state.
+ *
+ * XXX: We're running fiemap too much for this. At the least we should
+ * shoot for one fiemap call(s) per filerec.
+ */
+static void add_shared_extents_post(struct dupe_extents *dext, uint64_t *shared)
+{
+	int ret;
+	uint64_t bytes = 0;
+	struct extent *extent;
+	struct filerec *file;
+
+	list_for_each_entry(extent, &dext->de_extents, e_list) {
+		file = extent->e_file;
+		ret = filerec_open(file, target_rw);
+		if (ret)
+			return;
+
+		ret = filerec_count_shared(file, extent->e_loff, dext->de_len,
+					   &bytes);
+
+		*shared += bytes;
+		filerec_close(file);
+
+		if (ret)
+			return;
+	}
+}
+
 static int disk_extent_grew(struct dupe_extents *dext, struct extent *extent)
 {
 	/*
@@ -429,7 +459,7 @@ close_files:
 	abort_on(!RB_EMPTY_ROOT(&open_files.root));
 
 	if (fiemap_during_dedupe)
-		add_shared_extents(dext, &shared_post);
+		add_shared_extents_post(dext, &shared_post);
 
 	/*
 	 * It's entirely possible that some other process is

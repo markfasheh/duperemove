@@ -576,33 +576,46 @@ int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, struct filerec *file,
 	return 0;
 }
 
-#ifdef FILEREC_TEST
-static int filerec_count_shared(struct filerec *file, uint64_t *shared_bytes)
+int filerec_count_shared(struct filerec *file, uint64_t loff, uint32_t len,
+			 uint64_t *shared)
 {
 	int ret;
 	struct fiemap_ctxt *ctxt = alloc_fiemap_ctxt();
 	unsigned int flags;
-	uint64_t loff, poff;
-	uint32_t len;
+	uint64_t extent_loff, poff;
+	uint32_t extent_len;
+	uint64_t extent_end, end = loff + len - 1;
+
+	abort_on(len == 0);
 
 	if (!ctxt)
 		return ENOMEM;
 
-	*shared_bytes = 0;
+	*shared = 0;
 
-	while ((ret = fiemap_iter_next_extent(ctxt, file, &poff, &loff, &len,
-					      &flags)) == 0) {
-		if (!(flags & FIEMAP_EXTENT_DELALLOC)
-		    && flags & FIEMAP_EXTENT_SHARED)
-			*shared_bytes += len;
+	while ((ret = fiemap_iter_next_extent(ctxt, file, &poff, &extent_loff,
+					      &extent_len, &flags)) == 0) {
+		extent_end = extent_loff + extent_len - 1;
 
-		if (flags & FIEMAP_EXTENT_LAST)
+		if (loff <= extent_end && end >= extent_loff) {
+			if (!(flags & FIEMAP_EXTENT_DELALLOC)
+			    && flags & FIEMAP_EXTENT_SHARED) {
+				if (extent_loff < loff)
+					extent_loff = loff;
+				if (extent_end < end)
+					extent_end = end;
+				*shared += extent_end - extent_loff + 1;
+			}
+		}
+
+		if (loff > extent_end || flags & FIEMAP_EXTENT_LAST)
 			break;
 	}
 	free(ctxt);
-	return ret;
+	return 0;
 }
 
+#ifdef FILEREC_TEST
 #ifdef	TEST_FIEMAP_ITER
 #define	FLAG_STR_LEN	4096
 static char flagstr[FLAG_STR_LEN];
@@ -684,19 +697,6 @@ static char *fiemap_flags_str(unsigned long long flags)
 	return flagstr;
 }
 
-static int get_size(struct filerec *file)
-{
-	int ret;
-	struct stat st;
-
-	ret = lstat(file->filename, &st);
-	if (ret == -1)
-		return errno;
-
-	file->size = st.st_size;
-	return 0;
-}
-
 static int test_iter(struct filerec *file)
 {
 	int ret, bs = 128*1024;
@@ -708,10 +708,6 @@ static int test_iter(struct filerec *file)
 
 	if (!fc)
 		return ENOMEM;
-
-	ret = get_size(file);
-	if (ret)
-		goto out;
 
 	flags = 0;
 	loff = len = 0;
@@ -731,6 +727,19 @@ out:
 	return ret;
 }
 #endif	/* TEST_FIEMAP_ITER */
+
+static int get_size(struct filerec *file)
+{
+	int ret;
+	struct stat st;
+
+	ret = lstat(file->filename, &st);
+	if (ret == -1)
+		return errno;
+
+	file->size = st.st_size;
+	return 0;
+}
 
 int main(int argc, char **argv)
 {
@@ -756,12 +765,16 @@ int main(int argc, char **argv)
 		if (ret)
 			goto out;
 
+		ret = get_size(file);
+		if (ret)
+			goto out;
+
 #ifdef	TEST_FIEMAP_ITER
 		test_iter(file);
 #else
 
 		shared = 0;
-		ret = filerec_count_shared(file, &shared);
+		ret = filerec_count_shared(file, 0, file->size, &shared);
 		filerec_close(file);
 		if (ret) {
 			fprintf(stderr, "fiemap error %d: %s\n", ret, strerror(ret));
