@@ -202,6 +202,17 @@ restart:
 	return err;
 }
 
+extern struct list_head exclude_list;
+
+static void add_exclude_pattern(const char *pattern)
+{
+	struct exclude_file *exclude = malloc(sizeof(*exclude));
+	if (exclude) {
+		exclude->pattern = strdup(pattern);
+		list_add_tail(&exclude->list, &exclude_list);
+	}
+}
+
 static void usage(const char *prog)
 {
 	char *s = NULL;
@@ -305,6 +316,7 @@ enum {
 	FDUPES_OPTION,
 	DEDUPE_OPTS_OPTION,
 	QUIET_OPTION,
+	EXCLUDE_OPTION,
 };
 
 static int add_files_from_stdin(int fdupes)
@@ -390,6 +402,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		{ "fdupes", 0, NULL, FDUPES_OPTION },
 		{ "dedupe-options=", 1, NULL, DEDUPE_OPTS_OPTION },
 		{ "quiet", 0, NULL, QUIET_OPTION },
+		{ "exclude", 1, NULL, EXCLUDE_OPTION },
 		{ NULL, 0, NULL, 0}
 	};
 
@@ -492,6 +505,9 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		case QUIET_OPTION:
 		case 'q':
 			quiet = 1;
+			break;
+		case EXCLUDE_OPTION:
+			add_exclude_pattern(optarg);
 			break;
 		case HELP_OPTION:
 			help_option = 1;
