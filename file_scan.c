@@ -188,9 +188,6 @@ static int walk_dir(const char *name)
 			    || strcmp(entry->d_name, "..") == 0)
 				continue;
 
-			if (is_excluded(entry->d_name))
-				continue;
-
 			type = get_dirent_type(entry, dirfd(dirp));
 			if (type == DT_REG ||
 			    (recurse_dirs && type == DT_DIR)) {
@@ -257,6 +254,9 @@ static int __add_file(const char *name, struct stat *st,
 			"Skipping.\n", ret, strerror(ret), name);
 		goto out;
 	}
+
+	if (is_excluded(name))
+		goto out;
 
 	if (run_dedupe &&
 	    ((fs.f_type != BTRFS_SUPER_MAGIC &&
@@ -355,6 +355,9 @@ int add_file(const char *name, int dirfd)
 	}
 
 	if (S_ISDIR(st.st_mode)) {
+		if (is_excluded(abspath))
+			goto out;
+
 		dev = st.st_dev;
 		/*
 		 * Device doesn't work for btrfs as it changes between
