@@ -552,7 +552,7 @@ int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, struct filerec *file,
 
 	if (idx == -1 || idx >= fiemap->fm_mapped_extents) {
 		if (idx != -1) {
-			extent = &fiemap->fm_extents[idx];
+			extent = &fiemap->fm_extents[idx - 1];
 			fiestart = extent->fe_logical + extent->fe_length;
 		}
 		ret = do_fiemap(fiemap, file, fiestart);
