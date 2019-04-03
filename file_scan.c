@@ -599,17 +599,38 @@ static inline int is_block_zeroed(void *buf, ssize_t buf_size)
 	return 1;
 }
 
+static int xlate_extent_flags(int fieflags, ssize_t len)
+{
+	int flags = 0;
+
+	if (fieflags & FIEMAP_SKIP_FLAGS)
+		flags |= FILE_BLOCK_SKIP_COMPARE;
+
+	if (len < blocksize)
+		flags |= FILE_BLOCK_PARTIAL;
+
+	return flags;
+}
+
+static int add_block_hash(struct block_csum **hashes, int *nr_hashes,
+			  uint64_t loff, unsigned char *digest, int flags);
+
 struct csum_ctxt {
 	uint64_t blocks_recorded;
 	char *buf;
 	struct filerec *file;
 	unsigned char digest[DIGEST_LEN_MAX];
+
+	struct block_csum *block_hashes;
+	int nr_block_hashes;
+	unsigned char block_digest[DIGEST_LEN_MAX];
 };
 
 static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
-		       unsigned int extent_len)
+		       unsigned int extent_len, int extent_flags)
 {
 	int ret = 0;
+	ssize_t total_bytes_read = 0;
 	ssize_t bytes_read;
 	struct running_checksum *csum;
 
@@ -619,7 +640,7 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 
 	bytes_read = 0;
 	while (1) {
-		unsigned int readlen = extent_len - bytes_read;
+		unsigned int readlen = extent_len - total_bytes_read;
 		if (readlen > blocksize)
 			readlen = blocksize;
 
@@ -633,16 +654,31 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 		if (ret == 0)
 			break;
 
-		add_to_running_checksum(csum, ret, (unsigned char *)data->buf);
-		extent_off += ret;
-		bytes_read += ret;
-		if (bytes_read >= extent_len)
+		bytes_read = ret;
+		total_bytes_read += bytes_read;
+		if (data->block_hashes) {
+			int flags = xlate_extent_flags(extent_flags,
+						       bytes_read);
+
+			checksum_block(data->buf, bytes_read,
+				       data->block_digest);
+
+			ret = add_block_hash(&data->block_hashes,
+					     &data->nr_block_hashes, extent_off,
+					     data->block_digest, flags);
+			if (ret)
+				break;
+		}
+		add_to_running_checksum(csum, bytes_read,
+					(unsigned char *)data->buf);
+		if (total_bytes_read >= extent_len)
 			break;
+		extent_off += bytes_read;
 	}
 
 	finish_running_checksum(csum, data->digest);
 
-	return ret ? ret : bytes_read;
+	return ret ? ret : total_bytes_read;
 }
 
 static void csum_whole_file_init(GMutex **mutex, void *location,
@@ -666,6 +702,26 @@ static void csum_whole_file_init(GMutex **mutex, void *location,
 				"Low memory allocating fiemap context for \"%s\"\n",
 				file->filename);
 	}
+}
+
+static int add_block_hash(struct block_csum **hashes, int *nr_hashes,
+			  uint64_t loff, unsigned char *digest, int flags)
+{
+	void *retp;
+	struct block_csum *block_hashes;
+
+	retp = realloc(*hashes, sizeof(struct block_csum) * (*nr_hashes + 1));
+	if (!retp)
+		return ENOMEM;
+
+	block_hashes = retp;
+	block_hashes[*nr_hashes].loff = loff;
+	block_hashes[*nr_hashes].flags = flags;
+	memcpy(block_hashes[*nr_hashes].digest, digest, DIGEST_LEN_MAX);
+
+	*hashes = retp;
+	(*nr_hashes)++;
+	return 0;
 }
 
 /*
@@ -710,7 +766,7 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 		return ENOMEM;
 
         loff = fieloff = fielen = 0;
-	flags = 0;
+	flags = fieflags = 0;
 	while (loff < file->size) {
 		if (fc && loff >= (fieloff + fielen)) {
 			ret = fiemap_helper(fc, file, &poff, &fieloff, &fielen,
@@ -726,7 +782,7 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 		}
 
 //		printf("loff %"PRIu64"\n", loff);
-		ret = csum_extent(ctxt, loff, blocksize);
+		ret = csum_extent(ctxt, loff, blocksize, fieflags);
 		if (ret == 0) /* EOF */
 			break;
 
@@ -734,6 +790,19 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			goto out;
 
 		bytes_read = ret;
+
+		/* Handle partial read */
+		if (bytes_read < blocksize && bytes_read + loff != file->size){
+			/*
+			 * Don't want to store the len of each block, so
+			 * hash-tree makes the assumption that a partial block
+			 * is the last one.
+			 */
+			ret = -1;
+			goto out;
+		}
+		flags = xlate_extent_flags(fieflags, bytes_read);
+#if 0
 		flags = 0;
 		/* Handle partial read */
 		if (bytes_read < blocksize) {
@@ -750,7 +819,7 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 		}
 		if (fieflags & FIEMAP_SKIP_FLAGS)
 			flags |= FILE_BLOCK_SKIP_COMPARE;
-
+#endif
 		if (skip_zeroes && is_block_zeroed(ctxt->buf, bytes_read))
 			goto next_block;
 
@@ -798,14 +867,26 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 	void *retp;
 	struct filerec *file = ctxt->file;
 	int nb_hash = 0;
+	struct block_csum *block_hashes;
+//	int nb_block_hash = 0;
 
 	extent_hashes = malloc(sizeof(struct extent_csum));
 	if (extent_hashes == NULL)
 		return ENOMEM;
 
-	/* We require fiemap to do dedupe by extent. */
-	if (fc == NULL)
+	block_hashes = malloc(sizeof(struct block_csum));
+	if (block_hashes == NULL) {
+		free(extent_hashes);
 		return ENOMEM;
+	}
+	ctxt->block_hashes = block_hashes;
+
+	/* We require fiemap to do dedupe by extent. */
+	if (fc == NULL) {
+		free(extent_hashes);
+		free(block_hashes);
+		return ENOMEM;
+	}
 
 	flags = 0;
 	while (!(flags & FIEMAP_EXTENT_LAST)) {
@@ -818,7 +899,7 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			continue;
 		}
 
-		ret = csum_extent(ctxt, loff, len);
+		ret = csum_extent(ctxt, loff, len, flags);
 		if (ret == 0) /* EOF */
 			break;
 
@@ -874,10 +955,10 @@ static void csum_whole_file(struct filerec *file,
 	struct block_csum *block_hashes = NULL;
 	GMutex *mutex;
 
-	csum_ctxt.buf = malloc(blocksize);
+	memset(&csum_ctxt, 0, sizeof(csum_ctxt));
+	csum_ctxt.buf = calloc(1, blocksize);
 	assert(csum_ctxt.buf != NULL);
 	csum_ctxt.file = file;
-	csum_ctxt.blocks_recorded = 0;
 
 	csum_whole_file_init(&mutex, params, file, &fc);
 
@@ -920,6 +1001,14 @@ static void csum_whole_file(struct filerec *file,
 			goto err;
 		}
 	} else {
+		ret = dbfile_store_block_hashes(db, params->dbfile_cfg, file,
+						csum_ctxt.nr_block_hashes,
+						csum_ctxt.block_hashes);
+		if (ret) {
+			g_mutex_unlock(&io_mutex);
+			goto err;
+		}
+
 		ret = dbfile_store_extent_hashes(db, params->dbfile_cfg, file,
 						 nb_hash, extent_hashes);
 		if (ret) {
@@ -948,6 +1037,8 @@ static void csum_whole_file(struct filerec *file,
 	free(csum_ctxt.buf);
 	if (fc)
 		free(fc);
+	if (csum_ctxt.block_hashes)
+		free(csum_ctxt.block_hashes);
 
 	free(extent_hashes);
 	return;
@@ -960,6 +1051,8 @@ err_noclose:
 		free(extent_hashes);
 	if (block_hashes)
 		free(block_hashes);
+	if (csum_ctxt.block_hashes)
+		free(csum_ctxt.block_hashes);
 	if (fc)
 		free(fc);
 

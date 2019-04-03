@@ -85,15 +85,17 @@ static int create_tables(sqlite3 *db, int requested_version)
 		goto out;
 
 	switch (requested_version) {
-	case BLOCK_DEDUPE_DBFILE_VER:
-#define	CREATE_TABLE_HASHES					\
-"CREATE TABLE hashes(digest BLOB KEY NOT NULL, ino INTEGER, subvol INTEGER, loff INTEGER, flags INTEGER);"
-		ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, NULL);
-		break;
 	case DB_FILE_MAJOR:
 #define	CREATE_TABLE_EXTENTS						\
 "CREATE TABLE extents(digest BLOB KEY NOT NULL, ino INTEGER, subvol INTEGER, loff INTEGER, poff INTEGER, len INTEGER, flags INTEGER);"
 		ret = sqlite3_exec(db, CREATE_TABLE_EXTENTS, NULL, NULL, NULL);
+		if (ret)
+			goto out;
+		/* Fall through */
+	case BLOCK_DEDUPE_DBFILE_VER:
+#define	CREATE_TABLE_HASHES					\
+"CREATE TABLE hashes(digest BLOB KEY NOT NULL, ino INTEGER, subvol INTEGER, loff INTEGER, flags INTEGER);"
+		ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, NULL);
 		break;
 	default:
 		ret = -EINVAL;
@@ -151,6 +153,14 @@ int create_indexes(sqlite3 *db, struct dbfile_config *cfg)
 #define	CREATE_FILES_INOSUB_INDEX					\
 "create index if not exists idx_files_inosub on files(ino, subvol);"
 	ret = sqlite3_exec(db, CREATE_FILES_INOSUB_INDEX, NULL, NULL, NULL);
+	if (ret)
+		goto out;
+
+	ret = sqlite3_exec(db, CREATE_HASHES_DIGEST_INDEX_OLD, NULL, NULL, NULL);
+	if (ret)
+		goto out;
+
+	ret = sqlite3_exec(db, CREATE_HASHES_INOSUB_INDEX_OLD, NULL, NULL, NULL);
 
 out:
 	if (ret)
