@@ -44,6 +44,19 @@ int create_indexes(sqlite3 *db, struct dbfile_config *cfg);
 int dbfile_load_block_hashes(struct hash_tree *hash_tree);
 int dbfile_load_extent_hashes(struct results_tree *res);
 
+struct file_extent {
+	uint64_t	poff;
+	uint64_t	loff;
+	uint64_t	len;
+	unsigned int	flags;
+};
+int dbfile_load_nondupe_file_extents(sqlite3 *db, struct filerec *file,
+				     struct file_extent **ret_extents,
+				     unsigned int *num_extents);
+int dbfile_load_one_file_extent(sqlite3 *db, struct filerec *file,
+				uint64_t loff, unsigned int len,
+				struct file_extent *extent);
+
 /* Scan files based on db contents. Removes any orphaned file records. */
 int dbfile_scan_files(struct dbfile_config *cfg);
 

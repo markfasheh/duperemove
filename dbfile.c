@@ -1511,6 +1511,138 @@ out:
 	return ret;
 }
 
+int dbfile_load_one_file_extent(sqlite3 *db, struct filerec *file,
+				uint64_t loff, unsigned int len,
+				struct file_extent *extent)
+{
+	int ret;
+	sqlite3_stmt *stmt = NULL;
+
+#define GET_FILE_EXTENT	"select poff, loff, len, flags from extents where " \
+	"ino = ?1 and subvol = ?2 and loff <= ?3 and (loff + len) > ?3;"
+	ret = sqlite3_prepare_v2(db, GET_FILE_EXTENT, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing get file extents statement");
+		goto out;
+	}
+
+	ret = sqlite3_bind_int64(stmt, 1, file->inum);
+	if (ret)
+		goto out;
+
+	ret = sqlite3_bind_int64(stmt, 2, file->subvolid);
+	if (ret)
+		goto out;
+
+	ret = sqlite3_bind_int64(stmt, 3, loff);
+	if (ret)
+		goto out;
+
+	ret = sqlite3_step(stmt);
+	if (ret != SQLITE_ROW) {
+		perror_sqlite(ret, "retrieving extent info");
+		return ret;
+	}
+
+	extent->poff = sqlite3_column_int64(stmt, 0);
+	extent->loff = sqlite3_column_int64(stmt, 1);
+	extent->len = sqlite3_column_int64(stmt, 2);
+	extent->flags = sqlite3_column_int(stmt, 3);
+
+	ret = 0;
+out:
+	sqlite3_finalize(stmt);
+	return ret;
+}
+
+int dbfile_load_nondupe_file_extents(sqlite3 *db, struct filerec *file,
+				     struct file_extent **ret_extents,
+				     unsigned int *num_extents)
+{
+	int ret, i;
+	sqlite3_stmt *stmt = NULL;
+	uint64_t count;
+	struct file_extent *extents = NULL;
+
+#define NONDUPE_JOIN							\
+	"FROM extents JOIN (SELECT digest FROM extents GROUP BY digest "\
+	"HAVING count(*) = 1) AS nondupe_extents on extents.digest = "	\
+	"nondupe_extents.digest where extents.ino = ?1 and extents.subvol = ?2;"
+#define GET_NONDUPE_EXTENTS						\
+	"select extents.loff, len, poff, flags " NONDUPE_JOIN
+#define GET_NONDUPE_EXTENTS_COUNT					\
+	"select COUNT(*) " NONDUPE_JOIN
+
+	ret = sqlite3_prepare_v2(db, GET_NONDUPE_EXTENTS_COUNT, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing count of nondupe extents statement");
+		goto out;
+	}
+
+	ret = sqlite3_bind_int64(stmt, 1, file->inum);
+	if (ret)
+		goto out;
+
+	ret = sqlite3_bind_int64(stmt, 2, file->subvolid);
+	if (ret)
+		goto out;
+
+	ret = __dbfile_count_rows(stmt, &count);
+	if (ret)
+		goto out;
+
+	sqlite3_finalize(stmt);
+	stmt = NULL;
+
+	if (count > UINT32_MAX) {
+		fprintf(stderr, "File \"%s\" has %"PRIu64" extents.\n",
+			file->filename, count);
+		count = UINT32_MAX;
+	}
+	*num_extents = count;
+
+	extents = calloc(count, sizeof(struct file_extent));
+	if (!extents) {
+		ret = ENOMEM;
+		goto out;
+	}
+
+	ret = sqlite3_prepare_v2(db, GET_NONDUPE_EXTENTS, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing nondupe extents statement");
+		goto out;
+	}
+
+	ret = sqlite3_bind_int64(stmt, 1, file->inum);
+	if (ret)
+		goto out;
+
+	ret = sqlite3_bind_int64(stmt, 2, file->subvolid);
+	if (ret)
+		goto out;
+
+	i = 0;
+	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW && i < count) {
+		extents[i].loff = sqlite3_column_int64(stmt, 0);
+		extents[i].len = sqlite3_column_int64(stmt, 1);
+		extents[i].poff = sqlite3_column_int64(stmt, 2);
+		extents[i].flags = sqlite3_column_int(stmt, 3);
+
+		++i;
+	}
+	if (ret != SQLITE_DONE) {
+		perror_sqlite(ret, "stepping nondupe extents statement");
+		goto out;
+	}
+	*ret_extents = extents;
+	ret = 0;
+out:
+	if (ret && extents)
+		free(extents);
+	sqlite3_finalize(stmt);
+	return ret;
+}
+
 static int iter_cb(void *priv, int argc, char **argv, char **column)
 {
 	iter_files_func func = priv;
