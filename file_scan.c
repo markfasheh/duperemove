@@ -70,6 +70,7 @@ struct thread_params {
 };
 
 extern int v2_hashfile;
+extern struct dbfile_config dbfile_cfg;
 LIST_HEAD(exclude_list);
 
 static void set_filerec_scan_flags(struct filerec *file)
@@ -630,6 +631,7 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 		       unsigned int extent_len, int extent_flags)
 {
 	int ret = 0;
+	int n;
 	ssize_t total_bytes_read = 0;
 	ssize_t bytes_read;
 	struct running_checksum *csum;
@@ -669,8 +671,15 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 			if (ret)
 				break;
 		}
-		add_to_running_checksum(csum, bytes_read,
-					(unsigned char *)data->buf);
+		if (dbfile_cfg.extent_hash_src == EXTENT_HASH_SRC_DIGEST) {
+			abort_on(!data->nr_block_hashes);
+			n = data->nr_block_hashes - 1;
+			add_to_running_checksum(csum, digest_len,
+						data->block_hashes[n].digest);
+		} else if (dbfile_cfg.extent_hash_src == EXTENT_HASH_SRC_DATA) {
+			add_to_running_checksum(csum, bytes_read,
+						(unsigned char *)data->buf);
+		}
 		if (total_bytes_read >= extent_len)
 			break;
 		extent_off += bytes_read;

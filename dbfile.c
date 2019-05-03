@@ -46,7 +46,8 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 			       uint64_t *num_hashes, uint64_t *num_files,
 			       dev_t *onefs_dev, uint64_t *onefs_fsid,
 			       int *major, int *minor, char *db_hash_type,
-			       unsigned int *db_dedupe_seq);
+			       unsigned int *db_dedupe_seq,
+			       unsigned int *extent_hash_src);
 
 static void dbfile_config_defaults(struct dbfile_config *cfg)
 {
@@ -226,7 +227,7 @@ reopen:
 	} else {
 		/* Get only version numbers initially */
 		ret = __dbfile_get_config(db, NULL, NULL, NULL, NULL, NULL,
-					  &vmajor, &vminor, NULL, NULL);
+					  &vmajor, &vminor, NULL, NULL, NULL);
 		if (ret && ret != SQLITE_CORRUPT) {
 			perror_sqlite(ret, "reading initial db config");
 			sqlite3_close(db);
@@ -446,6 +447,10 @@ int __dbfile_sync_config(sqlite3 *db, struct dbfile_config *cfg)
 	}
 
 	ret = sync_config_text(stmt, "hash_type", cfg->hash_type, 8);
+	if (ret)
+		goto out;
+
+	ret = sync_config_int(stmt, "extent_hash_src", cfg->extent_hash_src);
 	if (ret)
 		goto out;
 
@@ -712,7 +717,8 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 			       uint64_t *num_hashes, uint64_t *num_files,
 			       dev_t *onefs_dev, uint64_t *onefs_fsid,
 			       int *ret_ver_major, int *ver_minor,
-			       char *db_hash_type, unsigned int *db_dedupe_seq)
+			       char *db_hash_type, unsigned int *db_dedupe_seq,
+			       unsigned int *extent_hash_src)
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
@@ -765,6 +771,10 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 	if (ret)
 		goto out;
 
+	ret = get_config_int(stmt, "extent_hash_src", (int *)extent_hash_src);
+	if (ret)
+		goto out;
+
 	sqlite3_finalize(stmt);
 	stmt = NULL;
 
@@ -786,7 +796,7 @@ int dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg)
 				  &cfg->num_files, &cfg->onefs_dev,
 				  &cfg->onefs_fsid, &cfg->major,
 				  &cfg->minor, cfg->hash_type,
-				  &cfg->dedupe_seq);
+				  &cfg->dedupe_seq, &cfg->extent_hash_src);
 
 	return ret;
 }
@@ -797,7 +807,7 @@ static int dbfile_check_version(sqlite3 *db)
 	int ver_major, ver_minor;
 
 	ret = __dbfile_get_config(db, NULL, NULL, NULL, NULL, NULL, &ver_major,
-				  &ver_minor, NULL, NULL);
+				  &ver_minor, NULL, NULL, NULL);
 	if (ret)
 		return ret;
 

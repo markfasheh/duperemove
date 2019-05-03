@@ -30,6 +30,9 @@ struct dbfile_config {
 	int		minor;
 	char		hash_type[8];
 	unsigned int	dedupe_seq;
+#define EXTENT_HASH_SRC_DIGEST	0
+#define EXTENT_HASH_SRC_DATA	1
+	unsigned int	extent_hash_src;
 };
 int dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg);
 int dbfile_sync_config(struct dbfile_config *cfg);

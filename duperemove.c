@@ -67,7 +67,7 @@ static int fdupes_mode = 0;
 static int stdin_filelist = 0;
 static unsigned int list_only_opt = 0;
 static unsigned int rm_only_opt = 0;
-static struct dbfile_config dbfile_cfg;
+struct dbfile_config dbfile_cfg;
 static bool force_v2_hashfile = false;
 
 static enum {
