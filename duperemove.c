@@ -762,6 +762,12 @@ int main(int argc, char **argv)
 	switch (use_hashfile) {
 	case H_UPDATE:
 	case H_WRITE:
+		if (serialize_fname)
+			printf("Warning: The hash file format in Duperemove "
+			       "master branch is under development and may "
+			       "change.\nIf the changes are not backwards "
+			       "compatible, you will have to re-create your "
+			       "hash file.\n");
 		ret = create_update_hashfile(argc, argv, filelist_idx);
 		if (ret)
 			goto out;
