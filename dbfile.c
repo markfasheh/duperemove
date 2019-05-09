@@ -924,11 +924,16 @@ int dbfile_sync_files(sqlite3 *db)
 	return ret;
 }
 
-static int __dbfile_remove_file_hashes(sqlite3_stmt *stmt, uint64_t ino,
+static int __dbfile_remove_file_hashes(sqlite3_stmt *hashes_stmt,
+				       sqlite3_stmt *extents_stmt, uint64_t ino,
 				       uint64_t subvol)
 {
 	int ret;
+	sqlite3_stmt *stmt = hashes_stmt;
+	bool done = false;
+	const char *errstr = "executing hashes statement";
 
+again:
 	ret = sqlite3_bind_int64(stmt, 1, ino);
 	if (ret) {
 		perror_sqlite(ret, "binding inode");
@@ -943,33 +948,41 @@ static int __dbfile_remove_file_hashes(sqlite3_stmt *stmt, uint64_t ino,
 
 	ret = sqlite3_step(stmt);
 	if (ret != SQLITE_DONE) {
-		perror_sqlite(ret, "executing statement");
+		perror_sqlite(ret, errstr);
 		goto out;
 	}
-
+	if (!done && extents_stmt) {
+		stmt = extents_stmt;
+		errstr = "executing extents statement";
+		done = true;
+		goto again;
+	}
 	ret = 0;
 out:
 	return ret;
 }
 
 static int remove_file_hashes_prep(sqlite3 *db, struct dbfile_config *cfg,
-				   sqlite3_stmt **stmt)
+				   sqlite3_stmt **hashes_stmt,
+				   sqlite3_stmt **extents_stmt)
 {
 	int ret;
 
-	if (cfg->major == BLOCK_DEDUPE_DBFILE_VER) {
-#define	REMOVE_FILE_HASHES						\
+	*hashes_stmt = *extents_stmt = NULL;
+
+#define	REMOVE_FILE_HASHES					\
 	"delete from hashes where ino = ?1 and subvol = ?2;"
-		ret = sqlite3_prepare_v2(db, REMOVE_FILE_HASHES, -1, stmt,
-					 NULL);
-		if (ret)
-			perror_sqlite(ret, "preparing hash insert statement");
+	ret = sqlite3_prepare_v2(db, REMOVE_FILE_HASHES, -1,
+				 hashes_stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing hash insert statement");
 		return ret;
-	} else if (cfg->major >= DB_FILE_MAJOR) {
+	}
+	if (cfg->major > BLOCK_DEDUPE_DBFILE_VER) {
 #define	REMOVE_EXTENT_HASHES					\
 	"delete from extents where ino = ?1 and subvol = ?2;"
-		ret = sqlite3_prepare_v2(db, REMOVE_EXTENT_HASHES, -1, stmt,
-					 NULL);
+		ret = sqlite3_prepare_v2(db, REMOVE_EXTENT_HASHES, -1,
+					 extents_stmt, NULL);
 		if (ret)
 			perror_sqlite(ret, "preparing hash insert statement");
 		return ret;
@@ -981,30 +994,17 @@ static int dbfile_remove_file_hashes(sqlite3 *db, struct dbfile_config *cfg,
 				     struct filerec *file)
 {
 	int ret;
-	sqlite3_stmt *stmt = NULL;
+	sqlite3_stmt *hashes_stmt = NULL;
+	sqlite3_stmt *extents_stmt = NULL;
 
-	ret = remove_file_hashes_prep(db, cfg, &stmt);
+	ret = remove_file_hashes_prep(db, cfg, &hashes_stmt, &extents_stmt);
 	if (ret) {
 		perror_sqlite(ret, "preparing file hash removal statement");
 		return ret;
 	}
 
-	if (cfg->major == BLOCK_DEDUPE_DBFILE_VER) {
-		ret = __dbfile_remove_file_hashes(stmt, file->inum,
-						  file->subvolid);
-		sqlite3_finalize(stmt);
-		if (ret) {
-			perror_sqlite(ret, "removing from block hashes table");
-			return ret;
-		}
-	} else if (cfg->major >= DB_FILE_MAJOR) {
-		ret = __dbfile_remove_file_hashes(stmt, file->inum, file->subvolid);
-		sqlite3_finalize(stmt);
-		if (ret) {
-			perror_sqlite(ret, "removing from extent hashes table");
-			return ret;
-		}
-	}
+	ret = __dbfile_remove_file_hashes(hashes_stmt, extents_stmt, file->inum,
+					  file->subvolid);
 
 	return ret;
 }
@@ -1266,6 +1266,7 @@ static int dbfile_del_orphans(struct sqlite3 *db, struct dbfile_config *cfg,
 	int ret;
 	sqlite3_stmt *files_stmt = NULL;
 	sqlite3_stmt *hashes_stmt = NULL;
+	sqlite3_stmt *extents_stmt = NULL;
 	struct orphan_file *o, *tmp;
 
 #define	DELETE_FILE	"delete from files where filename = ?1;"
@@ -1275,7 +1276,7 @@ static int dbfile_del_orphans(struct sqlite3 *db, struct dbfile_config *cfg,
 		goto out;
 	}
 
-	ret = remove_file_hashes_prep(db, cfg, &hashes_stmt);
+	ret = remove_file_hashes_prep(db, cfg, &hashes_stmt, &extents_stmt);
 	if (ret) {
 		perror_sqlite(ret, "preparing hashes statement");
 		goto out;
@@ -1285,7 +1286,8 @@ static int dbfile_del_orphans(struct sqlite3 *db, struct dbfile_config *cfg,
 		dprintf("Remove file \"%s\" from the db\n",
 			o->filename);
 
-		ret = __dbfile_remove_file_hashes(hashes_stmt, o->ino, o->subvol);
+		ret = __dbfile_remove_file_hashes(hashes_stmt, extents_stmt,
+						  o->ino, o->subvol);
 		if (ret)
 			goto out;
 
@@ -1303,6 +1305,7 @@ static int dbfile_del_orphans(struct sqlite3 *db, struct dbfile_config *cfg,
 		}
 
 		sqlite3_reset(hashes_stmt);
+		sqlite3_reset(extents_stmt);
 		sqlite3_reset(files_stmt);
 
 		list_del(&o->list);
@@ -1315,6 +1318,8 @@ out:
 		sqlite3_finalize(files_stmt);
 	if (hashes_stmt)
 		sqlite3_finalize(hashes_stmt);
+	if (extents_stmt)
+		sqlite3_finalize(extents_stmt);
 
 	return ret;
 }
