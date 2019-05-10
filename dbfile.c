@@ -1126,12 +1126,12 @@ static inline struct orphan_file *alloc_orphan_file(const char *filename,
 						    uint64_t ino,
 						    uint64_t subvol)
 {
-	int len = strlen(filename);
-	struct orphan_file *o = calloc(1, sizeof(*o) + len + 1);
+	int len = strlen(filename) + 1;
+	struct orphan_file *o = calloc(1, sizeof(*o) + len);
 
 	if (o) {
 		o->filename = o->buf;
-		strncpy(o->filename, filename, len);
+		strcpy(o->filename, filename);
 		INIT_LIST_HEAD(&o->list);
 		o->subvol = subvol;
 		o->ino = ino;
