@@ -75,7 +75,7 @@ static enum {
 	H_WRITE,
 	H_UPDATE,
 } use_hashfile = H_UPDATE;
-static char *serialize_fname = NULL;
+char *serialize_fname = NULL;
 static unsigned int nr_logical_cpus;
 static unsigned int nr_physical_cpus;
 unsigned int io_threads;
@@ -820,6 +820,14 @@ int main(int argc, char **argv)
 		}
 	} else {
 		ret = dbfile_load_extent_hashes(&res);
+		if (ret)
+			goto out;
+
+		ret = dbfile_load_block_hashes(&dups_tree);
+		if (ret)
+			goto out;
+
+		ret = find_additional_dedupe(&dups_tree, &res);
 		if (ret)
 			goto out;
 	}

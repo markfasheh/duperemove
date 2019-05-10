@@ -66,8 +66,8 @@ struct extent	{
 	uint64_t		e_poff;
 	uint64_t		e_plen;
 	uint64_t		e_shared_bytes;
-
 };
+#define extent_len(_e)	((_e)->e_parent->de_len)
 #define extent_poff(_e)	((_e)->e_poff)
 #define extent_plen(_e)	((_e)->e_plen)
 #define extent_shared_bytes(_e)	((_e)->e_shared_bytes)

@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <sys/types.h>
 #include <sys/sysmacros.h>
+#include <sys/syscall.h>
 
 #include "csum.h"
 #include "filerec.h"
@@ -28,8 +29,8 @@ sqlite3 *gdb = NULL;
 		__FUNCTION__, _err, _why, "[sqlite3_errstr() unavailable]")
 #else
 #define	perror_sqlite(_err, _why)					\
-	fprintf(stderr, "%s(): Database error %d while %s: %s\n",	\
-		__FUNCTION__, _err, _why, sqlite3_errstr(_err))
+	fprintf(stderr, "%s()/%ld: Database error %d while %s: %s\n",	\
+		__FUNCTION__, syscall(SYS_gettid), _err, _why, sqlite3_errstr(_err))
 #endif
 
 #define	perror_sqlite_open(_ptr, _filename)				\
@@ -180,6 +181,7 @@ static int dbfile_set_modes(sqlite3 *db)
 
 	return ret;
 }
+#define MEMDB_FILENAME	"file::memory:?cache=shared"
 
 int dbfile_create(char *filename, int *dbfile_is_new, int requested_version,
 		  struct dbfile_config *cfg)
@@ -195,7 +197,7 @@ int dbfile_create(char *filename, int *dbfile_is_new, int requested_version,
 		 * from a memory file.
 		 */
 		newfile = 1;
-		filename = ":memory:";
+		filename = MEMDB_FILENAME;
 	} else {
 		ret = access(filename, R_OK|W_OK);
 		if (ret == -1 && errno == ENOENT)
@@ -203,7 +205,7 @@ int dbfile_create(char *filename, int *dbfile_is_new, int requested_version,
 	}
 
 reopen:
-#define OPEN_FLAGS	(SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE|SQLITE_OPEN_NOMUTEX)
+#define OPEN_FLAGS	(SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE|SQLITE_OPEN_NOMUTEX|SQLITE_OPEN_URI)
 	ret = sqlite3_open_v2(filename, &db, OPEN_FLAGS, NULL);
 	if (ret) {
 		perror_sqlite_open(db, filename);
@@ -278,6 +280,36 @@ reopen:
 	*dbfile_is_new = newfile;
 	gdb = db;
 	return 0;
+}
+
+struct sqlite3 *dbfile_open_handle(char *filename)
+{
+	int ret;
+	sqlite3 *db;
+
+	if (!filename)
+		filename = MEMDB_FILENAME;
+
+	ret = sqlite3_open_v2(filename, &db, OPEN_FLAGS, NULL);
+	if (ret) {
+		perror_sqlite_open(db, filename);
+		sqlite3_close(db);
+		return NULL;
+	}
+
+	ret = dbfile_set_modes(db);
+	if (ret) {
+		perror_sqlite(ret, "setting journal modes");
+		sqlite3_close(db);
+		return NULL;
+	}
+
+	return db;
+}
+
+void dbfile_close_handle(struct sqlite3 *db)
+{
+	sqlite3_close(db);
 }
 
 int dbfile_open(char *filename, struct dbfile_config *cfg)
@@ -1575,7 +1607,7 @@ int dbfile_load_nondupe_file_extents(sqlite3 *db, struct filerec *file,
 
 	ret = sqlite3_prepare_v2(db, GET_NONDUPE_EXTENTS_COUNT, -1, &stmt, NULL);
 	if (ret) {
-		perror_sqlite(ret, "preparing count of nondupe extents statement");
+		perror_sqlite(ret, "preparing get file extents statement");
 		goto out;
 	}
 

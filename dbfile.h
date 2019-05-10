@@ -17,6 +17,9 @@ int dbfile_create(char *filename, int *dbfile_is_new, int requested_version,
 int dbfile_open(char *filename, struct dbfile_config *cfg);
 void dbfile_close(void);
 
+struct sqlite3 *dbfile_open_handle(char *filename);
+void dbfile_close_handle(struct sqlite3 *db);
+
 struct dbfile_config {
 	unsigned int	blocksize;
 	uint64_t	num_hashes;

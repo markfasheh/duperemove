@@ -15,6 +15,8 @@
 
 #ifndef __HASH_TREE__
 #define __HASH_TREE__
+#include "debug.h"
+
 extern unsigned int blocksize;
 
 struct hash_tree {
@@ -61,6 +63,9 @@ struct file_block {
 	struct list_head	b_head_list; /* file_hash_head->h_blocks */
 };
 
+struct dupe_blocks_list *find_block_list(struct hash_tree *tree,
+					 unsigned char *digest);
+
 static inline unsigned long block_len(struct file_block *block)
 {
 	/*
@@ -70,14 +75,25 @@ static inline unsigned long block_len(struct file_block *block)
 	 * NOTE: This only works if we assume that partial blocks are
 	 * at the end of a file
 	 */
-	if (block->b_flags & FILE_BLOCK_PARTIAL)
-		return block->b_file->size % blocksize;
+	if (block->b_flags & FILE_BLOCK_PARTIAL) {
+		int ret = block->b_file->size % blocksize;
+		abort_on(ret == 0);
+		return ret;
+	}
 	return blocksize;
+}
+
+static inline uint64_t block_end(struct file_block *block)
+{
+	return block->b_loff + block_len(block) - 1;
 }
 
 int insert_hashed_block(struct hash_tree *tree, unsigned char *digest,
 			struct filerec *file, uint64_t loff, unsigned int flags);
 int remove_hashed_block(struct hash_tree *tree, struct file_block *block);
+struct file_block *find_filerec_block(struct filerec *file,
+				      uint64_t loff);
+
 /*
  * We must call sort_file_hash_heads after inserting blocks into our
  * hash_tree. The scan in find_dupes requires them to be in order of

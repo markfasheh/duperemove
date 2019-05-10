@@ -73,6 +73,24 @@ static void insert_block_into_filerec(struct filerec *file,
 	rb_insert_color(&block->b_file_next, &file->block_tree);
 }
 
+struct file_block *find_filerec_block(struct filerec *file,
+				      uint64_t loff)
+{
+	struct rb_node *n = file->block_tree.rb_node;
+	struct file_block *block;
+
+	while (n) {
+		block = rb_entry(n, struct file_block, b_file_next);
+		if (block->b_loff > loff)
+			n = n->rb_left;
+		else if (block->b_loff < loff)
+			n = n->rb_right;
+		else
+			return block;
+	}
+	return NULL;
+}
+
 void debug_print_block(struct file_block *e)
 {
 	struct filerec *f = e->b_file;
@@ -257,8 +275,8 @@ static void insert_block_list(struct hash_tree *tree,
 	return;
 }
 
-static struct dupe_blocks_list *find_block_list(struct hash_tree *tree,
-					       unsigned char *digest)
+struct dupe_blocks_list *find_block_list(struct hash_tree *tree,
+					 unsigned char *digest)
 {
 	struct rb_node *n = tree->root.rb_node;
 	struct dupe_blocks_list *list;

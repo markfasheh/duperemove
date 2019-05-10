@@ -37,13 +37,10 @@
 #include "debug.h"
 #include "memstats.h"
 
+extern int v2_hashfile;
+
 declare_alloc_tracking(dupe_extents);
 declare_alloc_tracking(extent);
-
-static inline uint64_t extent_len(struct extent *extent)
-{
-	return extent->e_parent->de_len;
-}
 
 static inline uint64_t extent_end(struct extent *extent)
 {
@@ -255,7 +252,20 @@ static struct dupe_extents *find_alloc_dext(struct results_tree *res,
 	return dext;
 }
 
-
+static void insert_extent_into_filerec(struct extent *extent,
+				       struct filerec *file)
+{
+	if (extent) {
+		g_mutex_lock(&file->tree_mutex);
+		extent->e_itnode.start = extent->e_loff;
+		extent->e_itnode.last = extent_end(extent);
+		interval_tree_insert(&extent->e_itnode, &file->extent_tree);
+#ifdef	ITDEBUG
+		file->num_extents++;
+#endif
+		g_mutex_unlock(&file->tree_mutex);
+	}
+}
 /*
  * This does not do all the work of insert_result(), just enough for
  * the dedupe phase of block-dedupe to work properly.
@@ -287,9 +297,16 @@ int insert_one_result(struct results_tree *res, unsigned char *digest,
 	insert_extent_list_free(res, dext, &extent);
 	g_mutex_unlock(&dext->de_mutex);
 
+	if (!extent)
+		return 0;
+
 	g_mutex_lock(&res->tree_mutex);
 	res->num_extents++;
 	g_mutex_unlock(&res->tree_mutex);
+
+	if (!v2_hashfile)
+		insert_extent_into_filerec(extent, file);
+
 	return 0;
 }
 
@@ -330,27 +347,10 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 		res->num_extents++;
 	g_mutex_unlock(&res->tree_mutex);
 
-	if (e0) {
-		g_mutex_lock(&recs[0]->tree_mutex);
-		e0->e_itnode.start = e0->e_loff;
-		e0->e_itnode.last = extent_end(e0);
-		interval_tree_insert(&e0->e_itnode, &recs[0]->extent_tree);
-#ifdef	ITDEBUG
-		recs[0]->num_extents++;
-#endif
-		g_mutex_unlock(&recs[0]->tree_mutex);
+	if (v2_hashfile) {
+		insert_extent_into_filerec(e0, recs[0]);
+		insert_extent_into_filerec(e1, recs[1]);
 	}
-	if (e1) {
-		g_mutex_lock(&recs[1]->tree_mutex);
-		e1->e_itnode.start = e1->e_loff;
-		e1->e_itnode.last = extent_end(e1);
-		interval_tree_insert(&e1->e_itnode, &recs[1]->extent_tree);
-#ifdef	ITDEBUG
-		recs[1]->num_extents++;
-#endif
-		g_mutex_unlock(&recs[1]->tree_mutex);
-	}
-
 	return 0;
 }
 

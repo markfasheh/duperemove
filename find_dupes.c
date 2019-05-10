@@ -32,6 +32,7 @@
 #include "filerec.h"
 #include "hash-tree.h"
 #include "results-tree.h"
+#include "dbfile.h"
 #include "memstats.h"
 #include "debug.h"
 
@@ -39,6 +40,8 @@
 
 extern int dedupe_same_file;
 extern unsigned int cpu_threads;
+
+extern char *serialize_fname;
 
 /*
  * Extent search status globals. This could be an atomic but GCond
@@ -386,6 +389,11 @@ static int push_compares(GThreadPool *pool, struct dupe_blocks_list *dups,
 			if (filerecs_compared(file1, file2))
 				continue;
 
+			/*
+			 * XXX: Never compare any two files that
+			 * haven't changed since the last dedupe.
+			 */
+
 			if (dedupe_same_file || file1 != file2) {
 				/* fire this off to a worker */
 				struct find_dupes_cmp *cmp;
@@ -504,5 +512,335 @@ int find_all_dupes(struct hash_tree *tree, struct results_tree *res)
 	dprintf("Removed %llu extents (had %llu).\n",
 		orig_extent_count - res->num_extents, orig_extent_count);
 
+	return ret;
+}
+
+static inline struct file_block *get_next_block(struct file_block *b)
+{
+	struct rb_node *node;
+
+	node = rb_next(&b->b_file_next);
+
+	abort_on(!node);
+
+	return rb_entry(node, struct file_block, b_file_next);
+}
+
+static inline int end_of_block_list(struct file_block *b)
+{
+	return !rb_next(&b->b_file_next);
+}
+
+/*
+ * We search search_len bytes. If search_len == UINT64_MAX
+ * then we'll search until end of file.
+ */
+static int compare_extents(struct filerec *orig_file,
+			   struct file_block *orig_file_block,
+			   struct filerec *walk_file,
+			   struct file_block *walk_file_block,
+			   uint64_t search_len,
+			   struct results_tree *res)
+{
+	struct file_block *orig = orig_file_block;
+	struct file_block *block = walk_file_block;
+	struct file_block *start[2];
+	struct file_block *end[2] = { NULL, NULL };
+	uint64_t extent_end;
+	struct running_checksum *csum;
+	unsigned char match_id[DIGEST_LEN_MAX] = {0, };
+	uint64_t orig_blkno, walk_blkno, match_end;
+	bool matchmore = true;
+
+	if (search_len == UINT64_MAX)
+		extent_end = search_len;
+	else
+		extent_end = block->b_loff + search_len - 1;
+
+next_match:
+	start[0] = orig;
+	start[1] = block;
+	/*
+	 * Fast-forward to a match, if we can find one. This doesn't
+	 * run on the first match as callers start the search on
+	 * identical blocks.
+	 */
+	while (block->b_parent != orig->b_parent && block->b_loff < extent_end) {
+		/*
+		 * Check that we don't walk off either tree
+		 */
+		if (end_of_block_list(orig) || end_of_block_list(block))
+			return 0;
+
+		orig = get_next_block(orig);
+		block = get_next_block(block);
+	}
+	/*
+	 * XXX: There's no need for this, we ought to just generate a
+	 * unique identifier for our tree.
+	 */
+	csum = start_running_checksum();
+
+	abort_on(block->b_parent != orig->b_parent);
+
+	while (block->b_parent == orig->b_parent && block->b_loff < extent_end) {
+		end[0] = orig;
+		end[1] = block;
+
+		add_to_running_checksum(csum, digest_len,
+					block->b_parent->dl_hash);
+
+		if (end_of_block_list(orig) || end_of_block_list(block)) {
+			matchmore = false;
+			break;
+		}
+
+		orig_blkno = orig->b_loff;
+		walk_blkno = block->b_loff;
+
+		orig = get_next_block(orig);
+		block = get_next_block(block);
+
+		/*
+		 * Check that our next blocks are contiguous wrt the
+		 * old ones. If they aren't, then this has to be the
+		 * end of our extent.
+		 */
+		if (orig->b_loff != (orig_blkno + blocksize) ||
+		    block->b_loff != (walk_blkno + blocksize)) {
+			matchmore = false;
+			break;
+		}
+	}
+
+	finish_running_checksum(csum, match_id);
+
+	/*
+	 * No matches - we never even entered the search loop. This
+	 * would happen if we were called on two start blocks that do
+	 * not have a match.
+	 */
+	if (!end[0])
+		return 0;
+
+	/*
+	 * Our options:
+	 *
+	 * - limit searches and matches to length of original
+	 *   extent (what we do now)
+	 *
+	 * - don't limit search or matches at all (what we have in
+         *   walk_dupe_block())
+	 */
+	match_end = block_len(end[1]) + end[1]->b_loff - 1;
+	if (match_end <= extent_end)
+		record_match(res, match_id, orig_file, walk_file,
+			     start, end);
+	else
+		return 0;
+
+	if (matchmore) {
+		if (end_of_block_list(end[0]) || end_of_block_list(end[1]))
+			return 0;
+
+		orig = get_next_block(end[0]);
+		block = get_next_block(end[1]);
+
+		end[0] = end[1] = NULL;
+
+		goto next_match;
+	}
+	return 0;
+}
+
+static int search_extent(struct filerec *file, struct file_extent *extent,
+			 struct hash_tree *dupe_hashes,
+			 struct results_tree *dupe_extents, sqlite3 *db)
+{
+	int ret;
+	struct file_block *block, *found_block;
+	struct filerec *found_file;
+	struct dupe_blocks_list *blocklist;
+	struct file_extent found_extent;
+
+	block = find_filerec_block(file, extent->loff);
+	/* No dupe block so no possible dupe. */
+	if (!block)
+		return 0;
+
+#if 0
+	dprintf("Search file %s loff %"PRIu64" len %"PRIu64" hash ",
+		file->filename, extent->loff, extent->len);
+	if (debug)
+		debug_print_digest_short(stdout, block->b_parent->dl_hash);
+	dprintf("\n");
+#endif
+
+	blocklist = block->b_parent;
+
+	list_for_each_entry(found_block, &blocklist->dl_list, b_list) {
+		if (found_block == block)
+			continue;
+
+		found_file = found_block->b_file;
+		if (!dedupe_same_file && file == found_file)
+			continue;
+
+		/*
+		 * Find the on-disk extent for found_block and check
+		 * that we won't be going over the end of it.
+		 */
+		ret = dbfile_load_one_file_extent(db, found_file,
+						  found_block->b_loff,
+						  extent->len, &found_extent);
+		if (ret)
+			break;
+
+		/*
+		 * TODO: Allow us to solve for a dupe that straddles
+		 * two extents.
+		 */
+
+		ret = compare_extents(file, block, found_file, found_block,
+				      extent->len, dupe_extents);
+		if (ret)
+			break;
+		ret = 0;
+	}
+	return ret;
+}
+
+/*
+ * Find any file extents which have not been duped and see if we can
+ * match them up inside of any of our already duped extents.
+ *
+ * We don't yet catch the case where a non duped extent straddles more
+ * than one extent.
+ */
+int search_file_extents(struct filerec *file, struct hash_tree *dupe_hashes,
+			struct results_tree *dupe_extents){
+
+	int ret, i;
+	sqlite3 *db;
+	struct file_extent *extents = NULL;
+	struct file_extent *extent;
+	unsigned int num_extents;
+
+	db = dbfile_open_handle(serialize_fname);
+	if (!db) {
+		fprintf(stderr, "ERROR: Couldn't open db file %s\n",
+			serialize_fname == NULL ? "(null)" : serialize_fname);
+		return ENOMEM;
+	}
+	/*
+	 * Pick a non-deduped extent from file. The extent info
+	 * returned here is what was given to us by fiemap.
+	 */
+	ret = dbfile_load_nondupe_file_extents(db, file, &extents, &num_extents);
+	if (ret)
+		goto out;
+	if (!num_extents)
+		goto out;
+
+	dprintf("search_file_extents: %s (size=%"PRIu64" ret %d num_extents: "
+		"%u\n", file->filename, file->size, ret, num_extents);
+	for(i = 0; i < num_extents; i++) {
+		extent = &extents[i];
+		dprintf("search_file_extents:   nondupe extent # %d loff %"
+			PRIu64" len %"PRIu64" poff %"PRIu64"\n",
+			i, extent->loff, extent->len, extent->poff);
+		/*
+		 * XXX: Here we should collapse contiguous extents
+		 * into one larger one
+		 */
+	}
+	for(i = 0; i < num_extents; i++) {
+		extent = &extents[i];
+
+		ret = search_extent(file, extent, dupe_hashes, dupe_extents, db);
+		if (ret)
+			goto out;
+	}
+	ret = 0;
+out:
+	if (extents)
+		free(extents);
+	dbfile_close_handle(db);
+	return 0;
+}
+
+struct cmp_ctxt {
+	struct filerec *file;
+	struct hash_tree *dupe_hashes;
+	struct results_tree *dupe_extents;
+};
+
+static int find_dupes_thread(struct cmp_ctxt *ctxt, void *priv)
+{
+	struct hash_tree *dupe_hashes = ctxt->dupe_hashes;
+	struct results_tree *dupe_extents = ctxt->dupe_extents;
+	struct filerec *file = ctxt->file;
+
+	free(ctxt);
+
+	return search_file_extents(file, dupe_hashes, dupe_extents);
+}
+
+int find_additional_dedupe(struct hash_tree *hashes,
+			   struct results_tree *dupe_extents)
+{
+	int ret = 0;
+	GError *err = NULL;
+	GThreadPool *pool = NULL;
+	unsigned long long pushed = 0;
+	struct filerec *file;
+
+	qprintf("Hashing completed. Using %u threads to calculate duplicate "
+		"extents. This may take some time.\n", cpu_threads);
+
+	pool = g_thread_pool_new((GFunc) find_dupes_thread, NULL,
+				 cpu_threads, TRUE, &err);
+	if (err) {
+		fprintf(stderr,
+			"Unable to create find file dupes thread pool: %s\n",
+			err->message);
+		g_error_free(err);
+		return ENOMEM;
+	}
+
+	list_for_each_entry(file, &filerec_list, rec_list) {
+		if (file->size) {
+			struct cmp_ctxt *ctxt = malloc(sizeof(*ctxt));
+
+			if (!ctxt)
+				return ENOMEM;
+
+			ctxt->file = file;
+			ctxt->dupe_hashes = hashes;
+			ctxt->dupe_extents = dupe_extents;
+
+			g_thread_pool_push(pool, ctxt, &err);
+			if (err) {
+				fprintf(stderr,
+					"Error from thread pool: %s\n ",
+					err->message);
+				g_error_free(err);
+				return ENOMEM;
+			}
+
+			/* XXX: Need to throttle here? */
+		}
+	}
+
+	set_extent_search_status_count(pushed);
+	wait_update_extent_search_status(pool);
+
+	g_thread_pool_free(pool, FALSE, TRUE);
+
+	/*
+	 * Save memory by freeing each filerec compared tree once all
+	 * threads have finished.
+	 */
+//	free_all_filerec_compared();
 	return ret;
 }
