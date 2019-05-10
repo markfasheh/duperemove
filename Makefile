@@ -48,7 +48,8 @@ sqlite_LIBS=$(shell pkg-config --libs sqlite3)
 
 ifdef DEBUG
 	DEBUG_FLAGS = -ggdb3 -fsanitize=address -fno-omit-frame-pointer	\
-			-DDEBUG_BUILD
+			-DDEBUG_BUILD -DSQLITE_DEBUG -DSQLITE_MEMDEBUG \
+			-DSQLITE_ENABLE_EXPLAIN_COMMENTS -fsanitize-address-use-after-scope
 endif
 override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\" \
 	$(hash_CFLAGS) $(glib_CFLAGS) $(sqlite_CFLAGS) -rdynamic $(DEBUG_FLAGS)
