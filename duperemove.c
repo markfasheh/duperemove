@@ -518,6 +518,9 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		}
 	}
 
+	if (!do_lookup_extents || !fiemap_during_dedupe)
+		force_v2_hashfile = true;
+
 	numfiles = argc - optind;
 
 	/* Filter out option combinations that don't make sense. */
