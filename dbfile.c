@@ -771,9 +771,14 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 	if (ret)
 		goto out;
 
-	ret = get_config_int(stmt, "extent_hash_src", (int *)extent_hash_src);
-	if (ret)
-		goto out;
+	if (ver_major > BLOCK_DEDUPE_DBFILE_VER) {
+		ret = get_config_int(stmt, "extent_hash_src",
+				     (int *)extent_hash_src);
+		if (ret)
+			goto out;
+	} else 	if (extent_hash_src) {
+		*extent_hash_src = 0;
+	}
 
 	sqlite3_finalize(stmt);
 	stmt = NULL;
