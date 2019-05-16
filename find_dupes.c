@@ -563,7 +563,8 @@ next_match:
 	/*
 	 * Fast-forward to a match, if we can find one. This doesn't
 	 * run on the first match as callers start the search on
-	 * identical blocks.
+	 * identical blocks. We might also exit without finding any
+	 * match start.
 	 */
 	while (block->b_parent != orig->b_parent && block->b_loff < extent_end) {
 		/*
@@ -580,8 +581,6 @@ next_match:
 	 * unique identifier for our tree.
 	 */
 	csum = start_running_checksum();
-
-	abort_on(block->b_parent != orig->b_parent);
 
 	while (block->b_parent == orig->b_parent && block->b_loff < extent_end) {
 		end[0] = orig;
@@ -641,6 +640,9 @@ next_match:
 
 	if (matchmore) {
 		if (end_of_block_list(end[0]) || end_of_block_list(end[1]))
+			return 0;
+
+		if (block->b_loff > extent_end)
 			return 0;
 
 		orig = get_next_block(end[0]);
