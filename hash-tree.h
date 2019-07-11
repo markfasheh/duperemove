@@ -66,7 +66,7 @@ struct file_block {
 struct dupe_blocks_list *find_block_list(struct hash_tree *tree,
 					 unsigned char *digest);
 
-static inline unsigned long block_len(struct file_block *block)
+static inline unsigned long block_len_using_isize(struct file_block *block)
 {
 	/*
 	 * Avoid storing the length of each block and instead use a
@@ -81,11 +81,6 @@ static inline unsigned long block_len(struct file_block *block)
 		return ret;
 	}
 	return blocksize;
-}
-
-static inline uint64_t block_end(struct file_block *block)
-{
-	return block->b_loff + block_len(block) - 1;
 }
 
 int insert_hashed_block(struct hash_tree *tree, unsigned char *digest,

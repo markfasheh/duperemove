@@ -162,8 +162,8 @@ static void record_match(struct results_tree *res, unsigned char *digest,
 	soff[0] = start[0]->b_loff;
 	soff[1] = start[1]->b_loff;
 
-	eoff[0] = block_len(end[0]) + end[0]->b_loff - 1;
-	eoff[1] = block_len(end[1]) + end[1]->b_loff - 1;
+	eoff[0] = block_len_using_isize(end[0]) + end[0]->b_loff - 1;
+	eoff[1] = block_len_using_isize(end[1]) + end[1]->b_loff - 1;
 
 	len = eoff[0] - soff[0] + 1;
 
@@ -515,6 +515,14 @@ int find_all_dupes(struct hash_tree *tree, struct results_tree *res)
 	return ret;
 }
 
+static inline unsigned long long block_len(struct file_block *block,
+					   struct file_extent *extent)
+{
+	if (block->b_flags & FILE_BLOCK_PARTIAL)
+		return extent->len % blocksize;
+	return blocksize;
+}
+
 static inline struct file_block *get_next_block(struct file_block *b)
 {
 	struct rb_node *node;
@@ -537,8 +545,10 @@ static inline int end_of_block_list(struct file_block *b)
  */
 static int compare_extents(struct filerec *orig_file,
 			   struct file_block *orig_file_block,
+			   struct file_extent *orig_file_extent,
 			   struct filerec *walk_file,
 			   struct file_block *walk_file_block,
+			   struct file_extent *walk_file_extent,
 			   uint64_t search_len,
 			   struct results_tree *res)
 {
@@ -552,10 +562,7 @@ static int compare_extents(struct filerec *orig_file,
 	uint64_t orig_blkno, walk_blkno, match_end;
 	bool matchmore = true;
 
-	if (search_len == UINT64_MAX)
-		extent_end = search_len;
-	else
-		extent_end = block->b_loff + search_len - 1;
+	extent_end = block->b_loff + search_len - 1;
 
 next_match:
 	start[0] = orig;
@@ -631,7 +638,7 @@ next_match:
 	 * - don't limit search or matches at all (what we have in
          *   walk_dupe_block())
 	 */
-	match_end = block_len(end[1]) + end[1]->b_loff - 1;
+	match_end = block_len(end[1], walk_file_extent) + end[1]->b_loff - 1;
 	if (match_end <= extent_end)
 		record_match(res, match_id, orig_file, walk_file,
 			     start, end);
@@ -703,8 +710,9 @@ static int search_extent(struct filerec *file, struct file_extent *extent,
 		 * two extents.
 		 */
 
-		ret = compare_extents(file, block, found_file, found_block,
-				      extent->len, dupe_extents);
+		ret = compare_extents(file, block, extent, found_file,
+				      found_block, &found_extent, extent->len,
+				      dupe_extents);
 		if (ret)
 			break;
 		ret = 0;

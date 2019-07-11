@@ -38,7 +38,7 @@ static void count_filerec_duped_bytes(struct filerec *file, uint64_t *bytes)
 	for (node = rb_first(&file->block_tree); node; node = rb_next(node)) {
 		block = rb_entry(node, struct file_block, b_file_next);
 
-		*bytes += block_len(block);
+		*bytes += block_len_using_isize(block);
 	}
 }
 
