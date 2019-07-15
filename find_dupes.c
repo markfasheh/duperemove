@@ -43,6 +43,8 @@ extern unsigned int cpu_threads;
 
 extern char *serialize_fname;
 
+extern int v2_hashfile;
+
 /*
  * Extent search status globals. This could be an atomic but GCond
  * requires a mutex so we might as well use it...
@@ -144,8 +146,17 @@ static void wait_update_extent_search_status(GThreadPool *pool)
 	clear_extent_search_status(search_processed, 0);
 }
 
+static inline unsigned long long block_len(struct file_block *block,
+					   struct file_extent *extent)
+{
+	if (block->b_flags & FILE_BLOCK_PARTIAL)
+		return extent->len % blocksize;
+	return blocksize;
+}
+
 static void record_match(struct results_tree *res, unsigned char *digest,
-			 struct filerec *orig, struct filerec *walk,
+			 struct filerec *orig, struct file_extent *orig_extent,
+			 struct filerec *walk, struct file_extent *walk_extent,
 			 struct file_block **start, struct file_block **end)
 {
 	int ret;
@@ -162,8 +173,13 @@ static void record_match(struct results_tree *res, unsigned char *digest,
 	soff[0] = start[0]->b_loff;
 	soff[1] = start[1]->b_loff;
 
-	eoff[0] = block_len_using_isize(end[0]) + end[0]->b_loff - 1;
-	eoff[1] = block_len_using_isize(end[1]) + end[1]->b_loff - 1;
+	if (v2_hashfile) {
+		eoff[0] = block_len_using_isize(end[0]) + end[0]->b_loff - 1;
+		eoff[1] = block_len_using_isize(end[1]) + end[1]->b_loff - 1;
+	} else {
+		eoff[0] = block_len(end[0], orig_extent) + end[0]->b_loff - 1;
+		eoff[1] = block_len(end[1], walk_extent) + end[1]->b_loff - 1;
+	}
 
 	len = eoff[0] - soff[0] + 1;
 
@@ -266,7 +282,7 @@ static int walk_dupe_block(struct filerec *orig_file,
 
 	finish_running_checksum(csum, match_id);
 
-	record_match(res, match_id, orig_file, walk_file,
+	record_match(res, match_id, orig_file, NULL, walk_file, NULL,
 		     start, end);
 out:
 	return 0;
@@ -515,14 +531,6 @@ int find_all_dupes(struct hash_tree *tree, struct results_tree *res)
 	return ret;
 }
 
-static inline unsigned long long block_len(struct file_block *block,
-					   struct file_extent *extent)
-{
-	if (block->b_flags & FILE_BLOCK_PARTIAL)
-		return extent->len % blocksize;
-	return blocksize;
-}
-
 static inline struct file_block *get_next_block(struct file_block *b)
 {
 	struct rb_node *node;
@@ -640,8 +648,8 @@ next_match:
 	 */
 	match_end = block_len(end[1], walk_file_extent) + end[1]->b_loff - 1;
 	if (match_end <= extent_end)
-		record_match(res, match_id, orig_file, walk_file,
-			     start, end);
+		record_match(res, match_id, orig_file, orig_file_extent,
+			     walk_file, walk_file_extent, start, end);
 	else
 		return 0;
 
