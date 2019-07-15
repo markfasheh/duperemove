@@ -781,6 +781,7 @@ int search_file_extents(struct filerec *file, struct hash_tree *dupe_hashes,
 	}
 	ret = 0;
 out:
+	update_extent_search_status(1);
 	if (extents)
 		free(extents);
 	dbfile_close_handle(db);
@@ -810,7 +811,7 @@ int find_additional_dedupe(struct hash_tree *hashes,
 	int ret = 0;
 	GError *err = NULL;
 	GThreadPool *pool = NULL;
-	unsigned long long pushed = 0;
+	unsigned long long count = 0;
 	struct filerec *file;
 
 	qprintf("Hashing completed. Using %u threads to calculate duplicate "
@@ -825,6 +826,11 @@ int find_additional_dedupe(struct hash_tree *hashes,
 		g_error_free(err);
 		return ENOMEM;
 	}
+
+	/* Count them up for the status bar */
+	list_for_each_entry(file, &filerec_list, rec_list)
+		count++;
+	set_extent_search_status_count(count);
 
 	list_for_each_entry(file, &filerec_list, rec_list) {
 		if (file->size) {
@@ -850,7 +856,6 @@ int find_additional_dedupe(struct hash_tree *hashes,
 		}
 	}
 
-	set_extent_search_status_count(pushed);
 	wait_update_extent_search_status(pool);
 
 	g_thread_pool_free(pool, FALSE, TRUE);
