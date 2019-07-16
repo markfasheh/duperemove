@@ -814,8 +814,9 @@ int find_additional_dedupe(struct hash_tree *hashes,
 	unsigned long long count = 0;
 	struct filerec *file;
 
-	qprintf("Hashing completed. Using %u threads to calculate duplicate "
-		"extents. This may take some time.\n", cpu_threads);
+	qprintf("Using %u threads to search within extents extents for "
+		"additional dedupe. This process will take some time, during "
+		"which Duperemove can safely be ctrl-c'd.\n", cpu_threads);
 
 	pool = g_thread_pool_new((GFunc) find_dupes_thread, NULL,
 				 cpu_threads, TRUE, &err);

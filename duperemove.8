@@ -159,6 +159,15 @@ Comma separated list of options which alter how we dedupe. Prepend 'no' to an
 option in order to turn it off.
 .RS
 .TP
+\fB[no]partial\fR
+Duperemove can often find more dedupe by comparing portions of extents
+to each other. This can be a lengthy, CPU intensive task so it is
+turned off by default.
+
+The code behind this option is under active development and as a
+result the semantics of the \fIpartial\fR argument may change.
+
+.TP
 \fB[no]same\fR
 Defaults to \fBoff\fR. Allow dedupe of extents within the same
 file.

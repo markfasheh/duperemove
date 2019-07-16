@@ -69,6 +69,7 @@ static unsigned int list_only_opt = 0;
 static unsigned int rm_only_opt = 0;
 struct dbfile_config dbfile_cfg;
 static bool force_v2_hashfile = false;
+static int partial_extent_search = 0;
 
 static enum {
 	H_READ,
@@ -281,6 +282,8 @@ static int parse_dedupe_opts(const char *opts)
 			; /* This option ignored as of v0.12 */
 		} else if (strcmp(token, "fiemap") == 0) {
 			fiemap_during_dedupe = !invert;
+		} else if (strcmp(token, "partial") == 0) {
+			partial_extent_search = !invert;
 		} else {
 			print_usage = 1;
 			break;
@@ -836,9 +839,12 @@ int main(int argc, char **argv)
 		if (ret)
 			goto out;
 
-		ret = find_additional_dedupe(&dups_tree, &res);
-		if (ret)
-			goto out;
+		printf("Found %llu identical extents.\n", res.num_extents);
+		if (partial_extent_search) {
+			ret = find_additional_dedupe(&dups_tree, &res);
+			if (ret)
+				goto out;
+		}
 	}
 
 #ifdef	PRINT_STATS
