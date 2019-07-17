@@ -695,6 +695,12 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 
 	finish_running_checksum(csum, data->digest);
 
+	if (bytes_read < 0) {
+		fprintf(stderr, "Overflow condition on file %s extent off "
+			"%"PRIu64" extent len %u bytes read %ld\n",
+			data->file->filename, extent_off, extent_len,
+			bytes_read);
+	}
 	return ret ? ret : total_bytes_read;
 }
 
@@ -867,8 +873,10 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 	flags = 0;
 	while (!(flags & FIEMAP_EXTENT_LAST)) {
 		ret = fiemap_helper(fc, file, &poff, &loff, &len, &flags);
-		if (ret < 0)
+		if (ret < 0) {
+			fprintf(stderr, "Error %d from fiemap_helper()\n", ret);
 			goto out;
+		}
 
 		if (ret == 1) {
 			/* Skip reading this extent */
@@ -879,9 +887,10 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 		if (ret == 0) /* EOF */
 			break;
 
-		if (ret < 0)  /* Err */
+		if (ret < 0)  /* Err */ {
+			fprintf(stderr, "Error %d from csum_extent()\n", ret);
 			goto out;
-
+		}
 		retp = realloc(extent_hashes,
 			       sizeof(struct extent_csum) * (nb_hash + 1));
 		if (!retp) {
@@ -930,6 +939,7 @@ static void csum_whole_file(struct filerec *file,
 	struct extent_csum *extent_hashes = NULL;
 	struct block_csum *block_hashes = NULL;
 	GMutex *mutex;
+	const char *errfunc = "(unknown)";
 
 	memset(&csum_ctxt, 0, sizeof(csum_ctxt));
 	csum_ctxt.buf = calloc(1, blocksize);
@@ -946,10 +956,13 @@ static void csum_whole_file(struct filerec *file,
 	if (ret)
 		goto err_noclose;
 
-	if (v2_hashfile)
+	if (v2_hashfile) {
+		errfunc = "csum_by_block";
 		ret = csum_by_block(&csum_ctxt, fc, &block_hashes, &nb_hash);
-	else
+	} else {
+		errfunc = "csum_by_extent";
 		ret = csum_by_extent(&csum_ctxt, fc, &extent_hashes, &nb_hash);
+	}
 	if (ret)
 		goto err;
 
@@ -1034,8 +1047,9 @@ err_noclose:
 
 	fprintf(
 		stderr,
-		"Skipping file due to error %d (%s), %s\n",
+		"Skipping file due to error %d from function %s (%s), %s\n",
 		ret,
+		errfunc,
 		strerror(ret),
 		file->filename);
 
