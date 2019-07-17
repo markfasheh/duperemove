@@ -651,7 +651,7 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 			ret = errno;
 			fprintf(stderr, "Unable to read file %s: %s\n",
 				data->file->filename, strerror(ret));
-			return ret;
+			return -ret;
 		}
 		if (ret == 0)
 			break;
@@ -802,7 +802,7 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 		if (ret == 0) /* EOF */
 			break;
 
-		if (ret == -1) /* Err */
+		if (ret < 0) /* Err */
 			return ret;
 
 		bytes_read = ret;
