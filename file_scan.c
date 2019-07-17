@@ -628,11 +628,12 @@ struct csum_ctxt {
 };
 
 static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
-		       unsigned int extent_len, int extent_flags)
+		       unsigned int extent_len, int extent_flags,
+		       uint64_t *ret_total_bytes_read)
 {
 	int ret = 0;
 	int n;
-	ssize_t total_bytes_read = 0;
+	uint64_t total_bytes_read = 0;
 	ssize_t bytes_read;
 	struct running_checksum *csum;
 
@@ -697,11 +698,16 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 
 	if (bytes_read < 0) {
 		fprintf(stderr, "Overflow condition on file %s extent off "
-			"%"PRIu64" extent len %u bytes read %ld\n",
+			"%"PRIu64" extent len %u bytes read %ld total bytes "
+			"read %"PRIu64"\n",
 			data->file->filename, extent_off, extent_len,
-			bytes_read);
+			bytes_read, total_bytes_read);
 	}
-	return ret ? ret : total_bytes_read;
+	if (ret)
+		return ret;
+
+	*ret_total_bytes_read = total_bytes_read;
+	return 0;
 }
 
 static void csum_whole_file_init(GMutex **mutex, void *location,
@@ -776,8 +782,8 @@ static int fiemap_helper(struct fiemap_ctxt *fc, struct filerec *file,
 static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			 struct block_csum **ret_block_hashes, int *ret_nb_hash)
 {
-	int ret, bytes_read;
-	uint64_t loff, poff, fieloff;
+	int ret;
+	uint64_t loff, poff, fieloff, bytes_read;
 	unsigned int fieflags, fielen;
 	struct filerec *file = ctxt->file;
 	struct block_csum *block_hashes;
@@ -804,14 +810,12 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 		}
 
 //		printf("loff %"PRIu64"\n", loff);
-		ret = csum_extent(ctxt, loff, blocksize, fieflags);
+		ret = csum_extent(ctxt, loff, blocksize, fieflags, &bytes_read);
 		if (ret == 0) /* EOF */
 			break;
 
 		if (ret < 0) /* Err */
 			return ret;
-
-		bytes_read = ret;
 
 		if (bytes_read < blocksize && bytes_read + loff != file->size) {
 			/*
@@ -840,7 +844,7 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			  struct extent_csum **ret_extent_hashes,
 			  int *ret_nb_hash)
 {
-	uint64_t poff, loff;
+	uint64_t poff, loff, bytes_read;
 	uint32_t len;
 	int ret = 0;
 	unsigned int flags;
@@ -883,7 +887,7 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			continue;
 		}
 
-		ret = csum_extent(ctxt, loff, len, flags);
+		ret = csum_extent(ctxt, loff, len, flags, &bytes_read);
 		if (ret == 0) /* EOF */
 			break;
 
@@ -903,16 +907,16 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 //		       loff, ret, len, flags);
 		extent_hashes[nb_hash].loff = loff;
 		extent_hashes[nb_hash].poff = poff;
-		/* XXX: put len or actual read length ('ret') in here? */
+		/* XXX: put len or actual read length in here? */
 //		extent_hashes[nb_hash].len = len;
-		extent_hashes[nb_hash].len = ret;
+		extent_hashes[nb_hash].len = bytes_read;
 		extent_hashes[nb_hash].flags = flags;
 		memcpy(extent_hashes[nb_hash].digest, ctxt->digest,
 		       DIGEST_LEN_MAX);
 		nb_hash++;
 
-		ctxt->blocks_recorded += (ret + (blocksize - 1))/blocksize;
-		if (ret < len) {
+		ctxt->blocks_recorded += (bytes_read + (blocksize - 1))/blocksize;
+		if (bytes_read < len) {
 			/* Partial read, don't get any more blocks */
 			break;
 		}
