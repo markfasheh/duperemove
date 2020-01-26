@@ -26,7 +26,6 @@
 #include "filerec.h"
 #include "hash-tree.h"
 #include "results-tree.h"
-#include "interval_tree.h"
 #include "debug.h"
 
 extern unsigned int blocksize;
