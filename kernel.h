@@ -2,7 +2,7 @@
  * kernel.h
  *
  * This code taken from the linux kernel, and is Copyright (C) 2016
- * the original contributers.
+ * the original contributors.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public

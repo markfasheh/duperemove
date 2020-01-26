@@ -56,7 +56,7 @@ SOFTWARE.
 .pl-sr /* string.regexp */,
 .pl-sr .pl-cce /* string.regexp constant.character.escape */,
 .pl-sr .pl-sre /* string.regexp source.ruby.embedded */,
-.pl-sr .pl-sra /* string.regexp string.regexp.arbitrary-repitition */ {
+.pl-sr .pl-sra /* string.regexp string.regexp.arbitrary-repetition */ {
   color: #183691;
 }
 

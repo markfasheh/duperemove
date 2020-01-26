@@ -52,7 +52,7 @@ struct extent	{
 	struct list_head	e_list; /* For de_extents */
 	struct rb_node		e_node; /* For de_extents_root */
 
-	/* Each file keeps a tree of it's own dupes. This makes it
+	/* Each file keeps a tree of its own dupes. This makes it
 	 * easier to remove overlapping duplicates. */
 	struct interval_tree_node e_itnode;
 

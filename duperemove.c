@@ -26,7 +26,6 @@
 #include <string.h>
 #include <getopt.h>
 #include <inttypes.h>
-#include <unistd.h>
 
 #include <glib.h>
 
