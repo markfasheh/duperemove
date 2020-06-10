@@ -70,9 +70,13 @@ SHAREDIR = $(PREFIX)/share
 SBINDIR = $(PREFIX)/sbin
 MANDIR = $(SHAREDIR)/man
 
-.c.o:
-	$(check) $(CPPFLAGS) $(CFLAGS) -c $< -o $@ $(LIBRARY_FLAGS)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -c $< -o $@ $(LIBRARY_FLAGS)
+%.c.i: FORCE
+	$(check) $(CPPFLAGS) $(CFLAGS) -c $(subst .i,,$@) -o $@ $(LIBRARY_FLAGS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -E $(subst .i,,$@) -o $@ $(LIBRARY_FLAGS)
+
+%.c.o: FORCE
+	$(check) $(CPPFLAGS) $(CFLAGS) -c $(subst .o,,$@) -o $@ $(LIBRARY_FLAGS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -c  $(subst .o,,$@) -o $@ $(LIBRARY_FLAGS)
 
 all: $(progs)
 debug:
@@ -121,3 +125,5 @@ hashstats: $(hashstats_obj) hashstats.c
 
 clean:
 	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same filerec-test show-shared-extents hashstats csum-*.o *~
+
+FORCE:
