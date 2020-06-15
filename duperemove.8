@@ -10,7 +10,7 @@ submitting them for deduplication. When given a list of files it will
 hash the contents of their extents and compare those hashes to each
 other, finding and categorizing extents that match each other. When
 given the \fB-d\fR option, \fBduperemove\fR will submit those extents
-for deduplication using the Linux kernel FIDEDUPERANGE ioctl.
+for deduplication using the Linux kernel \fIFIDEDUPERANGE\fR ioctl.
 
 \fBduperemove\fR can store the hashes it computes in a \fIhashfile\fR. If
 given an existing hashfile, \fBduperemove\fR will only compute hashes
@@ -63,6 +63,9 @@ Enable recursive dir traversal.
 .TP
 \fB\-d\fR
 De-dupe the results - only works on \fIbtrfs\fR and \fIxfs\FR.
+You may use this option twice to force de-duping on other filesystems.
+The kernel will respond with \fIEOPNOTSUPP\R if the operation is really
+not supported.
 
 .TP
 \fB\-A\fR
@@ -374,7 +377,7 @@ or truncated.
 
 Yes. To be specific, duperemove does not deduplicate the data itself.
 It simply finds candidates for dedupe and submits them to the Linux
-kernel FIDEDUPERANGE ioctl. In order to ensure data integrity, the
+kernel \fIFIDEDUPERANGE\fR ioctl. In order to ensure data integrity, the
 kernel locks out other access to the file and does a byte-by-byte
 compare before proceeding with the dedupe.
 
@@ -387,6 +390,7 @@ sizes may save more space at the cost of increased fragmentation.
 
 .SH "NOTES"
 Deduplication is currently only supported by the \fIbtrfs\fR and \fIxfs\fR filesystem.
+You may override this check.
 
 The Duperemove project page can be found at https://github.com/markfasheh/duperemove
 
