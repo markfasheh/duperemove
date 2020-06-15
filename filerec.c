@@ -337,7 +337,7 @@ static struct filerec *filerec_alloc_insert(const char *filename,
 	if (file) {
 		file->filename = strdup(filename);
 		if (!file->filename) {
-			free_compared_tree(file);
+			free_filerec(file);
 			return NULL;
 		}
 
