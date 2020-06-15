@@ -347,6 +347,7 @@ static struct filerec *filerec_alloc_insert(const char *filename,
 	file->block_tree = RB_ROOT;
 	INIT_LIST_HEAD(&file->tmp_list);
 	rb_init_node(&file->inum_node);
+	rb_init_node(&file->name_node);
 	file->inum = inum;
 	file->subvolid = subvolid;
 	file->comparisons = RB_ROOT;
