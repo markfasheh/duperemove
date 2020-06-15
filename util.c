@@ -28,6 +28,9 @@
 #include <execinfo.h>
 #endif
 #include <sys/time.h>
+#include <sys/types.h>
+#include <regex.h>
+#include <dirent.h>
 #include <unistd.h>
 #include <limits.h>
 #include <errno.h>
@@ -171,105 +174,87 @@ int num_digits(unsigned long long num)
 	return digits;
 }
 
-#define	VENDOR_KEY	"vendor_id"
-#define	VENDOR_VAL	"GenuineIntel"
-#define	FLAGS_KEY	"flags"
-#define	HT_FLAG		"ht"
-#define	CPUINFO_DELIM	':'
-#define	FLAGS_DELIM	' '
-
-/* Checks /proc/cpuinfo for an Intel CPU with hyperthreading. */
-static int detect_ht(void)
+static int get_core_count(unsigned int *nr_phys, unsigned int *nr_log)
 {
-	FILE *fp;
-	int err = 0;
+	char path[PATH_MAX];
 	int ret = 0;
-	char line[LINE_MAX + 1];
-	char *c, *val, *key, *flag;
-	int check_vendor = 1;
+	DIR *dirp;
+	regex_t regex;
+	regmatch_t pmatch[1];
+	size_t nmatch = 1;
+	struct dirent *entry;
+	int physical = 0 , logical = 0;
 
-	fp = fopen("/proc/cpuinfo", "r");
-	if (fp == NULL) {
-		err = errno;
-		goto out;
+	ret = snprintf(path, PATH_MAX, "/sys/devices/system/cpu/");
+	if (ret < 0)
+		return ret;
+
+	dirp = opendir(path);
+	if (dirp == NULL)
+		return errno;
+
+	ret = regcomp(&regex, "cpu[[:digit:]]+", REG_EXTENDED);
+	if (ret < 0)
+		goto out_freedir;
+
+	do {
+		entry = readdir(dirp);
+		if (entry) {
+			FILE *filp;
+			int sibling1, sibling2;
+			if (regexec(&regex, entry->d_name, nmatch, pmatch,
+				    0) != 0)
+				continue;
+#define FMT_STRING  "/sys/devices/system/cpu/%s/topology/thread_siblings_list"
+			ret = snprintf(path, PATH_MAX, FMT_STRING,
+				       entry->d_name);
+			if (ret < 0)
+				goto out;
+
+			// When HT is turned off hyperthreads won't have
+			// topology/ subdirectory
+			filp = fopen(path, "r");
+			if (filp == NULL)
+				continue;
+
+			physical++;
+			ret = fscanf(filp, "%d,%d", &sibling1, &sibling2);
+			logical += ret;
+			fclose(filp);
+
+		}
+	} while (entry != NULL);
+
+	// If HT is on logical/physical would have been counted twice due
+	// to the way /sys/devices/system/cpu/ is populated, in this case
+	// adjust counts.
+	if (logical > physical) {
+		logical /= 2;
+		physical /= 2;
 	}
 
-	while (fgets(line, LINE_MAX + 1, fp) != NULL) {
-		c = strchr(line, CPUINFO_DELIM);
-		if (!c)
-			continue;
-		key = line;
-		val = c + 1;/* line is \0 delimited so this should be safe */
+	*nr_log = logical;
+	*nr_phys = physical;
 
-		if (*val == '\0') /* No value... */
-			continue;
-
-		/* Strip trailing whitespace from the key. */
-		do {
-			*c = '\0';
-			c--;
-		} while (c > key && !isalnum(*c));
-
-		/* Strip leading and trailing whitespace from val. */
-		while (isspace(*val) && *val != '\0')
-			val++;
-		if (*val == '\0')
-			continue;
-		c = &val[strlen(val) - 1];
-		while (isspace(*c) && c >= val) {
-			*c = '\0';
-			c--;
-		}
-//		printf("key: \"%s\" val: \"%s\"\n", key, val);
-
-		if (check_vendor && !strcmp(key, VENDOR_KEY)) {
-			/* No intel == no ht */
-			if (strcmp(val, VENDOR_VAL))
-				goto out_close;
-			check_vendor = 0;
-		} else if (!strcmp(key, FLAGS_KEY)) {
-			for (flag = val; flag && *flag; flag = c) {
-				c = strchr(flag, FLAGS_DELIM);
-				if (c) {
-					*c = '\0';
-					if (c < &line[LINE_MAX])
-						c++;
-					else
-						c = NULL;
-				}
-//				printf("\"flag: %s\"\n", flag);
-				if (!strcmp(flag, HT_FLAG)) {
-					ret = 1;
-					goto out_close;
-				}
-			}
-			/* No 'ht' in flags? We're done. */
-			goto out_close;
-		}
-	}
-	if (ferror(fp))
-		err = errno;
-
-out_close:
-	fclose(fp);
 out:
-	if (err)
-		fprintf(stderr,
-			"Error %d (\"%s\") while checking /proc/cpuinfo for "
-			"hyperthreading -- will assume ht is off.\n", err,
-			strerror(err));
+	regfree(&regex);
+out_freedir:
+	closedir(dirp);
+
 	return ret;
 }
 
 void get_num_cpus(unsigned int *nr_phys, unsigned int *nr_log)
 {
-	int ht;
+	int ht = 0;
+	int ret = get_core_count(nr_phys, nr_log);
 
-	*nr_phys = *nr_log = sysconf(_SC_NPROCESSORS_ONLN);
-	ht = detect_ht();
-	if (ht && *nr_phys >= 2)
-		*nr_phys /= 2;
+	if (ret < 0)
+		*nr_phys = *nr_log = sysconf(_SC_NPROCESSORS_ONLN);
+	else
+		ht = *nr_log > *nr_phys;
 
-	dprintf("Detected %u logical and %u physical cpus (ht is %s).\n",
-		*nr_log, *nr_phys, ht ? "on" : "off");
+	dprintf("Detected %u logical and %u physical cpus (ht %s).\n",
+		*nr_log, *nr_phys, ht ? "is on" :
+		ret < 0 ? "detection broken" : "is off");
 }
