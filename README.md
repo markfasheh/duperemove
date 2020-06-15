@@ -6,8 +6,8 @@ Duperemove is a simple tool for finding duplicated extents and
 submitting them for deduplication. When given a list of files it will
 hash their contents on a block by block basis and compare those hashes
 to each other, finding and categorizing blocks that match each
-other. When given the -d option, duperemove will submit those
-extents for deduplication using the Linux kernel extent-same ioctl.
+other. When given the `-d` option, duperemove will submit those
+extents for deduplication using the Linux kernel FIDEDUPRANGE ioctl.
 
 Duperemove can store the hashes it computes in a 'hashfile'. If
 given an existing hashfile, duperemove will only compute hashes

@@ -21,41 +21,43 @@
 #include <stddef.h>
 #include <sys/ioctl.h>
 
+#ifndef FIDEDUPERANGE
 #define BTRFS_IOCTL_MAGIC 0x94
 
-#define BTRFS_IOC_FILE_EXTENT_SAME _IOWR(BTRFS_IOCTL_MAGIC, 54, \
-					 struct btrfs_ioctl_same_args)
+#define FIDEDUPERANGE _IOWR(BTRFS_IOCTL_MAGIC, 54, \
+				struct file_dedupe_range)
 
-#define BTRFS_SAME_DATA_DIFFERS	1
-/* For extent-same ioctl */
-struct btrfs_ioctl_same_extent_info {
-	int64_t fd;			/* in - destination file */
-	uint64_t logical_offset;	/* in - start of extent in destination */
+#define FILE_DEDUPE_RANGE_DIFFERS	1
+/* For FIDEDUPERANGE ioctl */
+struct file_dedupe_range_info {
+	int64_t dest_fd;		/* in - destination file */
+	uint64_t dest_offset;		/* in - start of extent in destination */
 	uint64_t bytes_deduped;		/* out - total # of bytes we
 					 * were able to dedupe from
 					 * this file */
 	/* status of this dedupe operation:
 	 * 0 if dedup succeeds
 	 * < 0 for error
-	 * == BTRFS_SAME_DATA_DIFFERS if data differs
+	 * == FILE_DEDUPE_RANGE_DIFFERS if data differs
 	 */
 	int32_t status;			/* out - see above description */
 	uint32_t reserved;
 };
 
-struct btrfs_ioctl_same_args {
-	uint64_t logical_offset;	/* in - start of extent in source */
-	uint64_t length;		/* in - length of extent */
+struct file_dedupe_range {
+	uint64_t src_offset;		/* in - start of extent in source */
+	uint64_t src_length;		/* in - length of extent */
 	uint16_t dest_count;		/* in - total elements in info array */
 	uint16_t reserved1;
 	uint32_t reserved2;
-	struct btrfs_ioctl_same_extent_info info[0];
+	struct file_dedupe_range_info info[0];
 };
+#endif  /* FIDEDUPERANGE */
 
 static inline int btrfs_extent_same(int fd,
-				    struct btrfs_ioctl_same_args *same)
+				    struct file_dedupe_range *same)
 {
-	return ioctl(fd, BTRFS_IOC_FILE_EXTENT_SAME, same);
+	return ioctl(fd, FIDEDUPERANGE, same);
 }
 
 #endif	/* __BTRFS_IOCTL_H__ */
