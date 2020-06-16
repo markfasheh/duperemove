@@ -2,7 +2,7 @@ VER=0.12.dev
 RELEASE=v$(VER)
 
 CC ?= gcc
-CFLAGS ?= -Wall -ggdb -O2
+CFLAGS ?= -Wall -ggdb
 
 MANPAGES=duperemove.8 btrfs-extent-same.8 hashstats.8 show-shared-extents.8
 
@@ -47,10 +47,13 @@ sqlite_CFLAGS=$(shell pkg-config --cflags sqlite3)
 sqlite_LIBS=$(shell pkg-config --libs sqlite3)
 
 ifdef DEBUG
-	DEBUG_FLAGS = -ggdb3 -fsanitize=address -fno-omit-frame-pointer	\
+	DEBUG_FLAGS = -ggdb3 -fsanitize=address -fno-omit-frame-pointer	-O0 \
 			-DDEBUG_BUILD -DSQLITE_DEBUG -DSQLITE_MEMDEBUG \
 			-DSQLITE_ENABLE_EXPLAIN_COMMENTS -fsanitize-address-use-after-scope
+else
+	CFLAGS += -O2
 endif
+
 override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\" \
 	$(hash_CFLAGS) $(glib_CFLAGS) $(sqlite_CFLAGS) -rdynamic $(DEBUG_FLAGS)
 LIBRARY_FLAGS += -Wl,--as-needed -latomic -lm
