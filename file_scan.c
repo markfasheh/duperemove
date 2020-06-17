@@ -627,7 +627,6 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 	int ret = 0;
 	int n;
 	uint64_t total_bytes_read = 0;
-	ssize_t bytes_read = 0;
 	struct running_checksum *csum;
 
 	csum = start_running_checksum();
@@ -635,6 +634,7 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 		return -1;
 
 	while (1) {
+		ssize_t bytes_read = 0;
 		unsigned int readlen = extent_len - total_bytes_read;
 		if (readlen > blocksize)
 			readlen = blocksize;
@@ -646,10 +646,10 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 				data->file->filename, strerror(ret));
 			return -ret;
 		}
-		bytes_read = ret;
 		if (ret == 0)
 			break;
 
+		bytes_read = ret;
 		total_bytes_read += bytes_read;
 		if (data->block_hashes) {
 			int flags = xlate_extent_flags(extent_flags,
@@ -681,23 +681,17 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 						(unsigned char *)data->buf);
 		}
 
-		if (total_bytes_read >= extent_len)
+		if (total_bytes_read >= extent_len) {
+			ret = bytes_read;
 			break;
+		}
 		extent_off += bytes_read;
 	}
 
 	finish_running_checksum(csum, data->digest);
 
-	if (bytes_read < 0) {
-		fprintf(stderr, "Overflow condition on file %s extent off "
-			"%"PRIu64" extent len %u bytes read %ld total bytes "
-			"read %"PRIu64"\n",
-			data->file->filename, extent_off, extent_len,
-			bytes_read, total_bytes_read);
-	}
-
 	*ret_total_bytes_read = total_bytes_read;
-	return ret ? ret : bytes_read;
+	return ret;
 }
 
 static void csum_whole_file_init(void *location, struct filerec *file,
