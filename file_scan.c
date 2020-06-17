@@ -627,14 +627,13 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 	int ret = 0;
 	int n;
 	uint64_t total_bytes_read = 0;
-	ssize_t bytes_read;
+	ssize_t bytes_read = 0;
 	struct running_checksum *csum;
 
 	csum = start_running_checksum();
 	if (!csum)
 		return -1;
 
-	bytes_read = 0;
 	while (1) {
 		unsigned int readlen = extent_len - total_bytes_read;
 		if (readlen > blocksize)
@@ -647,10 +646,10 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 				data->file->filename, strerror(ret));
 			return -ret;
 		}
+		bytes_read = ret;
 		if (ret == 0)
 			break;
 
-		bytes_read = ret;
 		total_bytes_read += bytes_read;
 		if (data->block_hashes) {
 			int flags = xlate_extent_flags(extent_flags,
@@ -696,11 +695,9 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 			data->file->filename, extent_off, extent_len,
 			bytes_read, total_bytes_read);
 	}
-	if (ret)
-		return ret;
 
 	*ret_total_bytes_read = total_bytes_read;
-	return 0;
+	return ret ? ret : bytes_read;
 }
 
 static void csum_whole_file_init(void *location, struct filerec *file,
