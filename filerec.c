@@ -334,29 +334,32 @@ static struct filerec *filerec_alloc_insert(const char *filename,
 {
 	struct filerec *file = calloc_filerec(1);
 
-	if (file) {
-		file->filename = strdup(filename);
-		if (!file->filename) {
-			free_compared_tree(file);
-			return NULL;
-		}
+	if (!file)
+		return NULL;
 
-		file->fd = -1;
-		file->block_tree = RB_ROOT;
-		INIT_LIST_HEAD(&file->tmp_list);
-		rb_init_node(&file->inum_node);
-		file->inum = inum;
-		file->subvolid = subvolid;
-		file->comparisons = RB_ROOT;
-		file->size = size;
-		file->mtime = mtime;
-		g_mutex_init(&file->tree_mutex);
-
-		insert_filerec(file);
-		insert_filerec_by_name(file);
-		list_add_tail(&file->rec_list, &filerec_list);
-		num_filerecs++;
+	file->filename = strdup(filename);
+	if (!file->filename) {
+		free_filerec(file);
+		return NULL;
 	}
+
+	file->fd = -1;
+	file->block_tree = RB_ROOT;
+	INIT_LIST_HEAD(&file->tmp_list);
+	rb_init_node(&file->inum_node);
+	rb_init_node(&file->name_node);
+	file->inum = inum;
+	file->subvolid = subvolid;
+	file->comparisons = RB_ROOT;
+	file->size = size;
+	file->mtime = mtime;
+	g_mutex_init(&file->tree_mutex);
+
+	insert_filerec(file);
+	insert_filerec_by_name(file);
+	list_add_tail(&file->rec_list, &filerec_list);
+	num_filerecs++;
+
 	return file;
 }
 

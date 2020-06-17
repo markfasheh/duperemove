@@ -64,6 +64,7 @@ static GMutex io_mutex; /* locks db writes */
 static unsigned int leading_spaces;
 
 struct thread_params {
+	GMutex mutex;
 	int num_files;           /* Total number of files we hashed */
 	int num_hashes;          /* Total number of hashes we hashed */
 	struct dbfile_config	*dbfile_cfg; /* global dbfile config */
@@ -526,26 +527,18 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 	return 0;
 }
 
-static GThreadPool *setup_pool(void *location, GMutex *mutex,
-			void *function)
+static GThreadPool *setup_pool(void *arg, void *function)
 {
 	GError *err = NULL;
 	GThreadPool *pool;
 
-	g_mutex_init(mutex);
-	g_dataset_set_data_full(location, "mutex", mutex,
-				(GDestroyNotify) g_mutex_clear);
-
-	pool = g_thread_pool_new((GFunc) function, location, io_threads,
-				 FALSE, &err);
+	pool = g_thread_pool_new((GFunc) function, arg, io_threads, FALSE,
+				 &err);
 	if (err != NULL) {
-		fprintf(
-			stderr,
-			"Unable to create thread pool: %s\n",
+		fprintf(stderr, "Unable to create thread pool: %s\n",
 			err->message);
 		g_error_free(err);
 		err = NULL;
-		g_dataset_destroy(location);
 		return NULL;
 	}
 	return pool;
@@ -710,12 +703,11 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 	return 0;
 }
 
-static void csum_whole_file_init(GMutex **mutex, void *location,
-				struct filerec *file, struct fiemap_ctxt **fc)
+static void csum_whole_file_init(void *location, struct filerec *file,
+				 struct fiemap_ctxt **fc)
 {
 	static long long unsigned _cur_scan_files;
 	unsigned long long cur_scan_files;
-	*mutex = g_dataset_get_data(location, "mutex");
 
 	cur_scan_files = __atomic_add_fetch(&_cur_scan_files, 1, __ATOMIC_SEQ_CST);
 
@@ -942,7 +934,6 @@ static void csum_whole_file(struct filerec *file,
 	struct sqlite3 *db = NULL;
 	struct extent_csum *extent_hashes = NULL;
 	struct block_csum *block_hashes = NULL;
-	GMutex *mutex;
 	const char *errfunc = "(unknown)";
 
 	memset(&csum_ctxt, 0, sizeof(csum_ctxt));
@@ -950,7 +941,7 @@ static void csum_whole_file(struct filerec *file,
 	assert(csum_ctxt.buf != NULL);
 	csum_ctxt.file = file;
 
-	csum_whole_file_init(&mutex, params, file, &fc);
+	csum_whole_file_init(params, file, &fc);
 
 	db = dbfile_get_handle();
 	if (!db)
@@ -1017,10 +1008,10 @@ static void csum_whole_file(struct filerec *file,
 	}
 	g_mutex_unlock(&io_mutex);
 
-	g_mutex_lock(mutex);
+	g_mutex_lock(&params->mutex);
 	params->num_files++;
 	params->num_hashes += nb_hash;
-	g_mutex_unlock(mutex);
+	g_mutex_unlock(&params->mutex);
 
 	file->flags &= ~(FILEREC_NEEDS_SCAN|FILEREC_UPDATE_DB);
 	/* Set 'IN_DB' flag *after* we call dbfile_store_hashes() */
@@ -1057,38 +1048,43 @@ err_noclose:
 		strerror(ret),
 		file->filename);
 
-	g_mutex_lock(mutex);
+	g_mutex_lock(&params->mutex);
 	/*
 	 * filerec_free will remove from the filerec tree keep it
 	 * under tree_mutex until we have a need for real locking in
 	 * filerec.c
 	 */
 	filerec_free(file);
-	g_mutex_unlock(mutex);
+	g_mutex_unlock(&params->mutex);
 
 	return;
 }
 
 int populate_tree(struct dbfile_config *cfg)
 {
-	GMutex mutex;
 	GThreadPool *pool;
-	struct thread_params params = { 0, 0, cfg};
+	struct thread_params params;
+	int ret = 0;
+
+	g_mutex_init(&params.mutex);
+	params.dbfile_cfg = cfg;
+	params.num_files = params.num_hashes = 0;
 
 	leading_spaces = num_digits(files_to_scan);
 
 	if (files_to_scan) {
-		pool = setup_pool(&params, &mutex, csum_whole_file);
-		if (!pool)
-			return ENOMEM;
+		pool = setup_pool(&params, csum_whole_file);
+		if (!pool) {
+			ret = ENOMEM;
+			goto out;
+		}
 
 		run_pool(pool);
 
 		printf("Total files:  %d\n", params.num_files);
 		qprintf("Total extent hashes: %d\n", params.num_hashes);
-
-		g_dataset_destroy(&params);
 	}
-
-	return 0;
+out:
+	g_mutex_clear(&params.mutex);
+	return ret;
 }
