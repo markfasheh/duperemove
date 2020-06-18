@@ -6,8 +6,8 @@ Duperemove is a simple tool for finding duplicated extents and
 submitting them for deduplication. When given a list of files it will
 hash their contents on a block by block basis and compare those hashes
 to each other, finding and categorizing blocks that match each
-other. When given the -d option, duperemove will submit those
-extents for deduplication using the Linux kernel extent-same ioctl.
+other. When given the `-d` option, duperemove will submit those
+extents for deduplication using the Linux kernel FIDEDUPRANGE ioctl.
 
 Duperemove can store the hashes it computes in a 'hashfile'. If
 given an existing hashfile, duperemove will only compute hashes
@@ -24,7 +24,7 @@ See [the duperemove man page](http://markfasheh.github.io/duperemove/duperemove.
 
 The latest stable code (v0.11) can be found in [the v0.11 branch on github](https://github.com/markfasheh/duperemove/tree/v0.11-branch).
 
-Kernel: Duperemove needs a kernel version equal to or greater than 3.13
+Kernel: Duperemove needs a kernel version equal to or greater than 3.13.
 
 Libraries: Duperemove uses glib2 and sqlite3.
 
@@ -116,10 +116,8 @@ An actual run, output will differ according to duperemove version.
 
 # Links of interest
 
-[The duperemove wiki](https://github.com/markfasheh/duperemove/wiki)
-has both design and performance documentation.
-
-[duperemove-tests](https://github.com/markfasheh/duperemove-tests) has
-a growing assortment of regression tests.
-
-[Duperemove web page](http://markfasheh.github.io/duperemove/)
+* [The duperemove wiki](https://github.com/markfasheh/duperemove/wiki)
+  has both design and performance documentation.
+* [duperemove-tests](https://github.com/markfasheh/duperemove-tests) has
+  a growing assortment of regression tests.
+* [Duperemove web page](http://markfasheh.github.io/duperemove/)

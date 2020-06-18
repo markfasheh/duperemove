@@ -594,7 +594,7 @@ or truncated.
 <br />
 <p class="pp j">Yes. To be specific, duperemove does not deduplicate the data itself.
 It simply finds candidates for dedupe and submits them to the Linux
-kernel extent-same ioctl. In order to ensure data integrity, the
+kernel FIDEDUPERANGE ioctl. In order to ensure data integrity, the
 kernel locks out other access to the file and does a byte-by-byte
 compare before proceeding with the dedupe.
 <br />

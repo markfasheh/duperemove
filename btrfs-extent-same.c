@@ -25,38 +25,7 @@
 #include <stddef.h>
 #include <errno.h>
 #include <string.h>
-#include <sys/ioctl.h>
-
-#define BTRFS_IOCTL_MAGIC 0x94
-
-#define BTRFS_IOC_FILE_EXTENT_SAME _IOWR(BTRFS_IOCTL_MAGIC, 54, \
-					 struct btrfs_ioctl_same_args)
-
-#define BTRFS_SAME_DATA_DIFFERS	1
-/* For extent-same ioctl */
-struct btrfs_ioctl_same_extent_info {
-	int64_t fd;			/* in - destination file */
-	uint64_t logical_offset;	/* in - start of extent in destination */
-	uint64_t bytes_deduped;		/* out - total # of bytes we
-					 * were able to dedupe from
-					 * this file */
-	/* status of this dedupe operation:
-	 * 0 if dedup succeeds
-	 * < 0 for error
-	 * == BTRFS_SAME_DATA_DIFFERS if data differs
-	 */
-	int32_t status;			/* out - see above description */
-	uint32_t reserved;
-};
-
-struct btrfs_ioctl_same_args {
-	uint64_t logical_offset;	/* in - start of extent in source */
-	uint64_t length;		/* in - length of extent */
-	uint16_t dest_count;		/* in - total elements in info array */
-	uint16_t reserved1;		/* out - number of files that got deduped */
-	uint32_t reserved2;
-	struct btrfs_ioctl_same_extent_info info[0];
-};
+#include "btrfs-ioctl.h"
 
 static void usage(const char *prog)
 {
@@ -67,8 +36,8 @@ int main(int argc, char **argv)
 {
 	int ret, src_fd, i, numfiles;
 	char *srcf, *destf;
-	struct btrfs_ioctl_same_args *same;
-	struct btrfs_ioctl_same_extent_info *info;
+	struct file_dedupe_range *same;
+	struct file_dedupe_range_info *info;
 	unsigned long long bytes = 0ULL;
 
 	if (argc < 6 || (argc % 2)) {
@@ -81,14 +50,14 @@ int main(int argc, char **argv)
 	printf("Deduping %d total files\n", numfiles + 1);
 
 	same = calloc(1,
-		      sizeof(struct btrfs_ioctl_same_args) +
-		      sizeof(struct btrfs_ioctl_same_extent_info) * numfiles);
+		      sizeof(struct file_dedupe_range) +
+		      sizeof(struct file_dedupe_range_info) * numfiles);
 	if (!same)
 		return -ENOMEM;
 
 	srcf = argv[2];
-	same->length = atoll(argv[1]);
-	same->logical_offset = atoll(argv[3]);
+	same->src_length = atoll(argv[1]);
+	same->src_offset = atoll(argv[3]);
 	same->dest_count = numfiles;
 
 	ret = open(srcf, O_RDONLY);
@@ -100,8 +69,8 @@ int main(int argc, char **argv)
 	}
 	src_fd = ret;
 
-	printf("(%llu, %llu): %s\n", (unsigned long long)same->logical_offset,
-	       (unsigned long long)same->length, srcf);
+	printf("(%llu, %llu): %s\n", (unsigned long long)same->src_offset,
+	       (unsigned long long)same->src_length, srcf);
 
 	for (i = 0; i < same->dest_count; i++) {
 		destf = argv[4 + (i * 2)];
@@ -115,17 +84,17 @@ int main(int argc, char **argv)
 		}
 
 		same->info[i].fd = ret;
-		same->info[i].logical_offset = atoll(argv[5 + (i * 2)]);
+		same->info[i].src_offset = atoll(argv[5 + (i * 2)]);
 		printf("(%llu, %llu): %s\n",
-		       (unsigned long long)same->info[i].logical_offset,
-		       (unsigned long long)same->length, destf);
+		       (unsigned long long)same->info[i].src_offset,
+		       (unsigned long long)same->src_length, destf);
 
 	}
 
-	ret = ioctl(src_fd, BTRFS_IOC_FILE_EXTENT_SAME, same);
+	ret = ioctl(src_fd, FIDEDUPERANGE, same);
 	if (ret < 0) {
 		ret = errno;
-		fprintf(stderr, "btrfs_same returned error: (%d) %s\n", ret,
+		fprintf(stderr, "fideduprange returned error: (%d) %s\n", ret,
 			strerror(ret));
 		return -ret;
 	}

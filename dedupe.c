@@ -91,24 +91,24 @@ static void print_btrfs_same_info(struct dedupe_ctxt *ctxt)
 {
 	int i;
 	struct filerec *file = ctxt->ioctl_file;
-	struct btrfs_ioctl_same_args *same = ctxt->same;
-	struct btrfs_ioctl_same_extent_info *info;
+	struct file_dedupe_range *same = ctxt->same;
+	struct file_dedupe_range_info *info;
 	struct dedupe_req *req;
 
 	dprintf(_PRE"btrfs same info: ioctl_file: \"%s\"\n",
 		file ? file->filename : "(null)");
-	dprintf(_PRE"logical_offset: %llu, length: %llu, dest_count: %u\n",
-		(unsigned long long)same->logical_offset,
-		(unsigned long long)same->length, same->dest_count);
+	dprintf(_PRE"src_offset: %llu, length: %llu, dest_count: %u\n",
+		(unsigned long long)same->src_offset,
+		(unsigned long long)same->src_length, same->dest_count);
 
 	for (i = 0; i < same->dest_count; i++) {
 		info = &same->info[i];
 		req = same_idx_to_request(ctxt, i);
 		file = req->req_file;
-		dprintf(_PRE"info[%d]: name: \"%s\", fd: %lld, logical_offset: "
+		dprintf(_PRE"info[%d]: name: \"%s\", fd: %lld, src_offset: "
 			"%llu, bytes_deduped: %llu, status: %d\n",
-			i, file ? file->filename : "(null)", (long long)info->fd,
-			(unsigned long long)info->logical_offset,
+			i, file ? file->filename : "(null)", (long long)info->dest_fd,
+			(unsigned long long)info->dest_offset,
 			(unsigned long long)info->bytes_deduped, info->status);
 	}
 }
@@ -162,7 +162,7 @@ struct dedupe_ctxt *new_dedupe_ctxt(unsigned int max_extents, uint64_t loff,
 				    uint64_t elen, struct filerec *ioctl_file)
 {
 	struct dedupe_ctxt *ctxt = calloc(1, sizeof(*ctxt));
-	struct btrfs_ioctl_same_args *same;
+	struct file_dedupe_range *same;
 	unsigned int same_size;
 	unsigned int max_dest_files;
 
@@ -175,7 +175,7 @@ struct dedupe_ctxt *new_dedupe_ctxt(unsigned int max_extents, uint64_t loff,
 	max_dest_files = max_extents - 1;
 
 	same_size = sizeof(*same) +
-		max_dest_files * sizeof(struct btrfs_ioctl_same_extent_info);
+		max_dest_files * sizeof(struct file_dedupe_range_info);
 	same = calloc(1, same_size);
 	if (same == NULL) {
 		free(same);
@@ -216,19 +216,19 @@ int add_extent_to_dedupe(struct dedupe_ctxt *ctxt, uint64_t loff,
 }
 
 static void add_dedupe_request(struct dedupe_ctxt *ctxt,
-			       struct btrfs_ioctl_same_args *same,
+			       struct file_dedupe_range *same,
 			       struct dedupe_req *req)
 {
 	int same_idx = same->dest_count;
-	struct btrfs_ioctl_same_extent_info *info;
+	struct file_dedupe_range_info *info;
 	struct filerec *file = req->req_file;
 
 	abort_on(same->dest_count >= ctxt->max_queable);
 
 	req->req_idx = same_idx;
 	info = &same->info[same_idx];
-	info->fd = file->fd;
-	info->logical_offset = req->req_loff;
+	info->dest_fd = file->fd;
+	info->dest_offset = req->req_loff;
 	info->bytes_deduped = 0;
 	same->dest_count++;
 
@@ -237,22 +237,22 @@ static void add_dedupe_request(struct dedupe_ctxt *ctxt,
 }
 
 static void set_aligned_same_length(struct dedupe_ctxt *ctxt,
-				    struct btrfs_ioctl_same_args *same)
+				    struct file_dedupe_range *same)
 {
-	same->length = ctxt->len;
+	same->src_length = ctxt->len;
 	if (must_align_len && ctxt->len > ctxt->fs_blocksize)
-		same->length = ctxt->len & ~(ctxt->fs_blocksize - 1);
+		same->src_length = ctxt->len & ~(ctxt->fs_blocksize - 1);
 }
 
 static void populate_dedupe_request(struct dedupe_ctxt *ctxt,
-				    struct btrfs_ioctl_same_args *same)
+				    struct file_dedupe_range *same)
 {
 	struct dedupe_req *req, *tmp;
 
 	memset(same, 0, ctxt->same_size);
 
 	set_aligned_same_length(ctxt, same);
-	same->logical_offset = ctxt->ioctl_file_off;
+	same->src_offset = ctxt->ioctl_file_off;
 
 	list_for_each_entry_safe(req, tmp, &ctxt->queued, req_list) {
 		add_dedupe_request(ctxt, same, req);
@@ -264,11 +264,11 @@ static void populate_dedupe_request(struct dedupe_ctxt *ctxt,
 
 /* Returns 1 when there are no more dedupes to process. */
 static void process_dedupes(struct dedupe_ctxt *ctxt,
-			    struct btrfs_ioctl_same_args *same)
+			    struct file_dedupe_range *same)
 {
 	int same_idx;
 	uint64_t max_deduped = 0;
-	struct btrfs_ioctl_same_extent_info *info;
+	struct file_dedupe_range_info *info;
 	struct dedupe_req *req, *tmp;
 
 	list_for_each_entry_safe(req, tmp, &ctxt->in_progress, req_list) {

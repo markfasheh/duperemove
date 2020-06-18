@@ -113,7 +113,7 @@ static void process_dedupe_results(struct dedupe_ctxt *ctxt,
 		    (target_status == -EINVAL && f == ctxt->ioctl_file))
 			continue;
 
-		if (target_status == BTRFS_SAME_DATA_DIFFERS)
+		if (target_status == FILE_DEDUPE_RANGE_DIFFERS)
 			status_str = "data changed";
 		else if (target_status < 0)
 			status_str = strerror(-target_status);
