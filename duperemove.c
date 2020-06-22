@@ -55,7 +55,6 @@ unsigned int blocksize = DEFAULT_BLOCKSIZE;
 
 int run_dedupe = 0;
 int recurse_dirs = 0;
-int one_file_system = 1;
 int v2_hashfile = 0;
 int dedupe_same_file = 1;
 int skip_zeroes = 0;
@@ -313,7 +312,6 @@ enum {
 	IO_THREADS_OPTION,
 	CPU_THREADS_OPTION,
 	LOOKUP_EXTENTS_OPTION,
-	ONE_FILESYSTEM_OPTION,
 	HASH_OPTION,
 	SKIP_ZEROES_OPTION,
 	FDUPES_OPTION,
@@ -399,7 +397,6 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		{ "hash-threads", 1, NULL, IO_THREADS_OPTION },
 		{ "cpu-threads", 1, NULL, CPU_THREADS_OPTION },
 		{ "lookup-extents", 1, NULL, LOOKUP_EXTENTS_OPTION },
-		{ "one-file-system", 0, NULL, ONE_FILESYSTEM_OPTION },
 		{ "hash", 1, NULL, HASH_OPTION },
 		{ "skip-zeroes", 0, NULL, SKIP_ZEROES_OPTION },
 		{ "fdupes", 0, NULL, FDUPES_OPTION },
@@ -412,7 +409,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 	if (argc < 2)
 		return 1;
 
-	while ((c = getopt_long(argc, argv, "Ab:vdDrh?xLR:q", long_ops, NULL))
+	while ((c = getopt_long(argc, argv, "Ab:vdDrh?LR:q", long_ops, NULL))
 	       != -1) {
 		switch (c) {
 		case 'A':
@@ -480,10 +477,6 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			break;
 		case LOOKUP_EXTENTS_OPTION:
 			do_lookup_extents = parse_yesno_option(optarg, 0);
-			break;
-		case ONE_FILESYSTEM_OPTION:
-		case 'x':
-			one_file_system = 1;
 			break;
 		case HASH_OPTION:
 			user_hash = optarg;

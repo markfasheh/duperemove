@@ -95,7 +95,6 @@ static void clear_filerec_scan_flags(struct filerec *file)
 void fs_set_onefs(dev_t dev, uint64_t fsid)
 {
 	if (dev || fsid) {
-		one_file_system = 1;
 		if (dev)
 			one_fs_dev = dev;
 		else if (fsid)
@@ -307,6 +306,24 @@ out:
 	return 0;
 }
 
+static bool will_cross_mountpoint(dev_t dev, uint64_t btrfs_fsid)
+{
+	abort_on(one_fs_dev && one_fs_btrfs);
+
+	if (!one_fs_dev && !one_fs_btrfs) {
+		if (btrfs_fsid)
+			one_fs_btrfs = btrfs_fsid;
+		else
+			one_fs_dev = dev;
+	}
+
+	if ((one_fs_dev && (one_fs_dev != dev)) ||
+	    (one_fs_btrfs && (btrfs_fsid != one_fs_btrfs)))
+		return true;
+
+	return false;
+}
+
 /*
  * Returns nonzero on fatal errors only
  */
@@ -315,10 +332,8 @@ int add_file(const char *name, int dirfd)
 	int ret, len = strlen(name);
 	struct stat st;
 	char *pathtmp;
-	dev_t dev;
 	struct filerec *file = NULL;
 	char abspath[PATH_MAX];
-	uint64_t btrfs_fsid;
 
 	if (len > (path_max - pathp)) {
 		fprintf(stderr, "Path max exceeded: %s %s\n", path, name);
@@ -357,10 +372,12 @@ int add_file(const char *name, int dirfd)
 	}
 
 	if (S_ISDIR(st.st_mode)) {
+		uint64_t btrfs_fsid;
+		dev_t dev = st.st_dev;
+
 		if (is_excluded(abspath))
 			goto out;
 
-		dev = st.st_dev;
 		/*
 		 * Device doesn't work for btrfs as it changes between
 		 * subvolumes. We know how to get a unique fsid though
@@ -373,22 +390,11 @@ int add_file(const char *name, int dirfd)
 			goto out;
 		}
 
-		if (one_file_system) {
-			abort_on(one_fs_dev && one_fs_btrfs);
-
-			if (!one_fs_dev && !one_fs_btrfs) {
-				if (btrfs_fsid)
-					one_fs_btrfs = btrfs_fsid;
-				else
-					one_fs_dev = dev;
-			}
-
-			if ((one_fs_dev && (one_fs_dev != dev)) ||
-			    (one_fs_btrfs && (btrfs_fsid != one_fs_btrfs))) {
-				vprintf("Skipping file %s because of -x\n",
-					abspath);
-				goto out;
-			}
+		/* Don't cross mount points since dedup doesn't work across */
+		if (will_cross_mountpoint(dev, btrfs_fsid)) {
+			vprintf("Mountpoint traversal disallowed: %s \n",
+				abspath);
+			goto out;
 		}
 
 		if (walk_dir(name))
