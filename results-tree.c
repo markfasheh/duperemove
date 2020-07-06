@@ -113,20 +113,6 @@ static int insert_extent_rb(struct dupe_extents *dext, struct extent *e)
 	return 0;
 }
 
-static int insert_extent_list(struct results_tree *res,
-			      struct dupe_extents *dext, struct extent *e)
-{
-	/* We keep this tree free of duplicates  */
-	if (insert_extent_rb(dext, e) == 0) {
-		e->e_parent = dext;
-		dext->de_num_dupes++;
-		list_add_tail(&e->e_list, &dext->de_extents);
-		return 0;
-	}
-
-	return 1;
-}
-
 static void insert_dupe_extents(struct results_tree *res,
 				struct dupe_extents *dext)
 {
@@ -189,14 +175,19 @@ static struct dupe_extents *find_dupe_extents(struct results_tree *res,
 	return NULL;
 }
 
-static void insert_extent_list_free(struct results_tree *res,
-				    struct dupe_extents *dext,
+static void insert_extent_list_free(struct dupe_extents *dext,
 				    struct extent **e)
 {
-	if (insert_extent_list(res, dext, *e)) {
-		free_extent(*e);
-		*e = NULL;
+	/* We keep this tree free of duplicates  */
+	if (insert_extent_rb(dext, *e) == 0) {
+		(*e)->e_parent = dext;
+		dext->de_num_dupes++;
+		list_add_tail(&(*e)->e_list, &dext->de_extents);
+		return;
 	}
+
+	free_extent(*e);
+	*e = NULL;
 }
 
 static struct dupe_extents *dupe_extents_new(struct results_tree *res,
@@ -294,7 +285,7 @@ int insert_one_result(struct results_tree *res, unsigned char *digest,
 	abort_on(dext->de_len != len);
 
 	g_mutex_lock(&dext->de_mutex);
-	insert_extent_list_free(res, dext, &extent);
+	insert_extent_list_free(dext, &extent);
 	g_mutex_unlock(&dext->de_mutex);
 
 	if (!extent)
@@ -330,8 +321,8 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 	abort_on(dext->de_len != len);
 
 	g_mutex_lock(&dext->de_mutex);
-	insert_extent_list_free(res, dext, &e0);
-	insert_extent_list_free(res, dext, &e1);
+	insert_extent_list_free(dext, &e0);
+	insert_extent_list_free(dext, &e1);
 	if (add_score) {
 		if (e0)
 			dext->de_score += len;
