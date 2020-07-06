@@ -18,7 +18,7 @@
 #define	__DEDUPE_H__
 
 #include "list.h"
-#include "btrfs-ioctl.h"
+#include "ioctl.h"
 
 #define MAX_DEDUPES_PER_IOCTL	120
 
@@ -57,7 +57,7 @@ struct dedupe_ctxt {
 	struct list_head	in_progress;
 	struct list_head	completed;
 
-	struct btrfs_ioctl_same_args	*same;
+	struct file_dedupe_range *same;
 };
 
 struct dedupe_ctxt *new_dedupe_ctxt(unsigned int max_extents, uint64_t loff,

@@ -7,7 +7,7 @@ CFLAGS ?= -Wall -ggdb
 MANPAGES=duperemove.8 btrfs-extent-same.8 hashstats.8 show-shared-extents.8
 
 HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
-	btrfs-ioctl.h filerec.h btrfs-util.h debug.h util.h \
+	ioctl.h filerec.h btrfs-util.h debug.h util.h \
 	memstats.h file_scan.h find_dupes.h run_dedupe.h xxhash.h \
 	bswap.h dbfile.h interval_tree.h interval_tree_generic.h \
 	rbtree_augmented.h list_sort.h stats.h
