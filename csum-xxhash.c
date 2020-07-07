@@ -22,6 +22,10 @@
 
 #include "csum.h"
 #include "debug.h"
+
+#define XXH_STATIC_LINKING_ONLY
+#define XXH_INLINE_ALL
+
 #include "xxhash.h"
 
 #define		HASH_TYPE_XXHASH	"XXHASH  "
