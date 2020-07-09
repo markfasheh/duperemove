@@ -992,7 +992,7 @@ static int remove_file_hashes_prep(sqlite3 *db, struct dbfile_config *cfg,
 			perror_sqlite(ret, "preparing hash insert statement");
 		return ret;
 	}
-	return EINVAL;
+	return 0;
 }
 
 static int dbfile_remove_file_hashes(sqlite3 *db, struct dbfile_config *cfg,
