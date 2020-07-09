@@ -329,6 +329,16 @@ changes to take advantage of those features. The result is that you
 should be able to ctrl-c the program at any point and re-run without
 experiencing corruption of your hashfile.
 
+.SS I got two identical files, why are they not deduped?
+
+Duperemove by default works on extent granularity. What this means is if there
+are two files which are logically identical (have the same content) but are
+laid out on disk with different extent structure they won't be deduped. For
+example if 2 files are 128k each and their content are identical but one of
+them consists of a single 128k extent and the other of 2 x 64k extents then
+they won't be deduped. This behavior is dependent on the current implementation
+and is subject to change as duperemove is being improved.
+
 .SS How can I find out my space savings after a dedupe?
 
 Duperemove will print out an estimate of the saved space after a
