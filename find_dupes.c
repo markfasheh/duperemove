@@ -811,7 +811,6 @@ int find_additional_dedupe(struct hash_tree *hashes,
 	int ret = 0;
 	GError *err = NULL;
 	GThreadPool *pool = NULL;
-	unsigned long long count = 0;
 	struct filerec *file;
 
 	qprintf("Using %u threads to search within extents extents for "
@@ -828,10 +827,7 @@ int find_additional_dedupe(struct hash_tree *hashes,
 		return ENOMEM;
 	}
 
-	/* Count them up for the status bar */
-	list_for_each_entry(file, &filerec_list, rec_list)
-		count++;
-	set_extent_search_status_count(count);
+	set_extent_search_status_count(num_filerecs);
 
 	list_for_each_entry(file, &filerec_list, rec_list) {
 		if (file->size) {
