@@ -19,6 +19,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <limits.h>
 #include <fcntl.h>
 #include <assert.h>
@@ -30,6 +31,7 @@
 #include <string.h>
 #include <linux/limits.h>
 #include <linux/fiemap.h>
+#include <linux/fs.h>
 #include <inttypes.h>
 #include <linux/magic.h>
 #include <sys/statfs.h>
@@ -829,12 +831,29 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 	return ret;
 }
 
+static int get_file_extent_count(struct filerec *file, uint32_t *count)
+{
+	struct fiemap fiemap;
+	int err;
+
+	memset(&fiemap, 0, sizeof(fiemap));
+	fiemap.fm_length = ~0ULL;
+	err = ioctl(file->fd, FS_IOC_FIEMAP, (unsigned long) &fiemap);
+	if (err < 0)
+		return errno;
+
+	dprintf("Got %u extent for file\n", fiemap.fm_mapped_extents);
+	*count = fiemap.fm_mapped_extents;
+
+	return 0;
+}
+
 static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			  struct extent_csum **ret_extent_hashes,
 			  int *ret_nb_hash)
 {
 	uint64_t poff, loff, bytes_read;
-	uint32_t len;
+	uint32_t len, extents_count = 0;
 	int ret = 0;
 	unsigned int flags;
 	struct extent_csum *extent_hashes;
@@ -844,7 +863,11 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 	struct block_csum *block_hashes;
 //	int nb_block_hash = 0;
 
-	extent_hashes = malloc(sizeof(struct extent_csum));
+	ret = get_file_extent_count(file, &extents_count);
+	if (ret)
+		return ret;
+
+	extent_hashes = calloc(extents_count, sizeof(struct extent_csum));
 	if (extent_hashes == NULL)
 		return ENOMEM;
 
@@ -884,13 +907,16 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			fprintf(stderr, "Error %d from csum_extent()\n", ret);
 			goto out;
 		}
-		retp = realloc(extent_hashes,
-			       sizeof(struct extent_csum) * (nb_hash + 1));
-		if (!retp) {
-			ret = ENOMEM;
-			goto out;
+
+		if ((nb_hash + 1) > extents_count) {
+			retp = realloc(extent_hashes,
+				       sizeof(struct extent_csum) * (nb_hash + 1));
+			if (!retp) {
+				ret = ENOMEM;
+				goto out;
+			}
+			extent_hashes = retp;
 		}
-		extent_hashes = retp;
 
 //		printf("loff %"PRIu64" ret %d len %u flags 0x%x\n",
 //		       loff, ret, len, flags);
