@@ -634,6 +634,7 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 {
 	int ret = 0;
 	int n;
+	int flags;
 	uint64_t total_bytes_read = 0;
 	struct running_checksum *csum;
 
@@ -659,24 +660,21 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 
 		bytes_read = ret;
 		total_bytes_read += bytes_read;
-		if (data->block_hashes) {
-			int flags = xlate_extent_flags(extent_flags,
-						       bytes_read);
+		flags = xlate_extent_flags(extent_flags, bytes_read);
 
-			if (!(skip_zeroes &&
-			      is_block_zeroed(data->buf, bytes_read))) {
-				    checksum_block(data->buf, bytes_read,
-						   data->block_digest);
+		if (!(skip_zeroes && is_block_zeroed(data->buf, bytes_read))) {
+			checksum_block(data->buf, bytes_read,
+				       data->block_digest);
 
-				    ret = add_block_hash(&data->block_hashes,
-							 &data->nr_block_hashes,
-							 extent_off,
-							 data->block_digest,
-							 flags);
-				    if (ret)
-					    break;
-			}
+			ret = add_block_hash(&data->block_hashes,
+					     &data->nr_block_hashes,
+					     extent_off,
+					     data->block_digest,
+					     flags);
+			if (ret)
+				break;
 		}
+
 		if (!v2_hashfile &&
 		    dbfile_cfg.extent_hash_src == EXTENT_HASH_SRC_DIGEST) {
 			abort_on(!data->nr_block_hashes);
