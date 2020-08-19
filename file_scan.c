@@ -65,6 +65,8 @@ static unsigned long long files_to_scan;
 static GMutex io_mutex; /* locks db writes */
 static unsigned int leading_spaces;
 
+#define READ_BUF_LEN (8*1024*1024) // 16m
+
 struct thread_params {
 	GMutex mutex;
 	int num_files;           /* Total number of files we hashed */
@@ -628,12 +630,59 @@ struct csum_ctxt {
 	unsigned char block_digest[DIGEST_LEN_MAX];
 };
 
+static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
+		       const uint64_t extoff, const ssize_t extlen, int flags)
+{
+	int ret;
+	int start = 0;
+	ssize_t cmp_len = extlen - start;
+
+	if (cmp_len > blocksize)
+		cmp_len = blocksize;
+
+	while (start < extlen) {
+		char *buf = data->buf + start;
+
+		if (!(skip_zeroes && is_block_zeroed(buf, cmp_len))) {
+			checksum_block(buf, cmp_len, data->block_digest);
+
+			ret = add_block_hash(&data->block_hashes,
+					     &data->nr_block_hashes,
+					     extoff + start,
+					     data->block_digest,
+					     flags);
+			if (ret)
+				break;
+
+			if (!v2_hashfile &&
+			    dbfile_cfg.extent_hash_src == EXTENT_HASH_SRC_DIGEST)
+				add_to_running_checksum(csum, digest_len,
+							data->block_digest);
+		}
+
+
+		start += cmp_len;
+		cmp_len = extlen - start;
+		if (cmp_len > blocksize)
+			cmp_len = blocksize;
+	}
+
+	if (!v2_hashfile &&
+	    dbfile_cfg.extent_hash_src == EXTENT_HASH_SRC_DATA)
+		add_to_running_checksum(csum, extlen,
+					(unsigned char *)data->buf);
+
+	assert(start == extlen);
+
+	return 0;
+
+}
+
 static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 		       unsigned int extent_len, int extent_flags,
 		       uint64_t *ret_total_bytes_read)
 {
 	int ret = 0;
-	int n;
 	int flags;
 	uint64_t total_bytes_read = 0;
 	struct running_checksum *csum;
@@ -642,11 +691,11 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 	if (!csum)
 		return -1;
 
-	while (1) {
+	while (total_bytes_read < extent_len) {
 		ssize_t bytes_read = 0;
 		unsigned int readlen = extent_len - total_bytes_read;
-		if (readlen > blocksize)
-			readlen = blocksize;
+		if (readlen > READ_BUF_LEN)
+			readlen = READ_BUF_LEN;
 
 		ret = pread(data->file->fd, data->buf, readlen, extent_off);
 		if (ret < 0) {
@@ -662,41 +711,17 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 		total_bytes_read += bytes_read;
 		flags = xlate_extent_flags(extent_flags, bytes_read);
 
-		if (!(skip_zeroes && is_block_zeroed(data->buf, bytes_read))) {
-			checksum_block(data->buf, bytes_read,
-				       data->block_digest);
-
-			ret = add_block_hash(&data->block_hashes,
-					     &data->nr_block_hashes,
-					     extent_off,
-					     data->block_digest,
-					     flags);
-			if (ret)
-				break;
-		}
-
-		if (!v2_hashfile &&
-		    dbfile_cfg.extent_hash_src == EXTENT_HASH_SRC_DIGEST) {
-			abort_on(!data->nr_block_hashes);
-			n = data->nr_block_hashes - 1;
-			add_to_running_checksum(csum, digest_len,
-						data->block_hashes[n].digest);
-		} else if (!v2_hashfile &&
-			   dbfile_cfg.extent_hash_src == EXTENT_HASH_SRC_DATA) {
-			add_to_running_checksum(csum, bytes_read,
-						(unsigned char *)data->buf);
-		}
-
-		if (total_bytes_read >= extent_len) {
-			ret = bytes_read;
+		ret = csum_blocks(data, csum, extent_off, bytes_read, flags);
+		if (ret)
 			break;
-		}
+
 		extent_off += bytes_read;
 	}
 
 	finish_running_checksum(csum, data->digest);
 
 	*ret_total_bytes_read = total_bytes_read;
+	ret = total_bytes_read;
 	return ret;
 }
 
@@ -958,7 +983,7 @@ static void csum_whole_file(struct filerec *file,
 	const char *errfunc = "(unknown)";
 
 	memset(&csum_ctxt, 0, sizeof(csum_ctxt));
-	csum_ctxt.buf = calloc(1, blocksize);
+	csum_ctxt.buf = calloc(1, READ_BUF_LEN);
 	assert(csum_ctxt.buf != NULL);
 	csum_ctxt.file = file;
 
