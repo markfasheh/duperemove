@@ -579,26 +579,26 @@ static void run_pool(GThreadPool *pool)
 
 static inline int is_block_zeroed(void *buf, ssize_t buf_size)
 {
-	/*
-	 * If buf is block aligned check for zeroes may be accelerated
-	 * By checks block by CPU word size
-	 */
-	if (buf_size%sizeof(ssize_t) == 0) {
+	/* First check for zeroes in word-sized chunks */
+	if (buf_size >= sizeof(ssize_t)) {
 		ssize_t *buf_start = buf;
-		ssize_t *buf_end = buf+buf_size;
+		ssize_t *buf_end = buf + (buf_size - (buf_size % sizeof(ssize_t)));
 		ssize_t *ptr = buf_start;
 		for (; ptr < buf_end; ptr++) {
 			if (*ptr != 0)
 				return 0;
 		}
-	} else {
-		char *buf_start = buf;
-		char *buf_end = buf+buf_size;
-		char *ptr = buf_start;
-		for (; ptr < buf_end; ptr++) {
-			if (*ptr != 0)
-				return 0;
-		}
+
+		buf_size = buf_size % sizeof(ssize_t);
+		buf = buf_end;
+	}
+
+	char *buf_start = buf;
+	char *buf_end = buf+buf_size;
+	char *ptr = buf_start;
+	for (; ptr < buf_end; ptr++) {
+		if (*ptr != 0)
+			return 0;
 	}
 	return 1;
 }
