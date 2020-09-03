@@ -624,7 +624,7 @@ static int add_block_hash(struct block_csum **hashes, int *nr_hashes,
 
 	retp = realloc(*hashes, sizeof(struct block_csum) * (*nr_hashes + 1));
 	if (!retp)
-		return ENOMEM;
+		return -ENOMEM;
 
 	block_hashes = retp;
 	block_hashes[*nr_hashes].loff = loff;
@@ -650,7 +650,7 @@ struct csum_ctxt {
 static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
 		       const uint64_t extoff, const ssize_t extlen, int flags)
 {
-	int ret;
+	int ret = 0;
 	int start = 0;
 	ssize_t cmp_len = extlen - start;
 
@@ -691,7 +691,7 @@ static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
 
 	assert(start == extlen);
 
-	return 0;
+	return ret;
 
 }
 
