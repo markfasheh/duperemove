@@ -617,7 +617,24 @@ static int xlate_extent_flags(int fieflags, ssize_t len)
 }
 
 static int add_block_hash(struct block_csum **hashes, int *nr_hashes,
-			  uint64_t loff, unsigned char *digest, int flags);
+			  uint64_t loff, unsigned char *digest, int flags)
+{
+	void *retp;
+	struct block_csum *block_hashes;
+
+	retp = realloc(*hashes, sizeof(struct block_csum) * (*nr_hashes + 1));
+	if (!retp)
+		return ENOMEM;
+
+	block_hashes = retp;
+	block_hashes[*nr_hashes].loff = loff;
+	block_hashes[*nr_hashes].flags = flags;
+	memcpy(block_hashes[*nr_hashes].digest, digest, DIGEST_LEN_MAX);
+
+	*hashes = retp;
+	(*nr_hashes)++;
+	return 0;
+}
 
 struct csum_ctxt {
 	uint64_t blocks_recorded;
@@ -747,25 +764,6 @@ static void csum_whole_file_init(void *location, struct filerec *file,
 	}
 }
 
-static int add_block_hash(struct block_csum **hashes, int *nr_hashes,
-			  uint64_t loff, unsigned char *digest, int flags)
-{
-	void *retp;
-	struct block_csum *block_hashes;
-
-	retp = realloc(*hashes, sizeof(struct block_csum) * (*nr_hashes + 1));
-	if (!retp)
-		return ENOMEM;
-
-	block_hashes = retp;
-	block_hashes[*nr_hashes].loff = loff;
-	block_hashes[*nr_hashes].flags = flags;
-	memcpy(block_hashes[*nr_hashes].digest, digest, DIGEST_LEN_MAX);
-
-	*hashes = retp;
-	(*nr_hashes)++;
-	return 0;
-}
 
 /*
  * Helper for csum_by_block/csum_by_extent.
