@@ -579,26 +579,26 @@ static void run_pool(GThreadPool *pool)
 
 static inline int is_block_zeroed(void *buf, ssize_t buf_size)
 {
-	/*
-	 * If buf is block aligned check for zeroes may be accelerated
-	 * By checks block by CPU word size
-	 */
-	if (buf_size%sizeof(ssize_t) == 0) {
+	/* First check for zeroes in word-sized chunks */
+	if (buf_size >= sizeof(ssize_t)) {
 		ssize_t *buf_start = buf;
-		ssize_t *buf_end = buf+buf_size;
+		ssize_t *buf_end = buf + (buf_size - (buf_size % sizeof(ssize_t)));
 		ssize_t *ptr = buf_start;
 		for (; ptr < buf_end; ptr++) {
 			if (*ptr != 0)
 				return 0;
 		}
-	} else {
-		char *buf_start = buf;
-		char *buf_end = buf+buf_size;
-		char *ptr = buf_start;
-		for (; ptr < buf_end; ptr++) {
-			if (*ptr != 0)
-				return 0;
-		}
+
+		buf_size = buf_size % sizeof(ssize_t);
+		buf = buf_end;
+	}
+
+	char *buf_start = buf;
+	char *buf_end = buf+buf_size;
+	char *ptr = buf_start;
+	for (; ptr < buf_end; ptr++) {
+		if (*ptr != 0)
+			return 0;
 	}
 	return 1;
 }
@@ -617,7 +617,24 @@ static int xlate_extent_flags(int fieflags, ssize_t len)
 }
 
 static int add_block_hash(struct block_csum **hashes, int *nr_hashes,
-			  uint64_t loff, unsigned char *digest, int flags);
+			  uint64_t loff, unsigned char *digest, int flags)
+{
+	void *retp;
+	struct block_csum *block_hashes;
+
+	retp = realloc(*hashes, sizeof(struct block_csum) * (*nr_hashes + 1));
+	if (!retp)
+		return -ENOMEM;
+
+	block_hashes = retp;
+	block_hashes[*nr_hashes].loff = loff;
+	block_hashes[*nr_hashes].flags = flags;
+	memcpy(block_hashes[*nr_hashes].digest, digest, DIGEST_LEN_MAX);
+
+	*hashes = retp;
+	(*nr_hashes)++;
+	return 0;
+}
 
 struct csum_ctxt {
 	uint64_t blocks_recorded;
@@ -633,7 +650,7 @@ struct csum_ctxt {
 static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
 		       const uint64_t extoff, const ssize_t extlen, int flags)
 {
-	int ret;
+	int ret = 0;
 	int start = 0;
 	ssize_t cmp_len = extlen - start;
 
@@ -674,7 +691,7 @@ static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
 
 	assert(start == extlen);
 
-	return 0;
+	return ret;
 
 }
 
@@ -747,25 +764,6 @@ static void csum_whole_file_init(void *location, struct filerec *file,
 	}
 }
 
-static int add_block_hash(struct block_csum **hashes, int *nr_hashes,
-			  uint64_t loff, unsigned char *digest, int flags)
-{
-	void *retp;
-	struct block_csum *block_hashes;
-
-	retp = realloc(*hashes, sizeof(struct block_csum) * (*nr_hashes + 1));
-	if (!retp)
-		return ENOMEM;
-
-	block_hashes = retp;
-	block_hashes[*nr_hashes].loff = loff;
-	block_hashes[*nr_hashes].flags = flags;
-	memcpy(block_hashes[*nr_hashes].digest, digest, DIGEST_LEN_MAX);
-
-	*hashes = retp;
-	(*nr_hashes)++;
-	return 0;
-}
 
 /*
  * Helper for csum_by_block/csum_by_extent.
