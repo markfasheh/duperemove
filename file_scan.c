@@ -738,7 +738,7 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 	finish_running_checksum(csum, data->digest);
 
 	*ret_total_bytes_read = total_bytes_read;
-	ret = total_bytes_read;
+	ret = (total_bytes_read > 0) ? 1 : 0; // handle overflow
 	return ret;
 }
 
