@@ -14,7 +14,7 @@ extern int skip_zeroes;
 /*
  * Returns nonzero on fatal errors only
  */
-int add_file(const char *name, int dirfd);
+int add_file(const char *name);
 /*
  * Add from a db record. We still stat as before:
  *

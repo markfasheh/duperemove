@@ -196,7 +196,7 @@ static int walk_dir(const char *name)
 			type = get_dirent_type(entry, dirfd(dirp));
 			if (type == DT_REG ||
 			    (recurse_dirs && type == DT_DIR)) {
-				if (add_file(entry->d_name, dirfd(dirp))) {
+				if (add_file(entry->d_name)) {
 					ret = 1;
 					goto out;
 				}
@@ -331,7 +331,7 @@ static bool will_cross_mountpoint(dev_t dev, uint64_t btrfs_fsid)
 /*
  * Returns nonzero on fatal errors only
  */
-int add_file(const char *name, int dirfd)
+int add_file(const char *name)
 {
 	int ret, len = strlen(name);
 	struct stat st;
