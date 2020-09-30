@@ -235,8 +235,14 @@ for the overwhelming majority of users.
 
 .TP
 \fB\--exclude=PATTERN\fR
-You an exclude certain files and folders from the deduplication process.
-This might be benefical for skipping subvolume snapshot mounts, for instance.
+You an exclude certain files and folders from the deduplication process. This
+might be benefical for skipping subvolume snapshot mounts, for instance. You
+need to provide full path for exclusion. For example providing just a file name
+with a wildcard i.e \fBduperemove --exclude file-*\fR won't ever match because internally
+duperemove works with absolute paths. Another thing to keep in mind is that
+shells usually expand glob pattern so the passed in pattern ought to also be
+quoted. Taking everything into consideration the correct way to pass an exclusion
+pattern is \fBduperemove --exclude "/path/to/dir/file*" /path/to/dir\fR
 
 .SH "EXAMPLES"
 .SS "Simple Usage"
