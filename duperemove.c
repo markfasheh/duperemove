@@ -347,7 +347,7 @@ static int add_files_from_stdin(int fdupes)
 			continue;
 		}
 
-		if (add_file(path, AT_FDCWD))
+		if (add_file(path))
 			return 1;
 
 		/* Give the user a chance to see some output from add_file(). */
@@ -368,7 +368,7 @@ static int add_files_from_cmdline(int numfiles, char **files)
 	for (i = 0; i < numfiles; i++) {
 		const char *name = files[i];
 
-		if (add_file(name, AT_FDCWD))
+		if (add_file(name))
 			return 1;
 	}
 
