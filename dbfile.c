@@ -1514,10 +1514,10 @@ int dbfile_load_extent_hashes(struct results_tree *res)
 	 * result of only one extent.
 	 */
 #define GET_DUPLICATE_EXTENTS					      \
-	"SELECT extents.digest, ino, subvol, loff, len, poff, flags FROM extents " \
-	"JOIN (SELECT digest FROM extents GROUP BY digest " \
-				"HAVING count(*) > 1) AS duplicate_extents " \
-	"on extents.digest = duplicate_extents.digest;"
+	"SELECT extents.digest, ino, subvol, loff, extents.len, poff, flags FROM extents " \
+	"JOIN (SELECT digest,len FROM extents GROUP BY digest,len HAVING count(*) > 1) " \
+	"AS duplicate_extents on extents.digest = duplicate_extents.digest AND " \
+	"extents.len = duplicate_extents.len;"
 
 	ret = sqlite3_prepare_v2(db, GET_DUPLICATE_EXTENTS, -1, &stmt, NULL);
 	if (ret) {
