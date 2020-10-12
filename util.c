@@ -174,7 +174,7 @@ int num_digits(unsigned long long num)
 	return digits;
 }
 
-static int get_core_count(unsigned int *nr_phys, unsigned int *nr_log)
+static int get_core_count_fallback(unsigned int *nr_phys, unsigned int *nr_log)
 {
 	char path[PATH_MAX];
 	int ret = 0;
@@ -244,14 +244,65 @@ out_freedir:
 	return ret;
 }
 
+int get_core_count(unsigned int *nr_phys, unsigned int *nr_log)
+{
+	char *line = NULL;
+	size_t n = 0;;
+	int ret;
+	unsigned int logical = 0;
+	unsigned int physical = 0;
+	uint64_t sockets[64] = {0,}; /* supports up to 64 sockets with
+					64 cores per socket */
+
+	FILE *fp = popen("lscpu -p", "r");
+	if (fp == NULL) {
+		fprintf(stderr, "ERROR: Can't start lscpu\n");
+		return -EINVAL;
+	}
+
+	while ((ret = getline(&line, &n, fp) > 0)) {
+		unsigned int core, socket, unused;
+		/* Skip comment lines */
+		if (line[0] == '#')
+			continue;
+		logical++;
+
+		/* We only care about the core/socket id */
+		ret = sscanf(line, "%u,%u,%u", &unused, &core, &socket);
+		if (ret != 3) {
+			dprintf("Can't parse lscpu line: %s\n", line);
+			continue;
+		}
+
+		if (!(sockets[socket] & (1<<core))) {
+			physical++;
+			sockets[socket] |= (1<<core);
+		}
+	}
+
+	if (logical == 0  || physical  == 0)
+		ret = -EINVAL;
+	else {
+		*nr_phys = physical;
+		*nr_log = logical;
+	}
+
+	free(line);
+	pclose(fp);
+
+	return ret;
+}
+
 void get_num_cpus(unsigned int *nr_phys, unsigned int *nr_log)
 {
 	int ht = 0;
 	int ret = get_core_count(nr_phys, nr_log);
 
-	if (ret < 0)
-		*nr_phys = *nr_log = sysconf(_SC_NPROCESSORS_ONLN);
-	else
+	if (ret < 0) {
+		ret = get_core_count_fallback(nr_phys, nr_log);
+		if (ret < 0)
+			*nr_phys = *nr_log = sysconf(_SC_NPROCESSORS_ONLN);
+	} else
 		ht = *nr_log > *nr_phys;
 
 	dprintf("Detected %u logical and %u physical cpus (ht %s).\n",
