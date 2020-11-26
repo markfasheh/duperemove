@@ -807,7 +807,7 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 	ctxt->block_hashes = block_hashes;
         loff = fieloff = fielen = 0;
 	fieflags = 0;
-	while (loff < file->size) {
+	while (loff < file->size && !(fieflags & FIEMAP_EXTENT_LAST)) {
 		if (fc && loff >= (fieloff + fielen)) {
 			ret = fiemap_helper(fc, file, &poff, &fieloff, &fielen,
 					    &fieflags);
@@ -818,7 +818,6 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 				continue;
 			}
 			loff = fieloff;
-			continue;
 		}
 
 //		printf("loff %"PRIu64"\n", loff);
