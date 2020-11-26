@@ -595,6 +595,7 @@ static void print_header(void)
 {
 	vprintf("Using %uK blocks\n", blocksize / 1024);
 	vprintf("Using hash: %s\n", csum_mod->name);
+	vprintf("Using %s hashing\n", v2_hashfile ? "block-based" : "extent-based");
 #ifdef	DEBUG_BUILD
 	printf("Debug build, performance may be impacted.\n");
 #endif
