@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
+#include <sys/param.h>
 #include <limits.h>
 #include <fcntl.h>
 #include <assert.h>
@@ -793,10 +794,11 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 {
 	int ret;
 	uint64_t loff, poff, fieloff, bytes_read;
-	unsigned int fieflags, fielen;
+	unsigned int fieflags, fielen, read_size = blocksize;
 	struct filerec *file = ctxt->file;
 	struct block_csum *block_hashes;
 	uint64_t size = file->size;
+
 
 	block_hashes = malloc(sizeof(struct block_csum));
 	if (block_hashes == NULL)
@@ -827,7 +829,8 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 		}
 
 //		printf("loff %"PRIu64"\n", loff);
-		ret = csum_extent(ctxt, loff, blocksize, fieflags, &bytes_read);
+		read_size = MAX(fielen, blocksize);
+		ret = csum_extent(ctxt, loff, read_size, fieflags, &bytes_read);
 		if (ret == 0) /* EOF */
 			break;
 
@@ -843,7 +846,7 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			 */
 			return -1;
 		}
-		loff += blocksize;
+		loff += bytes_read;
 		if (bytes_read < blocksize) {
 			/* Partial read, don't get any more blocks */
 			break;
