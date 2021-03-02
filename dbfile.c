@@ -8,6 +8,7 @@
 #include <inttypes.h>
 #include <stddef.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <sys/syscall.h>
 
@@ -224,6 +225,15 @@ reopen:
 		dbfile_config_defaults(cfg);
 		cfg->major = requested_version;
 		cfg->minor = requested_version == DB_FILE_MAJOR ? DB_FILE_MINOR : 0;
+		if (!inmem) {
+			ret = chmod(filename, S_IRUSR|S_IWUSR);
+			if (ret) {
+				perror("setting db file permissions");
+				sqlite3_close(db);
+				return ret;
+			}
+
+		}
 	} else {
 		/* Get only version numbers initially */
 		ret = __dbfile_get_config(db, NULL, NULL, NULL, NULL, NULL,
