@@ -727,6 +727,14 @@ int main(int argc, char **argv)
 		return (version_only || help_option) ? 0 : EINVAL;
 	}
 
+	/* Allow larger than unusal amount of open files. On linux
+	 * this should bw increase form 1K to 512K open files
+	 * simultaneously.
+	 *
+	 * On multicore SSD machines it's not hard to get to 1K open
+	 * files.
+	 */
+	increase_limits();
 	/*
 	 * Don't run detection if the user has supplied our cpu counts
 	 * already.
