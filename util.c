@@ -27,6 +27,7 @@
 #ifdef __GLIBC__
 #include <execinfo.h>
 #endif
+#include <sys/resource.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <regex.h>
@@ -308,4 +309,26 @@ void get_num_cpus(unsigned int *nr_phys, unsigned int *nr_log)
 	dprintf("Detected %u logical and %u physical cpus (ht %s).\n",
 		*nr_log, *nr_phys, ht ? "is on" :
 		ret < 0 ? "detection broken" : "is off");
+}
+
+int increase_limits(void) {
+	struct rlimit cur_r;
+	struct rlimit new_r;
+	int ret;
+
+	ret = getrlimit(RLIMIT_NOFILE, &cur_r);
+	if (ret < 0)
+		return -errno;
+
+	new_r.rlim_cur = cur_r.rlim_max;
+	new_r.rlim_max = cur_r.rlim_max;
+	ret = setrlimit(RLIMIT_NOFILE, &new_r);
+
+	if (ret < 0)
+		return -errno;
+
+	vprintf("Increased open file limit from %llu to %llu.\n",
+		(unsigned long long)cur_r.rlim_cur,
+		(unsigned long long)new_r.rlim_cur);
+	return 0;
 }

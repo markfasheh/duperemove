@@ -53,4 +53,7 @@ int num_digits(unsigned long long num);
 
 void get_num_cpus(unsigned int *nr_phys, unsigned int *nr_log);
 
+/* Bump up maximum open file limit. */
+int increase_limits(void);
+
 #endif	/* __UTIL_H__ */
