@@ -277,8 +277,6 @@ static int parse_dedupe_opts(const char *opts)
 
 		if (strcmp(token, "same") == 0) {
 			dedupe_same_file = !invert;
-		} else if (strcmp(token, "block") == 0) {
-			; /* This option ignored as of v0.12 */
 		} else if (strcmp(token, "fiemap") == 0) {
 			fiemap_during_dedupe = !invert;
 		} else if (strcmp(token, "partial") == 0) {
@@ -292,8 +290,7 @@ static int parse_dedupe_opts(const char *opts)
 	if (print_usage) {
 		fprintf(stderr, "Bad dedupe options specified. Valid dedupe "
 			"options are:\n"
-			"\t[no]same\n"
-			"\t[no]block\n");
+			"\t[no]same\n");
 		ret = EINVAL;
 	}
 

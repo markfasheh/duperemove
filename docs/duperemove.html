@@ -305,22 +305,6 @@ fiemap during the file scan stage, you will also want to use the
 <b>--lookup-extents=no</b> option.
 </p>
 
-<p class="tp1"><b>[no]block</b>
-</p>
-
-<p class="tp2 j">Defaults to <b>on</b>. Duperemove submits duplicate blocks directly to
-the dedupe engine.
-<br />
-<br />
-Duperemove can optionally optimize the duplicate block lists into
-larger extents prior to dedupe submission. The search algorithm used
-for this however has a very high memory and cpu overhead, but may
-reduce the number of extent references created during dedupe. If you'd
-like to try this, run with 'noblock'.
-<br />
-<br />
-</p>
-
 <p class="tp1"><b>--help</b>
 </p>
 
