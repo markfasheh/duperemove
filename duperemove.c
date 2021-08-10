@@ -290,7 +290,9 @@ static int parse_dedupe_opts(const char *opts)
 	if (print_usage) {
 		fprintf(stderr, "Bad dedupe options specified. Valid dedupe "
 			"options are:\n"
-			"\t[no]same\n");
+			"\t[no]same\n"
+			"\t[no]fiemap\n"
+			"\t[no]partial\n");
 		ret = EINVAL;
 	}
 
