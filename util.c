@@ -124,7 +124,7 @@ int pretty_size_snprintf(uint64_t size, char *str, size_t str_bytes)
 		}
 		fraction = (float)last_size / 1024;
 	}
-	return snprintf(str, str_bytes, "%.1f%s", fraction,
+	return snprintf(str, str_bytes, "%.1f%sB", fraction,
 			size_strs[num_divs]);
 }
 
