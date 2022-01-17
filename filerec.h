@@ -145,7 +145,7 @@ void free_all_filerec_compared(void);
 struct fiemap_ctxt;
 struct fiemap_ctxt *alloc_fiemap_ctxt(void);
 int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, struct filerec *file,
-			    uint64_t *poff, uint64_t *loff, uint32_t *len,
+			    uint64_t *poff, uint64_t *loff, uint64_t *len,
 			    unsigned int *flags);
 int filerec_count_shared(struct filerec *file, uint64_t loff, uint32_t len,
 			 uint64_t *shared);
