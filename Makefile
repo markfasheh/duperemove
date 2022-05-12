@@ -6,6 +6,7 @@ CFLAGS ?= -Wall -ggdb
 PKG_CONFIG ?= pkg-config
 
 MANPAGES=duperemove.8 btrfs-extent-same.8 hashstats.8 show-shared-extents.8
+ZSH_COMPLETION=completion/zsh/_duperemove
 
 HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
 	ioctl.h filerec.h btrfs-util.h debug.h util.h \
@@ -108,7 +109,7 @@ tarball: clean $(DIST_SOURCES)
 btrfs-extent-same: btrfs-extent-same.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o btrfs-extent-same btrfs-extent-same.c
 
-install: $(install_progs) $(MANPAGES)
+install: $(install_progs) $(MANPAGES) $(ZSH_COMPLETION)
 	mkdir -p -m 0755 $(DESTDIR)$(BINDIR)
 	for prog in $(install_progs); do \
 		install -m 0755 $$prog $(DESTDIR)$(BINDIR); \
@@ -117,6 +118,10 @@ install: $(install_progs) $(MANPAGES)
 	for man in $(MANPAGES); do \
 		install -m 0644 $$man $(DESTDIR)$(MANDIR)/man8; \
 	done
+	mkdir -p -m 0755 $(DESTDIR)$(SHAREDIR)/zsh/site-functions
+	for completion in $(ZSH_COMPLETION); do \
+		install -m 0644 $$completion $(DESTDIR)$(SHAREDIR)/zsh/site-functions; \
+	done
 
 uninstall:
 	for prog in $(install_progs); do \
@@ -124,6 +129,9 @@ uninstall:
 	done
 	for man in $(MANPAGES); do \
 		rm -f $(DESTDIR)$(MANDIR)/man8/$$man; \
+	done
+	for completion in $(ZSH_COMPLETION); do \
+		rm -f $(DESTDIR)$(SHAREDIR)/zsh/site-functions/$${completion##*/}; \
 	done
 
 csum-test: $(csum_test_obj) csum-test.c

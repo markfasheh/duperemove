@@ -1,0 +1,44 @@
+#compdef duperemove
+
+_duperemove_options()
+{
+	declare -a dedupe_options
+	dedupe_options=(
+		'(only_whole_files)noonly_whole_files[work on extents/blocks (default)]'
+		'(noonly_whole_files)only_whole_files[only work on whole files]'
+		'(partial)nopartial[compare only whole extents]'
+		'(nopartial)partial[compare portions of extents (default)]'
+		'(same)nosame[do not allow dedupe of extents within the same file (default)]'
+		'(nosame)same[allow dedupe of extents within the same file (default)]'
+	)
+	_values -s , option $dedupe_options
+}
+
+_duperemove() {
+	declare -a args
+	args=(
+		'--hashfile=[store hashes in this file]:file:_files'
+		'-d[de-dupe the results (must run on a supported fs)]'
+		'(-B --batchsize)'{-B,--batchsize}'[Run deduplication in batches]:number of files: '
+		'-h[print numbers in human-readable format]'
+		'-r[enable recursive dir traversal]'
+		'-v[print extra information (verbose)]'
+		'(-)--help[print help text]'
+		'(-)--version[display version information and exit]'
+		'-L[print all files in hashfile and exit]'
+		'-R[remove files from db and exit]:*:file:_files'
+		'--fdupes[run in fdupes mode]'
+		'--skip-zeros[read data blocks and skip any zeroed blocks]'
+		'-b[use the specified block size]:block size: '
+		'--io-threads=[use N threads for IO]:number of thread: '
+		'--cpu-threads=[use N threads for CPU bound tasks]:number of thread: '
+		'--dedupe-options=[comma separated list of options]:options:_duperemove_options'
+		'--read-hashes=[testing option: read hashes from hashfile (use --hashfile instead)]:file:_files'
+		'--write-hashes=[testing option: write hashes to hashfile (use --hashfile instead)]:file:_files'
+		'--debug[print debug messages]'
+		'--exclude=[Exclude files]:file:_files'
+		'*:file:_files'
+	)
+
+	_arguments $args
+}
