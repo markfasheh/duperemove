@@ -175,9 +175,33 @@ static int dbfile_set_modes(sqlite3 *db)
 {
 	int ret;
 
-	ret = sqlite3_exec(db, "PRAGMA synchronous = OFF", NULL, NULL, NULL);
+//	Setting synchronous off is unsafe
+//	It is much safer to just expand cache and the result is the same after warmup
+//	ret = sqlite3_exec(db, "PRAGMA synchronous = OFF", NULL, NULL, NULL);
+	ret = sqlite3_exec(db, "PRAGMA synchronous = 1", NULL, NULL, NULL);
 	if (ret) {
 		perror_sqlite(ret, "configuring database (sync pragma)");
+		return ret;
+	}
+
+//	Grow cache size see issue #283
+	ret = sqlite3_exec(db, "PRAGMA cach_size = -20000", NULL, NULL, NULL);
+	if (ret) {
+		perror_sqlite(ret, "configuring database (cache_size)");
+		return ret;
+	}
+
+//	A WAL journal is just better
+	ret = sqlite3_exec(db, "PRAGMA journal_mode = wal", NULL, NULL, NULL);
+	if (ret) {
+		perror_sqlite(ret, "configuring database (journal_mode)");
+		return ret;
+	}
+
+//	Be less agressive about checkpointing the WAL than usual to compensate for setting synchronous=1
+	ret = sqlite3_exec(db, "PRAGMA wal_autocheckpoint = 10000", NULL, NULL, NULL);
+	if (ret) {
+		perror_sqlite(ret, "configuring database (wal_autocheckpoint)");
 		return ret;
 	}
 
