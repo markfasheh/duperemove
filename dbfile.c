@@ -185,7 +185,7 @@ static int dbfile_set_modes(sqlite3 *db)
 	}
 
 //	Grow cache size see issue #283
-	ret = sqlite3_exec(db, "PRAGMA cach_size = -20000", NULL, NULL, NULL);
+	ret = sqlite3_exec(db, "PRAGMA cache_size = -20000", NULL, NULL, NULL);
 	if (ret) {
 		perror_sqlite(ret, "configuring database (cache_size)");
 		return ret;
