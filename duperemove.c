@@ -869,6 +869,7 @@ int main(int argc, char **argv)
 		ret = dbfile_sync_config(&dbfile_cfg);
 		if (ret)
 			goto out;
+		dbfile_bump_dedupe_seq(dedupe_seq);
 	} else {
 		print_dupes_table(&res);
 	}

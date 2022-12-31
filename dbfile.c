@@ -1525,7 +1525,11 @@ int dbfile_load_extent_hashes(struct results_tree *res)
 	 */
 #define GET_DUPLICATE_EXTENTS					      \
 	"SELECT extents.digest, ino, subvol, loff, extents.len, poff, flags FROM extents " \
-	"JOIN (SELECT digest,len FROM extents GROUP BY digest,len HAVING count(*) > 1) " \
+	"JOIN (SELECT digest,len FROM extents where digest in " \
+	"(select distinct digest from extents where ino in " \
+	"(select ino from files where dedupe_seq > " \
+	"(select keyval from config where keyname = 'dedupe_sequence'))) " \
+	"GROUP BY digest,len HAVING count(*) > 1) " \
 	"AS duplicate_extents on extents.digest = duplicate_extents.digest AND " \
 	"extents.len = duplicate_extents.len;"
 
@@ -1775,6 +1779,40 @@ int dbfile_remove_file(sqlite3 *db, struct dbfile_config *cfg,
 out:
 	free_orphan_list(&orphans);
 
+	if (stmt)
+		sqlite3_finalize(stmt);
+
+	return ret;
+}
+
+int dbfile_bump_dedupe_seq(unsigned int dedupe_seq)
+{
+	int ret;
+	sqlite3_stmt *stmt = NULL;
+	sqlite3 *db;
+
+	db = dbfile_get_handle();
+	if (!db)
+		return ENOENT;
+
+#define	BUMP_DEDUPE_SEQ	"update files set dedupe_seq = ?1;"
+	ret = sqlite3_prepare_v2(db, BUMP_DEDUPE_SEQ, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing bump_dedupe_seq statement");
+		goto out;
+	}
+
+	ret = sqlite3_bind_int(stmt, 1, dedupe_seq);
+	if (ret)
+		goto out;
+
+	ret = sqlite3_step(stmt);
+	if (ret == SQLITE_DONE) {
+		ret = ENOENT;
+		goto out;
+	}
+
+out:
 	if (stmt)
 		sqlite3_finalize(stmt);
 
