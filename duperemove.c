@@ -853,7 +853,7 @@ int main(int argc, char **argv)
 #endif
 
 	if (run_dedupe) {
-		dedupe_results(&res, &dups_tree);
+		dedupe_results(&res);
 
 		/*
 		 * Bump dedupe_seq, this effectively marks the files

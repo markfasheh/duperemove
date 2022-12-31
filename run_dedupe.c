@@ -574,7 +574,7 @@ static int push_extents(struct results_tree *res)
 	return 0;
 }
 
-void dedupe_results(struct results_tree *res, struct hash_tree *hashes)
+void dedupe_results(struct results_tree *res)
 {
 	int ret;
 	struct dedupe_counts counts = { 0ULL, };

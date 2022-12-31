@@ -7,7 +7,7 @@ extern int target_rw;
 extern unsigned int io_threads;
 
 void print_dupes_table(struct results_tree *res);
-void dedupe_results(struct results_tree *res, struct hash_tree *hashes);
+void dedupe_results(struct results_tree *res);
 
 int fdupes_dedupe(void);
 
