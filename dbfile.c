@@ -181,6 +181,12 @@ static int dbfile_set_modes(sqlite3 *db)
 		return ret;
 	}
 
+	ret = sqlite3_exec(db, "PRAGMA cache_size = -256000000", NULL, NULL, NULL);
+	if (ret) {
+		perror_sqlite(ret, "configuring database (cache size)");
+		return ret;
+	}
+
 	return ret;
 }
 #define MEMDB_FILENAME	"file::memory:?cache=shared"
