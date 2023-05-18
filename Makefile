@@ -70,7 +70,7 @@ endif
 DESTDIR ?= /
 PREFIX ?= /usr/local
 SHAREDIR = $(PREFIX)/share
-SBINDIR = $(PREFIX)/sbin
+BINDIR = $(PREFIX)/bin
 MANDIR = $(SHAREDIR)/man
 
 %.c.i: FORCE
@@ -100,9 +100,9 @@ btrfs-extent-same: btrfs-extent-same.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o btrfs-extent-same btrfs-extent-same.c
 
 install: $(install_progs) $(MANPAGES)
-	mkdir -p -m 0755 $(DESTDIR)$(SBINDIR)
+	mkdir -p -m 0755 $(DESTDIR)$(BINDIR)
 	for prog in $(install_progs); do \
-		install -m 0755 $$prog $(DESTDIR)$(SBINDIR); \
+		install -m 0755 $$prog $(DESTDIR)$(BINDIR); \
 	done
 	mkdir -p -m 0755 $(DESTDIR)$(MANDIR)/man8
 	for man in $(MANPAGES); do \
@@ -111,7 +111,7 @@ install: $(install_progs) $(MANPAGES)
 
 uninstall:
 	for prog in $(install_progs); do \
-		rm -f $(DESTDIR)$(SBINDIR)/$$prog; \
+		rm -f $(DESTDIR)$(BINDIR)/$$prog; \
 	done
 	for man in $(MANPAGES); do \
 		rm -f $(DESTDIR)$(MANDIR)/man8/$$man; \
