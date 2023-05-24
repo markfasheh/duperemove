@@ -1456,7 +1456,11 @@ int dbfile_load_block_hashes(struct hash_tree *hash_tree)
 
 #define GET_DUPLICATE_HASHES \
 	"SELECT hashes.digest, ino, subvol, loff, flags FROM hashes " \
-	"JOIN (SELECT digest FROM hashes GROUP BY digest " \
+	"JOIN (SELECT DISTINCT digest FROM hashes WHERE digest IN " \
+	"(SELECT DISTINCT digest FROM hashes WHERE ino IN " \
+	"(SELECT DISTINCT ino FROM files WHERE dedupe_seq > " \
+	"(SELECT keyval FROM config WHERE keyname = 'dedupe_sequence')))" \
+	"GROUP BY digest " \
 				"HAVING count(*) > 1) AS duplicate_hashes " \
 	"on hashes.digest = duplicate_hashes.digest;"
 
