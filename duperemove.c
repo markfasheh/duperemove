@@ -835,12 +835,12 @@ int main(int argc, char **argv)
 		if (ret)
 			goto out;
 
-		ret = dbfile_load_block_hashes(&dups_tree);
-		if (ret)
-			goto out;
-
 		printf("Found %llu identical extents.\n", res.num_extents);
 		if (partial_extent_search) {
+			ret = dbfile_load_block_hashes(&dups_tree);
+			if (ret)
+				goto out;
+
 			ret = find_additional_dedupe(&dups_tree, &res);
 			if (ret)
 				goto out;
