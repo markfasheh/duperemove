@@ -109,38 +109,32 @@ out:
 	return ret;
 }
 
-int create_indexes_old(sqlite3 *db)
-{
-	int ret;
-
-#define	CREATE_HASHES_DIGEST_INDEX_OLD				\
-"create index if not exists idx_digest on hashes(digest);"
-	ret = sqlite3_exec(db, CREATE_HASHES_DIGEST_INDEX_OLD, NULL, NULL, NULL);
-	if (ret)
-		goto out;
-
-#define	CREATE_HASHES_INOSUB_INDEX_OLD				\
-"create index if not exists idx_hashes_inosub on hashes(ino, subvol);"
-	ret = sqlite3_exec(db, CREATE_HASHES_INOSUB_INDEX_OLD, NULL, NULL, NULL);
-	if (ret)
-		goto out;
-
-#define	CREATE_FILES_INOSUB_INDEX_OLD				\
-"create index if not exists idx_inosub on files(ino, subvol);"
-	ret = sqlite3_exec(db, CREATE_FILES_INOSUB_INDEX_OLD, NULL, NULL, NULL);
-out:
-	return ret;
-}
-
 int create_indexes(sqlite3 *db, struct dbfile_config *cfg)
 {
 	int ret;
 
+	/* The following indexes are version independent */
+#define	CREATE_HASHES_DIGEST_INDEX				\
+"create index if not exists idx_digest on hashes(digest);"
+	ret = sqlite3_exec(db, CREATE_HASHES_DIGEST_INDEX, NULL, NULL, NULL);
+	if (ret)
+		goto out;
+
+#define	CREATE_HASHES_INOSUB_INDEX				\
+"create index if not exists idx_hashes_inosub on hashes(ino, subvol);"
+	ret = sqlite3_exec(db, CREATE_HASHES_INOSUB_INDEX, NULL, NULL, NULL);
+	if (ret)
+		goto out;
+
+	/* Only for hashfile v2 */
 	if (cfg->major == BLOCK_DEDUPE_DBFILE_VER) {
-		ret = create_indexes_old(db);
+#define	CREATE_FILES_INOSUB_INDEX_OLD				\
+"create index if not exists idx_inosub on files(ino, subvol);"
+		ret = sqlite3_exec(db, CREATE_FILES_INOSUB_INDEX_OLD, NULL, NULL, NULL);
 		goto out;
 	}
 
+	/* Only for hashfile v3 */
 #define	CREATE_EXTENTS_DIGEST_INDEX					\
 "create index if not exists idx_extent_digest on extents(digest);"
 	ret = sqlite3_exec(db, CREATE_EXTENTS_DIGEST_INDEX, NULL, NULL, NULL);
@@ -158,12 +152,6 @@ int create_indexes(sqlite3 *db, struct dbfile_config *cfg)
 	ret = sqlite3_exec(db, CREATE_FILES_INOSUB_INDEX, NULL, NULL, NULL);
 	if (ret)
 		goto out;
-
-	ret = sqlite3_exec(db, CREATE_HASHES_DIGEST_INDEX_OLD, NULL, NULL, NULL);
-	if (ret)
-		goto out;
-
-	ret = sqlite3_exec(db, CREATE_HASHES_INOSUB_INDEX_OLD, NULL, NULL, NULL);
 
 out:
 	if (ret)
