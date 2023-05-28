@@ -70,8 +70,8 @@ static unsigned int leading_spaces;
 
 struct thread_params {
 	GMutex mutex;
-	int num_files;           /* Total number of files we hashed */
-	int num_hashes;          /* Total number of hashes we hashed */
+	unsigned long long num_files;  /* Total number of files we hashed */
+	unsigned long long num_hashes; /* Total number of hashes we hashed */
 	struct dbfile_config	*dbfile_cfg; /* global dbfile config */
 };
 
@@ -1133,8 +1133,8 @@ int populate_tree(struct dbfile_config *cfg)
 
 		run_pool(pool);
 
-		printf("Total files:  %d\n", params.num_files);
-		qprintf("Total extent hashes: %d\n", params.num_hashes);
+		printf("Total files:  %llu\n", params.num_files);
+		qprintf("Total extent hashes: %llu\n", params.num_hashes);
 	}
 out:
 	g_mutex_clear(&params.mutex);
