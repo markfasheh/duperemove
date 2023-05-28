@@ -685,15 +685,15 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 		goto out;
 	}
 
+	ret = create_indexes(dbfile_get_handle(), &dbfile_cfg);
+	if (ret)
+		goto out;
+
 	ret = populate_tree(&dbfile_cfg);
 	if (ret) {
 		fprintf(stderr,	"Error while populating extent tree!\n");
 		goto out;
 	}
-
-	ret = create_indexes(dbfile_get_handle(), &dbfile_cfg);
-	if (ret)
-		goto out;
 
 	/*
 	 * File scan from above can cause quite a bit of output, flush
