@@ -66,7 +66,7 @@ static unsigned long long files_to_scan;
 static GMutex io_mutex; /* locks db writes */
 static unsigned int leading_spaces;
 
-#define READ_BUF_LEN (8*1024*1024) // 16m
+#define READ_BUF_LEN (8*1024*1024) // 8MB
 
 struct thread_params {
 	GMutex mutex;
