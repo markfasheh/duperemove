@@ -234,11 +234,6 @@ static int __add_file(const char *name, struct stat *st,
 		goto out;
 	}
 
-	if (st->st_size < blocksize) {
-		vprintf("Skipping small file %s\n", name);
-		goto out;
-	}
-
 	ret = access(name, R_OK);
 	if (ret) {
 		fprintf(stderr, "Error %d: %s while accessing file %s. "
