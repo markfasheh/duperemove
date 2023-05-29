@@ -79,6 +79,8 @@ extern int v2_hashfile;
 extern struct dbfile_config dbfile_cfg;
 LIST_HEAD(exclude_list);
 
+extern bool do_block_hash;
+
 static void set_filerec_scan_flags(struct filerec *file)
 {
 	if (!(file->flags & FILEREC_NEEDS_SCAN)) {
@@ -676,13 +678,15 @@ static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
 		if (!(skip_zeroes && is_block_zeroed(buf, cmp_len))) {
 			checksum_block(buf, cmp_len, data->block_digest);
 
-			ret = add_block_hash(&data->block_hashes,
-					     &data->nr_block_hashes,
-					     extoff + start,
-					     data->block_digest,
-					     flags);
-			if (ret)
-				break;
+			if (do_block_hash) {
+				ret = add_block_hash(&data->block_hashes,
+						     &data->nr_block_hashes,
+						     extoff + start,
+						     data->block_digest,
+						     flags);
+				if (ret)
+					break;
+			}
 
 			if (!v2_hashfile &&
 			    dbfile_cfg.extent_hash_src == EXTENT_HASH_SRC_DIGEST)
@@ -1049,12 +1053,14 @@ static void csum_whole_file(struct filerec *file,
 			goto err;
 		}
 	} else {
-		ret = dbfile_store_block_hashes(db, params->dbfile_cfg, file,
-						csum_ctxt.nr_block_hashes,
-						csum_ctxt.block_hashes);
-		if (ret) {
-			g_mutex_unlock(&io_mutex);
-			goto err;
+		if (do_block_hash) {
+			ret = dbfile_store_block_hashes(db, params->dbfile_cfg, file,
+							csum_ctxt.nr_block_hashes,
+							csum_ctxt.block_hashes);
+			if (ret) {
+				g_mutex_unlock(&io_mutex);
+				goto err;
+			}
 		}
 
 		ret = dbfile_store_extent_hashes(db, params->dbfile_cfg, file,

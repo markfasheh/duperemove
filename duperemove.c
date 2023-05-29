@@ -87,6 +87,7 @@ int do_lookup_extents = 1;
 int fiemap_during_dedupe = 1;
 
 int stdout_is_tty = 0;
+bool do_block_hash = false;
 
 static char *user_hash = DEFAULT_HASH_STR;
 
@@ -522,6 +523,9 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 
 	if (!do_lookup_extents || !fiemap_during_dedupe)
 		force_v2_hashfile = true;
+
+	if (force_v2_hashfile || partial_extent_search)
+		do_block_hash = true;
 
 	numfiles = argc - optind;
 
