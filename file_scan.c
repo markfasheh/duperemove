@@ -555,10 +555,13 @@ static GThreadPool *setup_pool(void *arg, void *function)
 	return pool;
 }
 
-static void run_pool(GThreadPool *pool)
+static void run_pool(GThreadPool *pool, struct filerec *file,
+		unsigned int batch_size)
 {
 	GError *err = NULL;
-	struct filerec *file, *tmp;
+	struct filerec *tmp;
+
+	int counter = 0;
 
 	qprintf("Using %u threads for file hashing phase\n", io_threads);
 
@@ -572,10 +575,19 @@ static void run_pool(GThreadPool *pool)
 				g_error_free(err);
 				err = NULL;
 			}
+
+			/* If batch_size is 0 then batching is disabled */
+			if ( batch_size != 0 ) {
+				counter += 1;
+				if (counter > batch_size) {
+					break;
+				}
+			}
 		}
 	}
 
 	g_thread_pool_free(pool, FALSE, TRUE);
+	return file;
 }
 
 static inline int is_block_zeroed(void *buf, ssize_t buf_size)
@@ -1112,11 +1124,14 @@ err_noclose:
 	return;
 }
 
-int populate_tree(struct dbfile_config *cfg)
+int populate_tree(struct dbfile_config *cfg, unsigned int batch_size,
+		void (*callback)(void))
 {
 	GThreadPool *pool;
 	struct thread_params params;
 	int ret = 0;
+
+	struct filerec *file = NULL;
 
 	g_mutex_init(&params.mutex);
 	params.dbfile_cfg = cfg;
@@ -1125,16 +1140,19 @@ int populate_tree(struct dbfile_config *cfg)
 	leading_spaces = num_digits(files_to_scan);
 
 	if (files_to_scan) {
-		pool = setup_pool(&params, csum_whole_file);
-		if (!pool) {
-			ret = ENOMEM;
-			goto out;
+		while (params.num_files != files_to_scan) {
+			pool = setup_pool(&params, csum_whole_file);
+			if (!pool) {
+				ret = ENOMEM;
+				goto out;
+			}
+
+			run_pool(pool, file, batch_size);
+			callback();
 		}
 
-		run_pool(pool);
-
-		printf("Total files:  %llu\n", params.num_files);
-		qprintf("Total extent hashes: %llu\n", params.num_hashes);
+		printf("Total files scanned:  %llu\n", params.num_files);
+		qprintf("Total extent hashes scanned: %llu\n", params.num_hashes);
 	}
 out:
 	g_mutex_clear(&params.mutex);

@@ -58,6 +58,8 @@ int v2_hashfile = 0;
 int dedupe_same_file = 1;
 int skip_zeroes = 0;
 
+unsigned int batch_size = 0;
+
 int target_rw = 1;
 static int version_only = 0;
 static int help_option = 0;
@@ -316,6 +318,7 @@ enum {
 	DEDUPE_OPTS_OPTION,
 	QUIET_OPTION,
 	EXCLUDE_OPTION,
+	BATCH_SIZE,
 };
 
 static int add_files_from_stdin(int fdupes)
@@ -401,13 +404,14 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		{ "dedupe-options=", 1, NULL, DEDUPE_OPTS_OPTION },
 		{ "quiet", 0, NULL, QUIET_OPTION },
 		{ "exclude", 1, NULL, EXCLUDE_OPTION },
+		{ "batchsize", 1, NULL, BATCH_SIZE },
 		{ NULL, 0, NULL, 0}
 	};
 
 	if (argc < 2)
 		return 1;
 
-	while ((c = getopt_long(argc, argv, "Ab:vdDrh?LR:q", long_ops, NULL))
+	while ((c = getopt_long(argc, argv, "Ab:vdDrh?LR:qB:", long_ops, NULL))
 	       != -1) {
 		switch (c) {
 		case 'A':
@@ -502,6 +506,10 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			break;
 		case EXCLUDE_OPTION:
 			add_exclude_pattern(optarg);
+			break;
+		case BATCH_SIZE:
+		case 'B':
+			batch_size = parse_size(optarg);
 			break;
 		case HELP_OPTION:
 			help_option = 1;
@@ -625,6 +633,74 @@ static int update_config_from_dbfile(void)
 	return 0;
 }
 
+void process_duplicates() {
+	int ret;
+	struct results_tree res;
+	struct hash_tree dups_tree;
+
+	init_results_tree(&res);
+	init_hash_tree(&dups_tree);
+
+	qprintf("Loading only duplicated hashes from hashfile.\n");
+
+	if (v2_hashfile) {
+		ret = dbfile_load_block_hashes(&dups_tree);
+		if (ret)
+			goto out;
+
+		ret = find_all_dupes(&dups_tree, &res);
+		if (ret) {
+			/* Only error for this should be enomem */
+			fprintf(stderr,
+				"Error %d: %s while finding duplicate extents.\n",
+				ret, strerror(ret));
+			goto out;
+		}
+	} else {
+		ret = dbfile_load_extent_hashes(&res);
+		if (ret)
+			goto out;
+
+		printf("Found %llu identical extents.\n", res.num_extents);
+		if (partial_extent_search) {
+			ret = dbfile_load_block_hashes(&dups_tree);
+			if (ret)
+				goto out;
+
+			ret = find_additional_dedupe(&dups_tree, &res);
+			if (ret)
+				goto out;
+		}
+	}
+
+	if (run_dedupe) {
+		dedupe_results(&res);
+
+		/*
+		 * Bump dedupe_seq, this effectively marks the files
+		 * in our hashfile as having been through dedupe.
+		 */
+		dedupe_seq++;
+
+		/* Sync to get new dedupe_seq written. */
+		dbfile_cfg.dedupe_seq = dedupe_seq;
+		dbfile_cfg.blocksize = blocksize;
+		dbfile_cfg.onefs_dev = fs_onefs_dev();
+		dbfile_cfg.onefs_fsid = fs_onefs_id();
+		ret = dbfile_sync_config(&dbfile_cfg);
+		if (ret)
+			goto out;
+	} else {
+		print_dupes_table(&res);
+	}
+
+out:
+	free_results_tree(&res);
+	free_hash_tree(&dups_tree);
+}
+
+
+
 static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 {
 	int ret;
@@ -689,7 +765,7 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 	if (ret)
 		goto out;
 
-	ret = populate_tree(&dbfile_cfg);
+	ret = populate_tree(&dbfile_cfg, batch_size, &process_duplicates);
 	if (ret) {
 		fprintf(stderr,	"Error while populating extent tree!\n");
 		goto out;
@@ -712,12 +788,8 @@ out:
 int main(int argc, char **argv)
 {
 	int ret, filelist_idx = 0;
-	struct results_tree res;
-	struct hash_tree dups_tree;
 
 	init_filerec();
-	init_results_tree(&res);
-	init_hash_tree(&dups_tree);
 
 	ret = parse_options(argc, argv, &filelist_idx);
 	if (ret || version_only) {
@@ -809,72 +881,19 @@ int main(int argc, char **argv)
 			goto out;
 
 		print_header();
+
+		process_duplicates();
 		break;
 	default:
 		abort_lineno();
 		break;
 	}
 
-	qprintf("Loading only duplicated hashes from hashfile.\n");
-
-	if (v2_hashfile) {
-		ret = dbfile_load_block_hashes(&dups_tree);
-		if (ret)
-			goto out;
-
-		ret = find_all_dupes(&dups_tree, &res);
-		if (ret) {
-			/* Only error for this should be enomem */
-			fprintf(stderr,
-				"Error %d: %s while finding duplicate extents.\n",
-				ret, strerror(ret));
-			goto out;
-		}
-	} else {
-		ret = dbfile_load_extent_hashes(&res);
-		if (ret)
-			goto out;
-
-		printf("Found %llu identical extents.\n", res.num_extents);
-		if (partial_extent_search) {
-			ret = dbfile_load_block_hashes(&dups_tree);
-			if (ret)
-				goto out;
-
-			ret = find_additional_dedupe(&dups_tree, &res);
-			if (ret)
-				goto out;
-		}
-	}
-
 #ifdef	PRINT_STATS
 	run_filerec_stats();
 #endif
 
-	if (run_dedupe) {
-		dedupe_results(&res);
-
-		/*
-		 * Bump dedupe_seq, this effectively marks the files
-		 * in our hashfile as having been through dedupe.
-		 */
-		dedupe_seq++;
-
-		/* Sync to get new dedupe_seq written. */
-		dbfile_cfg.dedupe_seq = dedupe_seq;
-		dbfile_cfg.blocksize = blocksize;
-		dbfile_cfg.onefs_dev = fs_onefs_dev();
-		dbfile_cfg.onefs_fsid = fs_onefs_id();
-		ret = dbfile_sync_config(&dbfile_cfg);
-		if (ret)
-			goto out;
-	} else {
-		print_dupes_table(&res);
-	}
-
 out:
-	free_results_tree(&res);
-	free_hash_tree(&dups_tree);
 	free_all_filerecs();
 	dbfile_close();
 

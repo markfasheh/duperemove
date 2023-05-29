@@ -580,6 +580,11 @@ void dedupe_results(struct results_tree *res)
 	struct dedupe_counts counts = { 0ULL, };
 	GError *err = NULL;
 
+	/*
+	 * dedupe_results() could be called multiple times, so we reset that bit
+	 * to its initial value every time
+	 */
+	curr_dedupe_pass = 0;
 	results_tree = res;
 
 	print_dupes_table(res);

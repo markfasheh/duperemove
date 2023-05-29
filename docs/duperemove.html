@@ -385,6 +385,24 @@ for the overwhelming majority of users.
 <br />
 </p>
 
+<p class="tp1"><b>-B</b>, <b>--batchsize=N</b>
+</p>
+
+<p class="tp2 j">Run the deduplication phase every <b>N</b> files newly scanned.
+This greatly reduces memory usage for large dataset, or when you are doing partial extents lookup, but reduces multithreading efficiency.
+<br />
+Because of that small overhead, its value shall be selected based on the average file size and <b>blocksize</b>.
+<br />
+<i>1000</i> is a sane value for
+extents-only lookups, while you can go as low as <i>1</i> if you are
+running <b>duperemove</b> on very large files (like virtual machines etc).
+<br />
+By default, batching is disabled.
+<br />
+<br />
+</p>
+
+
 <h1><a name="7"></a>"EXAMPLES"</h1>
 
 <h2><a name="8"></a>"Simple Usage"</h2>

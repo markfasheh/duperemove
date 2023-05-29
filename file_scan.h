@@ -34,7 +34,8 @@ dev_t fs_onefs_dev(void);
 uint64_t fs_onefs_id(void);
 
 struct dbfile_config;
-int populate_tree(struct dbfile_config *cfg);
+int populate_tree(struct dbfile_config *cfg, unsigned int batch_size,
+		void (*callback)(void));
 
 /* For dbfile.c */
 struct block_csum {
