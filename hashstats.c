@@ -31,8 +31,6 @@
 #include "util.h"
 #include "dbfile.h"
 
-#include "bswap.h"
-
 extern sqlite3 *gdb;
 
 unsigned int blocksize;
