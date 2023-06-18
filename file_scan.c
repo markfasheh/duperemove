@@ -1153,6 +1153,10 @@ int populate_tree(struct dbfile_config *cfg, unsigned int batch_size,
 
 		printf("Total files scanned:  %llu\n", params.num_files);
 		qprintf("Total extent hashes scanned: %llu\n", params.num_hashes);
+	} else {
+		// Maybe some files where scanned in a previous run but never
+		// deduped
+		callback();
 	}
 out:
 	g_mutex_clear(&params.mutex);
