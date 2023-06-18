@@ -832,8 +832,7 @@ static int dbfile_check_version(sqlite3 *db)
 	return 0;
 }
 
-static int __dbfile_store_file_info(sqlite3 *db, sqlite3_stmt *stmt,
-				    struct filerec *file)
+static int __dbfile_store_file_info(sqlite3_stmt *stmt, struct filerec *file)
 {
 	int ret;
 
@@ -892,7 +891,7 @@ int dbfile_store_file_info(sqlite3 *db, struct filerec *file)
 		return ret;
 	}
 
-	ret = __dbfile_store_file_info(db, stmt, file);
+	ret = __dbfile_store_file_info(stmt, file);
 
 	sqlite3_finalize(stmt);
 	return ret;
@@ -919,7 +918,7 @@ int dbfile_sync_files(sqlite3 *db)
 			dprintf("File \"%s\" still needs update in db\n",
 				file->filename);
 
-			ret = __dbfile_store_file_info(db, stmt, file);
+			ret = __dbfile_store_file_info(stmt, file);
 			if (ret)
 				break;
 
@@ -1576,8 +1575,7 @@ out:
 }
 
 int dbfile_load_one_file_extent(sqlite3 *db, struct filerec *file,
-				uint64_t loff, unsigned int len,
-				struct file_extent *extent)
+				uint64_t loff, struct file_extent *extent)
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
@@ -1707,7 +1705,8 @@ out:
 	return ret;
 }
 
-static int iter_cb(void *priv, int argc, char **argv, char **column)
+static int iter_cb(void *priv, int argc, char **argv,
+		char **column [[maybe_unused]])
 {
 	iter_files_func func = priv;
 

@@ -174,7 +174,8 @@ static void free_one_hash_head(struct dupe_blocks_list *dups,
 	free_file_hash_head(head);
 }
 
-static int cmp_blocks(void *priv, struct list_head *a, struct list_head *b)
+static int cmp_blocks(void *priv [[maybe_unused]], struct list_head *a,
+		struct list_head *b)
 {
 	struct file_block *fba, *fbb;
 
@@ -353,7 +354,8 @@ int remove_hashed_block(struct hash_tree *tree,
 	return ret;
 }
 
-static int cmp_by_size(void *priv, struct list_head *a, struct list_head *b)
+static int cmp_by_size(void *priv [[maybe_unused]], struct list_head *a,
+		struct list_head *b)
 {
 	struct dupe_blocks_list *dla, *dlb;
 

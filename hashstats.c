@@ -48,8 +48,13 @@ static sqlite3_stmt *files_count_stmt = NULL;
 static sqlite3_stmt *find_blocks_stmt = NULL;
 
 /* dirty hack so we don't have to add file_scan.o to hashstats */
-int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
-		uint64_t size, uint64_t mtime, unsigned int seq, int *delete)
+int add_file_db(const char *filename [[maybe_unused]],
+		uint64_t inum [[maybe_unused]],
+		uint64_t subvolid [[maybe_unused]],
+		uint64_t size [[maybe_unused]],
+		uint64_t mtime [[maybe_unused]],
+		unsigned int seq [[maybe_unused]],
+		int *delete [[maybe_unused]])
 {
 	return 0;
 }
@@ -216,7 +221,8 @@ static void print_by_size(void)
 	}
 }
 
-static int print_files_cb(void *priv, int argc, char **argv, char **column)
+static int print_files_cb(void *priv [[maybe_unused]], int argc,
+		char **argv, char **column [[maybe_unused]])
 {
 	int i;
 	for(i = 0; i < argc; i++)
@@ -236,7 +242,7 @@ static void print_filerecs(void)
 	printf("Showing %"PRIu64" files.\nInode\tSubvol ID\tBlocks Stored\tSize\tFilename\n",
 		dbfile_cfg.num_files);
 
-	ret = sqlite3_exec(gdb, LIST_FILES, print_files_cb, gdb, &errorstr);
+	ret = sqlite3_exec(gdb, LIST_FILES, print_files_cb, NULL, &errorstr);
 	if (ret) {
 		fprintf(stderr, "error %d, executing file search: %s\n", ret,
 			errorstr);

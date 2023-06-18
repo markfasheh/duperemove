@@ -190,8 +190,7 @@ static void insert_extent_list_free(struct dupe_extents *dext,
 	*e = NULL;
 }
 
-static struct dupe_extents *dupe_extents_new(struct results_tree *res,
-					     unsigned char *digest,
+static struct dupe_extents *dupe_extents_new(unsigned char *digest,
 					     uint64_t len)
 {
 	struct dupe_extents *dext;
@@ -225,7 +224,7 @@ static struct dupe_extents *find_alloc_dext(struct results_tree *res,
 	dext = find_dupe_extents(res, digest, len);
 	g_mutex_unlock(&res->tree_mutex);
 	if (!dext) {
-		new = dupe_extents_new(res, digest, len);
+		new = dupe_extents_new(digest, len);
 
 		g_mutex_lock(&res->tree_mutex);
 		dext = find_dupe_extents(res, digest, len);

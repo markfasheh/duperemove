@@ -385,7 +385,7 @@ int add_file(const char *name)
 		 * subvolumes. We know how to get a unique fsid though
 		 * so use that in the case where we are on btrfs.
 		 */
-		ret = check_btrfs_get_fsid(abspath, &st, &btrfs_fsid);
+		ret = check_btrfs_get_fsid(abspath, &btrfs_fsid);
 		if (ret) {
 			vprintf("Skipping directory %s due to error %d: %s\n",
 				abspath, ret, strerror(ret));
@@ -754,7 +754,7 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 	return ret;
 }
 
-static void csum_whole_file_init(void *location, struct filerec *file,
+static void csum_whole_file_init(struct filerec *file,
 				 struct fiemap_ctxt **fc)
 {
 	static long long unsigned _cur_scan_files;
@@ -1004,7 +1004,7 @@ static void csum_whole_file(struct filerec *file,
 	assert(csum_ctxt.buf != NULL);
 	csum_ctxt.file = file;
 
-	csum_whole_file_init(params, file, &fc);
+	csum_whole_file_init(file, &fc);
 
 	db = dbfile_get_handle();
 	if (!db)

@@ -117,7 +117,7 @@ static void update_extent_search_status(unsigned long long processed)
 	g_mutex_unlock(&progress_mutex);
 }
 
-static void wait_update_extent_search_status(GThreadPool *pool)
+static void wait_update_extent_search_status()
 {
 	uint64_t end_time = g_get_monotonic_time () + 1 * G_TIME_SPAN_SECOND;
 	unsigned long long tmp, last = 0;
@@ -502,7 +502,7 @@ static int find_all_dupes_filewise(struct hash_tree *tree,
 	}
 
 	set_extent_search_status_count(pushed);
-	wait_update_extent_search_status(pool);
+	wait_update_extent_search_status();
 
 out:
 	g_thread_pool_free(pool, FALSE, TRUE);
@@ -671,7 +671,6 @@ next_match:
 }
 
 static int search_extent(struct filerec *file, struct file_extent *extent,
-			 struct hash_tree *dupe_hashes,
 			 struct results_tree *dupe_extents, sqlite3 *db)
 {
 	int ret;
@@ -709,7 +708,7 @@ static int search_extent(struct filerec *file, struct file_extent *extent,
 		 */
 		ret = dbfile_load_one_file_extent(db, found_file,
 						  found_block->b_loff,
-						  extent->len, &found_extent);
+						  &found_extent);
 		if (ret)
 			break;
 
@@ -735,8 +734,8 @@ static int search_extent(struct filerec *file, struct file_extent *extent,
  * We don't yet catch the case where a non duped extent straddles more
  * than one extent.
  */
-int search_file_extents(struct filerec *file, struct hash_tree *dupe_hashes,
-			struct results_tree *dupe_extents){
+int search_file_extents(struct filerec *file, struct results_tree *dupe_extents)
+{
 
 	int ret, i;
 	sqlite3 *db;
@@ -775,7 +774,7 @@ int search_file_extents(struct filerec *file, struct hash_tree *dupe_hashes,
 	for(i = 0; i < num_extents; i++) {
 		extent = &extents[i];
 
-		ret = search_extent(file, extent, dupe_hashes, dupe_extents, db);
+		ret = search_extent(file, extent, dupe_extents, db);
 		if (ret)
 			goto out;
 	}
@@ -790,23 +789,21 @@ out:
 
 struct cmp_ctxt {
 	struct filerec *file;
-	struct hash_tree *dupe_hashes;
 	struct results_tree *dupe_extents;
 };
 
-static int find_dupes_thread(struct cmp_ctxt *ctxt, void *priv)
+static int find_dupes_thread(struct cmp_ctxt *ctxt, void *priv [[maybe_unused]])
 {
-	struct hash_tree *dupe_hashes = ctxt->dupe_hashes;
+
 	struct results_tree *dupe_extents = ctxt->dupe_extents;
 	struct filerec *file = ctxt->file;
 
 	free(ctxt);
 
-	return search_file_extents(file, dupe_hashes, dupe_extents);
+	return search_file_extents(file, dupe_extents);
 }
 
-int find_additional_dedupe(struct hash_tree *hashes,
-			   struct results_tree *dupe_extents)
+int find_additional_dedupe(struct results_tree *dupe_extents)
 {
 	int ret = 0;
 	GError *err = NULL;
@@ -837,7 +834,6 @@ int find_additional_dedupe(struct hash_tree *hashes,
 				return ENOMEM;
 
 			ctxt->file = file;
-			ctxt->dupe_hashes = hashes;
 			ctxt->dupe_extents = dupe_extents;
 
 			g_thread_pool_push(pool, ctxt, &err);
@@ -853,7 +849,7 @@ int find_additional_dedupe(struct hash_tree *hashes,
 		}
 	}
 
-	wait_update_extent_search_status(pool);
+	wait_update_extent_search_status();
 
 	g_thread_pool_free(pool, FALSE, TRUE);
 

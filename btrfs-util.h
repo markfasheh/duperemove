@@ -23,6 +23,6 @@ int lookup_btrfs_subvolid(int fd, uint64_t *rootid);
  *
  * Returns nonzero on error.
  */
-int check_btrfs_get_fsid(char *name, struct stat *st, uint64_t *ret_fsid);
+int check_btrfs_get_fsid(char *name, uint64_t *ret_fsid);
 
 #endif	/* __BTRFS_UTIL__ */

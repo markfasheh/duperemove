@@ -60,8 +60,7 @@ int dbfile_load_nondupe_file_extents(sqlite3 *db, struct filerec *file,
 				     struct file_extent **ret_extents,
 				     unsigned int *num_extents);
 int dbfile_load_one_file_extent(sqlite3 *db, struct filerec *file,
-				uint64_t loff, unsigned int len,
-				struct file_extent *extent);
+				uint64_t loff, struct file_extent *extent);
 
 /* Scan files based on db contents. Removes any orphaned file records. */
 int dbfile_scan_files(struct dbfile_config *cfg);

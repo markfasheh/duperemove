@@ -671,7 +671,7 @@ void process_duplicates() {
 			if (ret)
 				goto out;
 
-			ret = find_additional_dedupe(&dups_tree, &res);
+			ret = find_additional_dedupe(&res);
 			if (ret)
 				goto out;
 		}

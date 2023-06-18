@@ -32,7 +32,7 @@
 #endif
 static inline void increment_counters(unsigned long long *num_type,
 				      unsigned long long *max_type,
-				      unsigned long long count, GMutex *mutex)
+				      unsigned long long count, GMutex *mutex [[maybe_unused]])
 {
 #ifdef	LOCK_MEMSTATS
 	g_mutex_lock(mutex);
@@ -45,7 +45,7 @@ static inline void increment_counters(unsigned long long *num_type,
 #endif
 }
 static inline void decrement_counters(unsigned long long *num_type,
-				      GMutex *mutex)
+				      GMutex *mutex [[maybe_unused]])
 {
 #ifdef	LOCK_MEMSTATS
 	g_mutex_lock(mutex);

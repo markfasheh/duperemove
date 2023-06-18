@@ -94,7 +94,7 @@ static uint64_t get_btrfs_fsid(fsid_t in_statfs_fsid, uint64_t subvolid,
  * Figure out if we're btrfs. If we are, get the fsid. Otherwise
  * return 0 in *ret_fsid.
  */
-int check_btrfs_get_fsid(char *name, struct stat *st, uint64_t *ret_fsid)
+int check_btrfs_get_fsid(char *name, uint64_t *ret_fsid)
 {
 	struct statfs fs;
 	int ret, fd;
