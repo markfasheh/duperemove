@@ -584,7 +584,6 @@ static void run_pool(GThreadPool *pool, struct filerec *file,
 	}
 
 	g_thread_pool_free(pool, FALSE, TRUE);
-	return file;
 }
 
 static inline int is_block_zeroed(void *buf, ssize_t buf_size)
