@@ -89,8 +89,6 @@ int fiemap_during_dedupe = 1;
 int stdout_is_tty = 0;
 bool do_block_hash = false;
 
-static char *user_hash = DEFAULT_HASH_STR;
-
 static void print_file(char *filename, char *ino, char *subvol)
 {
 	if (verbose)
@@ -313,7 +311,6 @@ enum {
 	IO_THREADS_OPTION,
 	CPU_THREADS_OPTION,
 	LOOKUP_EXTENTS_OPTION,
-	HASH_OPTION,
 	SKIP_ZEROES_OPTION,
 	FDUPES_OPTION,
 	DEDUPE_OPTS_OPTION,
@@ -399,7 +396,6 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		{ "hash-threads", 1, NULL, IO_THREADS_OPTION },
 		{ "cpu-threads", 1, NULL, CPU_THREADS_OPTION },
 		{ "lookup-extents", 1, NULL, LOOKUP_EXTENTS_OPTION },
-		{ "hash", 1, NULL, HASH_OPTION },
 		{ "skip-zeroes", 0, NULL, SKIP_ZEROES_OPTION },
 		{ "fdupes", 0, NULL, FDUPES_OPTION },
 		{ "dedupe-options=", 1, NULL, DEDUPE_OPTS_OPTION },
@@ -480,9 +476,6 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			break;
 		case LOOKUP_EXTENTS_OPTION:
 			do_lookup_extents = parse_yesno_option(optarg, 0);
-			break;
-		case HASH_OPTION:
-			user_hash = optarg;
 			break;
 		case SKIP_ZEROES_OPTION:
 			skip_zeroes = 1;
@@ -618,11 +611,11 @@ static int update_config_from_dbfile(void)
 
 	if (strncasecmp(dbfile_cfg.hash_type, hash_type, 8)) {
 		fprintf(stderr,
-			"Error: Hashfile %s uses %.*s. for checksums "
-			"but we are using %.*s.\nTry running with "
-			"--hash=%.*s\n", serialize_fname, 8,
-			dbfile_cfg.hash_type, 8, hash_type,
-			8, dbfile_cfg.hash_type);
+			"Error: Hashfile %s uses \"%.*s\" for checksums "
+			"but we are using %.*s.\nYou are probably "
+			"using a hashfile generated from an old version, "
+			"which cannot be read anymore.\n", serialize_fname, 8,
+			dbfile_cfg.hash_type, 8, hash_type);
 		return EINVAL;
 	}
 
@@ -824,12 +817,12 @@ int main(int argc, char **argv)
 	if (fdupes_mode)
 		return add_files_from_stdin(1);
 
-	ret = init_csum_module(user_hash);
+	ret = init_csum_module(DEFAULT_HASH_STR);
 	if (ret) {
 		if (ret == EINVAL)
 			fprintf(stderr,
 				"Could not initialize hash module \"%s\"\n",
-				user_hash);
+				DEFAULT_HASH_STR);
 		return ret;
 	}
 

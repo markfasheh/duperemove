@@ -227,14 +227,6 @@ Print debug messages, forces \fB-v\fR if selected.
 Deprecated, see \fB--io-threads\fR above.
 
 .TP
-\fB\--hash=alg\fR
-You can choose between murmur3 and xxhash. The default is murmur3 as
-it is very fast and can generate 128 bit digests for a very small
-chance of collision. Xxhash may be faster but generates only 64 bit
-digests. Both hashes are fast enough that the default should work well
-for the overwhelming majority of users.
-
-.TP
 \fB\--exclude=PATTERN\fR
 You an exclude certain files and folders from the deduplication process. This
 might be benefical for skipping subvolume snapshot mounts, for instance. You
