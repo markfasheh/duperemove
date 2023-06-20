@@ -37,17 +37,14 @@ static int xxhash_init_hash(unsigned int *ret_digest_len)
 }
 
 static void xxhash_checksum_block(char *buf, int len, unsigned char *digest) {
-	unsigned long long *hash = (unsigned long long*)digest;
-	/*
-	 * For xxhash one use only first 64 bit from 256 bit hash field
-	 * Zeroing empty 192 bits with offset
-	 */
-	memset(&hash[1], 0, DIGEST_LEN_MAX-sizeof(*hash));
-	*hash = XXH64(buf, len, 0);
+	XXH128_hash_t hash = XXH128(buf, len, 0);
+
+	((uint64_t*)digest)[0] = hash.low64;
+	((uint64_t*)digest)[1] = hash.high64;
 }
 
 struct xxhash_running_checksum {
-	XXH64_state_t	td64;
+	XXH3_state_t *state;
 };
 DECLARE_RUNNING_CSUM_CAST_FUNCS(xxhash_running_checksum);
 
@@ -55,7 +52,8 @@ static struct running_checksum *xxhash_start_running_checksum(void)
 {
 	struct xxhash_running_checksum *c =
 		calloc(1, sizeof(struct xxhash_running_checksum));
-	XXH64_reset(&c->td64, 0);
+	c->state = XXH3_createState();
+	XXH3_128bits_reset(c->state);
 	return priv_to_rc(c);
 }
 
@@ -63,16 +61,20 @@ static void xxhash_add_to_running_checksum(struct running_checksum *_c,
 					   unsigned int len, unsigned char *buf)
 {
 	struct xxhash_running_checksum *c = rc_to_priv(_c);
-	XXH64_update(&c->td64, buf, len);
+	XXH3_128bits_update(c->state, buf, len);
 }
 
 static void xxhash_finish_running_checksum(struct running_checksum *_c,
 					   unsigned char *digest)
 {
 	struct xxhash_running_checksum *c = rc_to_priv(_c);
-	unsigned long long *hash = (unsigned long long*)digest;
 
-	*hash = XXH64_digest(&c->td64);
+	XXH128_hash_t hash = XXH3_128bits_digest(c->state);
+
+	((uint64_t*)digest)[0] = hash.low64;
+	((uint64_t*)digest)[1] = hash.high64;
+
+	XXH3_freeState(c->state);
 	free(c);
 }
 
