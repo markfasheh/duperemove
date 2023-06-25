@@ -28,14 +28,6 @@
 
 #include "xxhash.h"
 
-#define		HASH_TYPE_XXHASH	"XXHASH  "
-
-static int xxhash_init_hash(unsigned int *ret_digest_len)
-{
-	*ret_digest_len = DIGEST_LEN_MAX;
-	return 0;
-}
-
 static void xxhash_checksum_block(char *buf, int len, unsigned char *digest) {
 	XXH128_hash_t hash = XXH128(buf, len, 0);
 
@@ -79,7 +71,6 @@ static void xxhash_finish_running_checksum(struct running_checksum *_c,
 }
 
 static struct csum_module_ops ops_xxhash = {
-	.init			= xxhash_init_hash,
 	.checksum_block		= xxhash_checksum_block,
 	.start_running_checksum	= xxhash_start_running_checksum,
 	.add_to_running_checksum	= xxhash_add_to_running_checksum,
@@ -87,7 +78,5 @@ static struct csum_module_ops ops_xxhash = {
 };
 
 struct csum_module csum_module_xxhash =	{
-	.name = "xxhash",
-	.hash_type = HASH_TYPE_XXHASH,
 	.ops = &ops_xxhash,
 };

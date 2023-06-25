@@ -638,7 +638,7 @@ static int add_block_hash(struct block_csum **hashes, int *nr_hashes,
 	block_hashes = retp;
 	block_hashes[*nr_hashes].loff = loff;
 	block_hashes[*nr_hashes].flags = flags;
-	memcpy(block_hashes[*nr_hashes].digest, digest, DIGEST_LEN_MAX);
+	memcpy(block_hashes[*nr_hashes].digest, digest, DIGEST_LEN);
 
 	*hashes = retp;
 	(*nr_hashes)++;
@@ -649,11 +649,11 @@ struct csum_ctxt {
 	uint64_t blocks_recorded;
 	char *buf;
 	struct filerec *file;
-	unsigned char digest[DIGEST_LEN_MAX];
+	unsigned char digest[DIGEST_LEN];
 
 	struct block_csum *block_hashes;
 	int nr_block_hashes;
-	unsigned char block_digest[DIGEST_LEN_MAX];
+	unsigned char block_digest[DIGEST_LEN];
 };
 
 static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
@@ -684,7 +684,7 @@ static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
 
 			if (!v2_hashfile &&
 			    dbfile_cfg.extent_hash_src == EXTENT_HASH_SRC_DIGEST)
-				add_to_running_checksum(csum, digest_len,
+				add_to_running_checksum(csum, DIGEST_LEN,
 							data->block_digest);
 		}
 
@@ -966,7 +966,7 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 		extent_hashes[nb_hash].len = bytes_read;
 		extent_hashes[nb_hash].flags = flags;
 		memcpy(extent_hashes[nb_hash].digest, ctxt->digest,
-		       DIGEST_LEN_MAX);
+		       DIGEST_LEN);
 		nb_hash++;
 
 		ctxt->blocks_recorded += (bytes_read + (blocksize - 1))/blocksize;

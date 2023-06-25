@@ -48,8 +48,7 @@
 static unsigned int buf_len = 4096;
 static unsigned char *buf = NULL;
 
-static unsigned char digest[DIGEST_LEN_MAX] = { 0, };
-static char *user_hash = DEFAULT_HASH_STR;
+static unsigned char digest[DIGEST_LEN] = { 0, };
 
 static int parse_opts(int argc, char **argv, char **fname)
 {
@@ -91,10 +90,6 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Usage: %s [-b buflen] filename\n", argv[0]);
 		return 1;
 	}
-
-	ret = init_csum_module(user_hash);
-	if (ret)
-		return ret;
 
 	buf = malloc(buf_len);
 	if (buf == NULL)

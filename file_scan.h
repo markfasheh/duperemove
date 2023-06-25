@@ -41,7 +41,7 @@ int populate_tree(struct dbfile_config *cfg, unsigned int batch_size,
 struct block_csum {
 	uint64_t	loff;
 	unsigned int	flags;
-	unsigned char	digest[DIGEST_LEN_MAX];
+	unsigned char	digest[DIGEST_LEN];
 };
 
 struct extent_csum {
@@ -49,7 +49,7 @@ struct extent_csum {
 	uint64_t	poff;
 	uint32_t	len;
 	unsigned int	flags;
-	unsigned char	digest[DIGEST_LEN_MAX];
+	unsigned char	digest[DIGEST_LEN];
 };
 
 struct exclude_file {

@@ -126,7 +126,7 @@ static int print_all_blocks(unsigned char *digest)
 	unsigned int flags;
 	const unsigned char *filename;
 
-	ret = sqlite3_bind_blob(find_blocks_stmt, 1, digest, digest_len,
+	ret = sqlite3_bind_blob(find_blocks_stmt, 1, digest, DIGEST_LEN,
 				SQLITE_STATIC);
 	if (ret) {
 		fprintf(stderr, "Error %d binding digest for blocks: %s\n", ret,
@@ -177,7 +177,7 @@ static void print_by_size(void)
 		digest = (unsigned char *)sqlite3_column_blob(top_hashes_stmt, 0);
 		count = sqlite3_column_int64(top_hashes_stmt, 1);
 
-		ret = sqlite3_bind_blob(files_count_stmt, 1, digest, digest_len,
+		ret = sqlite3_bind_blob(files_count_stmt, 1, digest, DIGEST_LEN,
 					SQLITE_STATIC);
 		if (ret) {
 			fprintf(stderr, "Error %d binding digest: %s\n", ret,
@@ -343,9 +343,6 @@ int main(int argc, char **argv)
 		usage(argv[0]);
 		return EINVAL;
 	}
-
-	if (init_csum_module(DEFAULT_HASH_STR))
-		return ENOMEM;
 
 	ret = dbfile_open(serialize_fname, &dbfile_cfg);
 	if (ret)

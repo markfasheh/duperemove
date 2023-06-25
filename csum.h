@@ -18,18 +18,14 @@
 
 #include <stdio.h>
 
-#define	DIGEST_LEN_MAX	16
-#define DEFAULT_HASH_STR	"xxhash"
+#define	DIGEST_LEN	16
+#define	HASH_TYPE	"XXHASH  "
 
-extern unsigned int digest_len;
-extern char hash_type[8];
-
-/* Init / debug */
-int init_csum_module(const char *type);
+/* Debug */
 void debug_print_digest_len(FILE *stream, unsigned char *digest, unsigned int len);
 static inline void debug_print_digest(FILE *stream, unsigned char *digest)
 {
-	debug_print_digest_len(stream, digest, digest_len);
+	debug_print_digest_len(stream, digest, DIGEST_LEN);
 }
 static inline void debug_print_digest_short(FILE *stream, unsigned char *digest)
 {
@@ -49,7 +45,6 @@ void finish_running_checksum(struct running_checksum *c, unsigned char *digest);
 /* csum-module implementation details */
 
 struct csum_module_ops {
-	int (*init)(unsigned int *ret_digest_len);
 	void (*checksum_block)(char *buf, int len, unsigned char *digest);
 	struct running_checksum *(*start_running_checksum)(void);
 	void (*add_to_running_checksum)(struct running_checksum *c,
@@ -59,23 +54,10 @@ struct csum_module_ops {
 };
 
 struct csum_module {
-	/*
-	 * Friendly name, suitable for printing to the user. We use
-	 * this also for option parsing.
-	 */
-	const char *name;
-
-	/*
-	 * Internally identifies this hash, is also what we write in
-	 * hashfiles. Must not exceed 8 characters.
-	 */
-	const char *hash_type;
 	struct csum_module_ops *ops;
 };
 
 extern struct csum_module csum_module_xxhash;
-
-extern struct csum_module *csum_mod; /* The module currently in use */
 
 #define	DECLARE_RUNNING_CSUM_CAST_FUNCS(_type)				\
 static inline struct _type *						\

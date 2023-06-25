@@ -23,48 +23,13 @@
 #include "csum.h"
 #include "debug.h"
 
-unsigned int	digest_len = 0;
-char		hash_type[8];
-
-static struct csum_module *modules[] = {
-	&csum_module_xxhash,
-	NULL,
-};
-
-struct csum_module *csum_mod = NULL;
-
-int init_csum_module(const char *type)
-{
-	int ret;
-	struct csum_module *m = modules[0];
-	int i = 0;
-
-	while (m) {
-		if (strcasecmp(type, m->name) == 0)
-			break;
-		m = modules[++i];
-	}
-
-	if (!m)
-		return EINVAL;
-
-	csum_mod = m;
-	strncpy(hash_type, csum_mod->hash_type, 8);
-
-	ret = csum_mod->ops->init(&digest_len);
-	if (ret)
-		return ret;
-
-	abort_on(digest_len == 0 || digest_len > DIGEST_LEN_MAX);
-
-	return 0;
-}
+struct csum_module *csum_mod = &csum_module_xxhash;
 
 void debug_print_digest_len(FILE *stream, unsigned char *digest, unsigned int len)
 {
 	uint32_t i;
 
-	abort_on(len > digest_len);
+	abort_on(len > DIGEST_LEN);
 
 	for (i = 0; i < len; i++)
 		fprintf(stream, "%.2x", digest[i]);

@@ -28,7 +28,7 @@
 #include "rbtree.h"
 #include "list.h"
 
-#include "csum.h"	/* for digest_len variable and DIGEST_LEN_MAX */
+#include "csum.h"	/* for DIGEST_LEN */
 #include "filerec.h"
 
 #include "hash-tree.h"
@@ -229,7 +229,7 @@ static void insert_block_list(struct hash_tree *tree,
 
 		tmp = rb_entry(parent, struct dupe_blocks_list, dl_node);
 
-		cmp = memcmp(list->dl_hash, tmp->dl_hash, digest_len);
+		cmp = memcmp(list->dl_hash, tmp->dl_hash, DIGEST_LEN);
 		if (cmp < 0)
 			p = &(*p)->rb_left;
 		else if (cmp > 0)
@@ -254,7 +254,7 @@ struct dupe_blocks_list *find_block_list(struct hash_tree *tree,
 	while (n) {
 		list = rb_entry(n, struct dupe_blocks_list, dl_node);
 
-		cmp = memcmp(digest, list->dl_hash, digest_len);
+		cmp = memcmp(digest, list->dl_hash, DIGEST_LEN);
 		if (cmp < 0)
 			n = n->rb_left;
 		else if (cmp > 0)
@@ -281,7 +281,7 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 			return ENOMEM;
 		}
 
-		memcpy(d->dl_hash, digest, digest_len);
+		memcpy(d->dl_hash, digest, DIGEST_LEN);
 		rb_init_node(&d->dl_node);
 		INIT_LIST_HEAD(&d->dl_list);
 		INIT_LIST_HEAD(&d->dl_size_list);

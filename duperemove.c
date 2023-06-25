@@ -597,7 +597,6 @@ out_nofiles:
 static void print_header(void)
 {
 	vprintf("Using %uK blocks\n", blocksize / 1024);
-	vprintf("Using hash: %s\n", csum_mod->name);
 	vprintf("Using %s hashing\n", v2_hashfile ? "block-based" : "extent-based");
 #ifdef	DEBUG_BUILD
 	printf("Debug build, performance may be impacted.\n");
@@ -609,13 +608,13 @@ static int update_config_from_dbfile(void)
 {
 	dedupe_seq = dbfile_cfg.dedupe_seq;
 
-	if (strncasecmp(dbfile_cfg.hash_type, hash_type, 8)) {
+	if (strncasecmp(dbfile_cfg.hash_type, HASH_TYPE, 8)) {
 		fprintf(stderr,
 			"Error: Hashfile %s uses \"%.*s\" for checksums "
 			"but we are using %.*s.\nYou are probably "
 			"using a hashfile generated from an old version, "
 			"which cannot be read anymore.\n", serialize_fname, 8,
-			dbfile_cfg.hash_type, 8, hash_type);
+			dbfile_cfg.hash_type, 8, HASH_TYPE);
 		return EINVAL;
 	}
 
@@ -816,15 +815,6 @@ int main(int argc, char **argv)
 
 	if (fdupes_mode)
 		return add_files_from_stdin(1);
-
-	ret = init_csum_module(DEFAULT_HASH_STR);
-	if (ret) {
-		if (ret == EINVAL)
-			fprintf(stderr,
-				"Could not initialize hash module \"%s\"\n",
-				DEFAULT_HASH_STR);
-		return ret;
-	}
 
 	if (isatty(STDOUT_FILENO))
 		stdout_is_tty = 1;

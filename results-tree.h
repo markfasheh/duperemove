@@ -31,7 +31,7 @@ struct results_tree {
 struct dupe_extents {
 	unsigned int	de_num_dupes;
 	uint64_t	de_len;
-	unsigned char		de_hash[DIGEST_LEN_MAX];
+	unsigned char		de_hash[DIGEST_LEN];
 
 	uint64_t	de_score;
 

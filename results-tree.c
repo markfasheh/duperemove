@@ -29,7 +29,7 @@
 #include "rbtree.h"
 #include "list.h"
 
-#include "csum.h"	/* for digest_len variable and DIGEST_LEN_MAX */
+#include "csum.h"	/* for DIGEST_LEN */
 
 #include "filerec.h"
 #include "results-tree.h"
@@ -130,7 +130,7 @@ static void insert_dupe_extents(struct results_tree *res,
 		else if (dext->de_len > tmp->de_len)
 			p = &(*p)->rb_right;
 		else {
-			cmp = memcmp(dext->de_hash, tmp->de_hash, digest_len);
+			cmp = memcmp(dext->de_hash, tmp->de_hash, DIGEST_LEN);
 			if (cmp < 0)
 				p = &(*p)->rb_left;
 			else if (cmp > 0)
@@ -162,7 +162,7 @@ static struct dupe_extents *find_dupe_extents(struct results_tree *res,
 		else if (len > dext->de_len)
 			n = n->rb_right;
 		else {
-			cmp = memcmp(digest, dext->de_hash, digest_len);
+			cmp = memcmp(digest, dext->de_hash, DIGEST_LEN);
 			if (cmp < 0)
 				n = n->rb_left;
 			else if (cmp > 0)
@@ -199,7 +199,7 @@ static struct dupe_extents *dupe_extents_new(unsigned char *digest,
 	if (!dext)
 		return NULL;
 
-	memcpy(dext->de_hash, digest, digest_len);
+	memcpy(dext->de_hash, digest, DIGEST_LEN);
 	dext->de_len = len;
 	dext->de_score = len;
 

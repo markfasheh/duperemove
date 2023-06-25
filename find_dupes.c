@@ -233,7 +233,7 @@ static int walk_dupe_block(struct filerec *orig_file,
 	struct file_block *start[2] = { orig, block };
 	struct file_block *end[2] = { NULL, NULL };
 	struct running_checksum *csum;
-	unsigned char match_id[DIGEST_LEN_MAX] = {0, };
+	unsigned char match_id[DIGEST_LEN] = {0, };
 	uint64_t orig_blkno, walk_blkno;
 	struct rb_node *node;
 
@@ -252,7 +252,7 @@ static int walk_dupe_block(struct filerec *orig_file,
 		end[0] = orig;
 		end[1] = block;
 
-		add_to_running_checksum(csum, digest_len,
+		add_to_running_checksum(csum, DIGEST_LEN,
 					block->b_parent->dl_hash);
 
 		/*
@@ -566,7 +566,7 @@ static int compare_extents(struct filerec *orig_file,
 	struct file_block *end[2] = { NULL, NULL };
 	uint64_t extent_end;
 	struct running_checksum *csum;
-	unsigned char match_id[DIGEST_LEN_MAX] = {0, };
+	unsigned char match_id[DIGEST_LEN] = {0, };
 	uint64_t orig_blkno, walk_blkno, match_end;
 	bool matchmore = true;
 
@@ -601,7 +601,7 @@ next_match:
 		end[0] = orig;
 		end[1] = block;
 
-		add_to_running_checksum(csum, digest_len,
+		add_to_running_checksum(csum, DIGEST_LEN,
 					block->b_parent->dl_hash);
 
 		if (end_of_block_list(orig) || end_of_block_list(block)) {

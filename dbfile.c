@@ -54,7 +54,7 @@ static void dbfile_config_defaults(struct dbfile_config *cfg)
 {
 	memset(cfg, 0, sizeof(*cfg));
 	cfg->blocksize = blocksize;
-	strncpy(cfg->hash_type, hash_type, 8);
+	strncpy(cfg->hash_type, HASH_TYPE, 8);
 }
 
 #if 0
@@ -1063,7 +1063,7 @@ int dbfile_store_block_hashes(sqlite3 *db, struct dbfile_config *cfg,
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_bind_blob(stmt, 5, digest, digest_len,
+		ret = sqlite3_bind_blob(stmt, 5, digest, DIGEST_LEN,
 					SQLITE_STATIC);
 		if (ret)
 			goto bind_error;
@@ -1149,7 +1149,7 @@ int dbfile_store_extent_hashes(sqlite3 *db, struct dbfile_config *cfg,
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_bind_blob(stmt, 7, digest, digest_len,
+		ret = sqlite3_bind_blob(stmt, 7, digest, DIGEST_LEN,
 					SQLITE_STATIC);
 		if (ret)
 			goto bind_error;

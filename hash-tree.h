@@ -36,7 +36,7 @@ struct dupe_blocks_list {
 	unsigned int		dl_num_files;
 	struct rb_root		dl_files_root; /* stores file_hash_head nodes */
 
-	unsigned char		dl_hash[DIGEST_LEN_MAX];
+	unsigned char		dl_hash[DIGEST_LEN];
 };
 
 /* Fiemap flags that would cause us to skip comparison of the block */
