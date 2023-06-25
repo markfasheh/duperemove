@@ -1,6 +1,6 @@
 .TH "duperemove" "8" "September 2016" "Version 0.11"
 .SH "NAME"
-duperemove \- Find duplicate extents and print them to stdout
+duperemove \- Find duplicate extents and submit them for deduplication
 .SH "SYNOPSIS"
 \fBduperemove\fR \fI[options]\fR \fIfiles...\fI
 .SH "DESCRIPTION"
@@ -23,7 +23,7 @@ re-checksum unchanged data.  For more on hashfiles see the
 \fB--fdupes\fR option below.
 
 .SH "GENERAL"
-Duperemove has two major modes of operation one of which is a subset
+Duperemove has two major modes of operation, one of which is a subset
 of the other.
 
 .SS "Readonly / Non-deduplicating Mode"
