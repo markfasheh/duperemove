@@ -1,5 +1,9 @@
-VER=0.12.dev
-RELEASE=v$(VER)
+VERSION=$(shell git describe --abbrev=4 --dirty --always --tags;)
+ifeq ($(shell git rev-list $(shell git describe --abbrev=0 --tags --exclude '*dev';)..HEAD --count;), 0)
+	IS_RELEASE=1
+else
+	IS_RELEASE=0
+endif
 
 CC ?= gcc
 CFLAGS ?= -Wall -ggdb
@@ -24,8 +28,8 @@ DIST_CFILES:=$(CFILES) $(hashstats_CFILES) $(btrfs_extent_same_CFILES) \
 	$(csum_test_CFILES)
 DIST_SOURCES:=$(DIST_CFILES) $(HEADERS) LICENSE LICENSE.xxhash Makefile \
 	rbtree.txt README.md $(MANPAGES) SubmittingPatches docs/duperemove.html
-DIST=duperemove-$(VER)
-DIST_TARBALL=$(RELEASE).tar.gz
+DIST=duperemove-$(VERSION)
+DIST_TARBALL=$(VERSION).tar.gz
 TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
 
 objects = $(CFILES:.c=.o)
@@ -51,8 +55,9 @@ else
 	CFLAGS += -O2
 endif
 
-override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\" \
-	$(glib_CFLAGS) $(sqlite_CFLAGS) -rdynamic $(DEBUG_FLAGS)
+override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(VERSION)\" \
+	$(glib_CFLAGS) $(sqlite_CFLAGS) -rdynamic $(DEBUG_FLAGS) \
+	-DIS_RELEASE=$(IS_RELEASE)
 LIBRARY_FLAGS += -Wl,--as-needed -latomic -lm
 LIBRARY_FLAGS += $(glib_LIBS) $(sqlite_LIBS)
 

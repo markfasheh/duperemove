@@ -819,7 +819,7 @@ int main(int argc, char **argv)
 	switch (use_hashfile) {
 	case H_UPDATE:
 	case H_WRITE:
-		if (serialize_fname)
+		if (serialize_fname && !IS_RELEASE)
 			printf("Warning: The hash file format in Duperemove "
 			       "master branch is under development and may "
 			       "change.\nIf the changes are not backwards "
