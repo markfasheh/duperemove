@@ -74,7 +74,6 @@ struct csum_module {
 };
 
 extern struct csum_module csum_module_xxhash;
-extern struct csum_module csum_module_murmur3;
 
 extern struct csum_module *csum_mod; /* The module currently in use */
 

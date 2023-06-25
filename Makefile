@@ -13,10 +13,8 @@ HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
 	rbtree_augmented.h list_sort.h stats.h
 CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
 	btrfs-util.c util.c memstats.c file_scan.c find_dupes.c run_dedupe.c \
-	csum.c dbfile.c interval_tree.c list_sort.c stats.c debug.c
-hash_CFILES=csum-xxhash.c csum-murmur3.c
-
-CFILES += $(hash_CFILES)
+	csum.c dbfile.c interval_tree.c list_sort.c stats.c debug.c \
+	csum-xxhash.c
 
 hashstats_CFILES=hashstats.c
 btrfs_extent_same_CFILES=btrfs-extent-same.c
@@ -32,11 +30,10 @@ TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
 
 objects = $(CFILES:.c=.o)
 
-hash_obj=$(hash_CFILES:.c=.o)
-hashstats_obj = $(hash_obj) rbtree.o hash-tree.o filerec.o util.o \
+hashstats_obj = csum-xxhash.o rbtree.o hash-tree.o filerec.o util.o \
 	results-tree.o csum.o dbfile.o interval_tree.o list_sort.o debug.o
 show_shared_obj = rbtree.o util.o debug.o
-csum_test_obj = $(hash_obj) util.o csum.o debug.o
+csum_test_obj = csum-xxhash.o util.o csum.o debug.o
 
 install_progs = duperemove hashstats btrfs-extent-same show-shared-extents
 progs = $(install_progs) csum-test
@@ -55,9 +52,9 @@ else
 endif
 
 override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(RELEASE)\" \
-	$(hash_CFLAGS) $(glib_CFLAGS) $(sqlite_CFLAGS) -rdynamic $(DEBUG_FLAGS)
+	$(glib_CFLAGS) $(sqlite_CFLAGS) -rdynamic $(DEBUG_FLAGS)
 LIBRARY_FLAGS += -Wl,--as-needed -latomic -lm
-LIBRARY_FLAGS += $(hash_LIBS) $(glib_LIBS) $(sqlite_LIBS)
+LIBRARY_FLAGS += $(glib_LIBS) $(sqlite_LIBS)
 
 # make C=1 to enable sparse
 ifdef C

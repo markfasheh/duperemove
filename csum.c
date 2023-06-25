@@ -27,7 +27,6 @@ unsigned int	digest_len = 0;
 char		hash_type[8];
 
 static struct csum_module *modules[] = {
-	&csum_module_murmur3,
 	&csum_module_xxhash,
 	NULL,
 };
