@@ -18,7 +18,7 @@
 
 #include <stdio.h>
 
-#define	DIGEST_LEN_MAX	32
+#define	DIGEST_LEN_MAX	16
 #define DEFAULT_HASH_STR	"xxhash"
 
 extern unsigned int digest_len;
