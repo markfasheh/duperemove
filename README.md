@@ -4,9 +4,10 @@ This README is for duperemove v0.11.
 
 Duperemove is a simple tool for finding duplicated extents and
 submitting them for deduplication. When given a list of files it will
-hash their contents on a block by block basis and compare those hashes
-to each other, finding and categorizing blocks that match each
-other. When given the -d option, duperemove will submit those
+hash their contents on a extent by extent basis and compare those hashes
+to each other, finding and categorizing extents that match each
+other. Optionally, a per-block hash can be applied for further duplication lookup.
+When given the -d option, duperemove will submit those
 extents for deduplication using the Linux kernel extent-same ioctl.
 
 Duperemove can store the hashes it computes in a 'hashfile'. If
@@ -22,7 +23,7 @@ See [the duperemove man page](http://markfasheh.github.io/duperemove/duperemove.
 
 # Requirements
 
-The latest stable code (v0.11) can be found in [the v0.11 branch on github](https://github.com/markfasheh/duperemove/tree/v0.11-branch).
+The latest stable code can be found in [the release page](https://github.com/markfasheh/duperemove/releases)
 
 Kernel: Duperemove needs a kernel version equal to or greater than 3.13
 
