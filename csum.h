@@ -26,7 +26,7 @@ extern char hash_type[8];
 
 /* Init / debug */
 int init_csum_module(const char *type);
-void debug_print_digest_len(FILE *stream, unsigned char *digest, int len);
+void debug_print_digest_len(FILE *stream, unsigned char *digest, unsigned int len);
 static inline void debug_print_digest(FILE *stream, unsigned char *digest)
 {
 	debug_print_digest_len(stream, digest, digest_len);

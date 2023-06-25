@@ -60,7 +60,7 @@ int init_csum_module(const char *type)
 	return 0;
 }
 
-void debug_print_digest_len(FILE *stream, unsigned char *digest, int len)
+void debug_print_digest_len(FILE *stream, unsigned char *digest, unsigned int len)
 {
 	uint32_t i;
 
