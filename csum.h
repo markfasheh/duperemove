@@ -19,7 +19,7 @@
 #include <stdio.h>
 
 #define	DIGEST_LEN	16
-#define	HASH_TYPE	"XXHASH  "
+#define	HASH_TYPE	"XXHASH3 "
 
 /* Debug */
 void debug_print_digest_len(FILE *stream, unsigned char *digest, unsigned int len);
