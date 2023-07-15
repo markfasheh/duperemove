@@ -261,12 +261,12 @@ static int __add_file(const char *name, struct stat *st,
 	if (is_excluded(name))
 		goto out;
 
-	if (run_dedupe &&
+	if (run_dedupe == 1 &&
 	    ((fs.f_type != BTRFS_SUPER_MAGIC &&
 	      fs.f_type != XFS_SB_MAGIC))) {
 		close(fd);
-		fprintf(stderr,	"\"%s\": Can only dedupe files on btrfs or xfs "
-			"\n", name);
+		fprintf(stderr,	"\"%s\": Can only dedupe files on btrfs or xfs, "
+			"use -d -d to override\n", name);
 		return ENOSYS;
 	}
 

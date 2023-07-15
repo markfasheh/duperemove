@@ -408,7 +408,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			break;
 		case 'd':
 		case 'D':
-			run_dedupe = 1;
+			run_dedupe += 1;
 			break;
 		case 'r':
 			recurse_dirs = 1;
