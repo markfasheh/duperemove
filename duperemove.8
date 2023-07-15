@@ -1,4 +1,4 @@
-.TH "duperemove" "8" "September 2016" "Version 0.11"
+.TH "duperemove" "8" "September 2016" "Version 0.12"
 .SH "NAME"
 duperemove \- Find duplicate extents and submit them for deduplication
 .SH "SYNOPSIS"
@@ -298,7 +298,7 @@ duperemove -L --hashfile=foo.hash
 .SH "FAQ"
 .SS Is there an upper limit to the amount of data duperemove can process?
 
-Duperemove v0.11 is fast at reading and cataloging data. Dedupe runs will be
+Duperemove is fast at reading and cataloging data. Dedupe runs will be
 memory limited unless the '--hashfile' option is used. '--hashfile' allows
 duperemove to temporarily store duplicated hashes to disk, thus removing the
 large memory overhead and allowing for a far larger amount of data to be

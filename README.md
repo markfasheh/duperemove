@@ -1,4 +1,4 @@
-This README is for duperemove v0.11.
+This README is for duperemove v0.12.
 
 # Duperemove
 
