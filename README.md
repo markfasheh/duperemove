@@ -8,7 +8,7 @@ hash their contents on a extent by extent basis and compare those hashes
 to each other, finding and categorizing extents that match each
 other. Optionally, a per-block hash can be applied for further duplication lookup.
 When given the -d option, duperemove will submit those
-extents for deduplication using the Linux kernel extent-same ioctl.
+extents for deduplication using the Linux kernel FIDEDUPRANGE ioctl.
 
 Duperemove can store the hashes it computes in a 'hashfile'. If
 given an existing hashfile, duperemove will only compute hashes
@@ -117,10 +117,10 @@ An actual run, output will differ according to duperemove version.
 
 # Links of interest
 
-[The duperemove wiki](https://github.com/markfasheh/duperemove/wiki)
-has both design and performance documentation.
+* [The duperemove wiki](https://github.com/markfasheh/duperemove/wiki)
+  has both design and performance documentation.
 
-[duperemove-tests](https://github.com/markfasheh/duperemove-tests) has
-a growing assortment of regression tests.
+* [duperemove-tests](https://github.com/markfasheh/duperemove-tests) has
+  a growing assortment of regression tests.
 
-[Duperemove web page](http://markfasheh.github.io/duperemove/)
+* [Duperemove web page](http://markfasheh.github.io/duperemove/)
