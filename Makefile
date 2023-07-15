@@ -1,9 +1,5 @@
-VERSION=$(shell git describe --abbrev=4 --dirty --always --tags;)
-ifeq ($(shell git rev-list $(shell git describe --abbrev=0 --tags --exclude '*dev';)..HEAD --count;), 0)
-	IS_RELEASE=1
-else
-	IS_RELEASE=0
-endif
+VERSION ?= $(shell git describe --abbrev=4 --dirty --always --tags;)
+IS_RELEASE ?= $(if $(filter $(shell git rev-list $(shell git describe --abbrev=0 --tags --exclude '*dev';)..HEAD --count;),0),1,0)
 
 CC ?= gcc
 CFLAGS ?= -Wall -ggdb
