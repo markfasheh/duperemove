@@ -266,7 +266,7 @@ static int __add_file(const char *name, struct stat *st,
 	      fs.f_type != XFS_SB_MAGIC))) {
 		close(fd);
 		fprintf(stderr,	"\"%s\": Can only dedupe files on btrfs or xfs "
-			"(experimental)\n", name);
+			"\n", name);
 		return ENOSYS;
 	}
 
