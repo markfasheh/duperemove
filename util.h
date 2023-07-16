@@ -56,4 +56,9 @@ void get_num_cpus(unsigned int *nr_phys, unsigned int *nr_log);
 /* Bump up maximum open file limit. */
 int increase_limits(void);
 
+#define _cleanup_(x) __attribute__((cleanup(x)))
+static inline void freep(void *p)
+{
+	free(*(void**) p);
+}
 #endif	/* __UTIL_H__ */
