@@ -604,7 +604,7 @@ static int xlate_extent_flags(int fieflags, ssize_t len)
 	return flags;
 }
 
-static int add_block_hash(struct block_csum **hashes, int *nr_hashes,
+static int add_block_hash(struct block_csum **hashes, uint64_t *nr_hashes,
 			  uint64_t loff, unsigned char *digest, int flags)
 {
 	void *retp;
@@ -631,7 +631,7 @@ struct csum_ctxt {
 	unsigned char digest[DIGEST_LEN];
 
 	struct block_csum *block_hashes;
-	int nr_block_hashes;
+	uint64_t nr_block_hashes;
 	unsigned char block_digest[DIGEST_LEN];
 };
 
@@ -753,7 +753,6 @@ static void csum_whole_file_init(struct filerec *file,
 	}
 }
 
-
 /*
  * Helper for csum_by_block/csum_by_extent.
  * Return < 0 on error, 0 on success and 1 if we find an extent that should not
@@ -771,14 +770,14 @@ static int fiemap_helper(struct fiemap_ctxt *fc, struct filerec *file,
 
 	if ((skip_zeroes && *flags & FIEMAP_EXTENT_UNWRITTEN) ||
 	    (*flags & FIEMAP_SKIP_FLAGS)) {
-		/* Unritten or other extent we don't want to read */
+		/* Unwritten or other extent we don't want to read */
 		return 1;
 	}
 	return 0;
 }
 
 static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
-			 struct block_csum **ret_block_hashes, int *ret_nb_hash)
+			 struct block_csum **ret_block_hashes, uint64_t *ret_nb_hash)
 {
 	int ret;
 	uint64_t loff, poff, fieloff, bytes_read, fielen;
@@ -867,7 +866,7 @@ static int get_file_extent_count(struct filerec *file, uint32_t *count)
 
 static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			  struct extent_csum **ret_extent_hashes,
-			  int *ret_nb_hash)
+			  uint64_t *ret_nb_hash)
 {
 	uint64_t poff, loff, bytes_read, len;
 	uint32_t extents_count = 0;
@@ -876,7 +875,7 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 	struct extent_csum *extent_hashes;
 	void *retp;
 	struct filerec *file = ctxt->file;
-	int nb_hash = 0;
+	uint64_t nb_hash = 0;
 	struct block_csum *block_hashes;
 //	int nb_block_hash = 0;
 
@@ -968,7 +967,7 @@ static void csum_whole_file(struct filerec *file,
 			    struct thread_params *params)
 {
 	int ret = 0;
-	int nb_hash = 0;
+	uint64_t nb_hash = 0;
 	struct fiemap_ctxt *fc = NULL;
 	struct csum_ctxt csum_ctxt;
 	struct sqlite3 *db = NULL;
