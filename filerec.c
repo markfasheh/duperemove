@@ -545,7 +545,7 @@ static int do_fiemap(struct fiemap *fiemap, struct filerec *file,
 
 int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, struct filerec *file,
 			    uint64_t *poff, uint64_t *loff,
-			    uint32_t *len, unsigned int *flags)
+			    uint64_t *len, unsigned int *flags)
 {
 	int ret;
 	uint64_t fiestart = 0;
@@ -573,7 +573,7 @@ int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, struct filerec *file,
 	*flags = extent->fe_flags;
 
 	dprintf("fiemap_iter: filename \"%s\" idx %d return poff %"PRIu64" "
-		"loff %"PRIu64" len %u flags 0x%x\n", file->filename, idx,
+		"loff %"PRIu64" len %"PRIu64" flags 0x%x\n", file->filename, idx,
 		*poff, *loff, *len, *flags);
 	ctxt->idx++;
 	return 0;
@@ -585,8 +585,7 @@ int filerec_count_shared(struct filerec *file, uint64_t loff, uint32_t len,
 	int ret;
 	struct fiemap_ctxt *ctxt = alloc_fiemap_ctxt();
 	unsigned int flags;
-	uint64_t extent_loff, poff;
-	uint32_t extent_len;
+	uint64_t extent_loff, poff, extent_len;
 	uint64_t extent_end, end = loff + len - 1;
 
 	abort_on(len == 0);

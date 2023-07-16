@@ -707,7 +707,7 @@ static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
 }
 
 static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
-		       unsigned int extent_len, int extent_flags,
+		       uint64_t extent_len, int extent_flags,
 		       uint64_t *ret_total_bytes_read)
 {
 	int ret = 0;
@@ -721,7 +721,7 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 
 	while (total_bytes_read < extent_len) {
 		ssize_t bytes_read = 0;
-		unsigned int readlen = extent_len - total_bytes_read;
+		size_t readlen = extent_len - total_bytes_read;
 		if (readlen > READ_BUF_LEN)
 			readlen = READ_BUF_LEN;
 
@@ -782,7 +782,7 @@ static void csum_whole_file_init(struct filerec *file,
  * be read.
  */
 static int fiemap_helper(struct fiemap_ctxt *fc, struct filerec *file,
-			 uint64_t *poff, uint64_t *loff, uint32_t *len,
+			 uint64_t *poff, uint64_t *loff, uint64_t *len,
 			 unsigned int *flags)
 {
 	int ret;
@@ -803,8 +803,8 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			 struct block_csum **ret_block_hashes, int *ret_nb_hash)
 {
 	int ret;
-	uint64_t loff, poff, fieloff, bytes_read;
-	unsigned int fieflags, fielen, read_size = blocksize;
+	uint64_t loff, poff, fieloff, bytes_read, fielen, read_size = blocksize;
+	unsigned int fieflags;
 	struct filerec *file = ctxt->file;
 	struct block_csum *block_hashes;
 	uint64_t size = file->size;
@@ -891,8 +891,8 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			  struct extent_csum **ret_extent_hashes,
 			  int *ret_nb_hash)
 {
-	uint64_t poff, loff, bytes_read;
-	uint32_t len, extents_count = 0;
+	uint64_t poff, loff, bytes_read, len;
+	uint32_t extents_count = 0;
 	int ret = 0;
 	unsigned int flags;
 	struct extent_csum *extent_hashes;

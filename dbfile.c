@@ -1094,8 +1094,8 @@ int dbfile_store_extent_hashes(sqlite3 *db, struct dbfile_config *cfg,
 	int ret;
 	uint64_t i;
 	sqlite3_stmt *stmt = NULL;
-	uint64_t loff, poff;
-	uint32_t flags, len;
+	uint64_t loff, poff, len;
+	uint32_t flags;
 	unsigned char *digest;
 
 	if (file->flags & FILEREC_IN_DB) {
@@ -1137,11 +1137,7 @@ int dbfile_store_extent_hashes(sqlite3 *db, struct dbfile_config *cfg,
 		if (ret)
 			goto bind_error;
 
-		/*
-		 * XXX: Should len really be u64? I think fiemap uses
-		 * 32 bits here
-		 */
-		ret = sqlite3_bind_int(stmt, 5, len);
+		ret = sqlite3_bind_int64(stmt, 5, len);
 		if (ret)
 			goto bind_error;
 
