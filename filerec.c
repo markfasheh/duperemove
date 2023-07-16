@@ -496,7 +496,8 @@ void filerec_close_open_list(struct open_once *open_files)
 struct fiemap_ctxt {
 	struct fiemap		*fiemap;
 	char			buf[FIEMAP_BUF_SIZE];
-	int			idx;
+	unsigned int		idx;
+	bool			initialized;
 };
 
 struct fiemap_ctxt *alloc_fiemap_ctxt(void)
@@ -505,7 +506,6 @@ struct fiemap_ctxt *alloc_fiemap_ctxt(void)
 
 	if (ctxt) {
 		ctxt->fiemap = (struct fiemap *) ctxt->buf;
-		ctxt->idx = -1;
 	}
 	return ctxt;
 }
@@ -513,7 +513,8 @@ struct fiemap_ctxt *alloc_fiemap_ctxt(void)
 static int do_fiemap(struct fiemap *fiemap, struct filerec *file,
 		     uint64_t start)
 {
-	int err, i;
+	int err;
+	unsigned int i;
 	struct fiemap_extent *extent;
 
 	memset(fiemap, 0, sizeof(struct fiemap));
@@ -549,18 +550,19 @@ int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, struct filerec *file,
 {
 	int ret;
 	uint64_t fiestart = 0;
-	int idx = ctxt->idx;
+	unsigned int idx = ctxt->idx;
 	struct fiemap *fiemap = ctxt->fiemap;
 	struct fiemap_extent *extent;
 
-	if (idx == -1 || idx >= fiemap->fm_mapped_extents) {
-		if (idx != -1) {
+	if (!ctxt->initialized || idx >= fiemap->fm_mapped_extents) {
+		if (ctxt->initialized) {
 			extent = &fiemap->fm_extents[idx - 1];
 			fiestart = extent->fe_logical + extent->fe_length;
 		}
 		ret = do_fiemap(fiemap, file, fiestart);
 		if (ret)
 			return ret;
+		ctxt->initialized = true;
 		idx = ctxt->idx = 0;
 	}
 
