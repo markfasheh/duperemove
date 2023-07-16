@@ -54,7 +54,7 @@ static void dbfile_config_defaults(struct dbfile_config *cfg)
 {
 	memset(cfg, 0, sizeof(*cfg));
 	cfg->blocksize = blocksize;
-	strncpy(cfg->hash_type, HASH_TYPE, 8);
+	memcpy(cfg->hash_type, HASH_TYPE, 8);
 }
 
 #if 0
