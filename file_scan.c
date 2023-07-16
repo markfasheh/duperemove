@@ -803,8 +803,8 @@ static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			 struct block_csum **ret_block_hashes, int *ret_nb_hash)
 {
 	int ret;
-	uint64_t loff, poff, fieloff, bytes_read, fielen, read_size = blocksize;
-	unsigned int fieflags;
+	uint64_t loff, poff, fieloff, bytes_read, fielen;
+	unsigned int fieflags, read_size = blocksize;
 	struct filerec *file = ctxt->file;
 	struct block_csum *block_hashes;
 	uint64_t size = file->size;

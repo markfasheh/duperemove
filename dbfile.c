@@ -1496,8 +1496,7 @@ int dbfile_load_extent_hashes(struct results_tree *res)
 	int ret, flags;
 	sqlite3 *db;
 	sqlite3_stmt *stmt = NULL;
-	uint64_t subvol, ino, loff, poff;
-	unsigned int len;
+	uint64_t subvol, ino, loff, poff, len;
 	unsigned char *digest;
 	struct filerec *file;
 
@@ -1537,7 +1536,7 @@ int dbfile_load_extent_hashes(struct results_tree *res)
 		ino = sqlite3_column_int64(stmt, 1);
 		subvol = sqlite3_column_int64(stmt, 2);
 		loff = sqlite3_column_int64(stmt, 3);
-		len = sqlite3_column_int(stmt, 4);
+		len = sqlite3_column_int64(stmt, 4);
 		poff = sqlite3_column_int64(stmt, 5);
 		flags = sqlite3_column_int(stmt, 6);
 
