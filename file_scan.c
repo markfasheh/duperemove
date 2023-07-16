@@ -588,28 +588,7 @@ static void run_pool(GThreadPool *pool, struct filerec *file,
 
 static inline int is_block_zeroed(void *buf, ssize_t buf_size)
 {
-	/* First check for zeroes in word-sized chunks */
-	if (buf_size >= sizeof(ssize_t)) {
-		ssize_t *buf_start = buf;
-		ssize_t *buf_end = buf + (buf_size - (buf_size % sizeof(ssize_t)));
-		ssize_t *ptr = buf_start;
-		for (; ptr < buf_end; ptr++) {
-			if (*ptr != 0)
-				return 0;
-		}
-
-		buf_size = buf_size % sizeof(ssize_t);
-		buf = buf_end;
-	}
-
-	char *buf_start = buf;
-	char *buf_end = buf+buf_size;
-	char *ptr = buf_start;
-	for (; ptr < buf_end; ptr++) {
-		if (*ptr != 0)
-			return 0;
-	}
-	return 1;
+	return !(buf && memcmp(buf, buf + 1, buf_size - 1));
 }
 
 static int xlate_extent_flags(int fieflags, ssize_t len)
@@ -687,7 +666,6 @@ static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
 				add_to_running_checksum(csum, DIGEST_LEN,
 							data->block_digest);
 		}
-
 
 		start += cmp_len;
 		cmp_len = extlen - start;
