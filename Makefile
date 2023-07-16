@@ -32,7 +32,7 @@ objects = $(CFILES:.c=.o)
 
 hashstats_obj = csum-xxhash.o rbtree.o hash-tree.o filerec.o util.o \
 	results-tree.o csum.o dbfile.o interval_tree.o list_sort.o debug.o
-show_shared_obj = rbtree.o util.o debug.o
+show_shared_obj = rbtree.o util.o debug.o filerec.o
 csum_test_obj = csum-xxhash.o util.o csum.o debug.o
 
 install_progs = duperemove hashstats btrfs-extent-same show-shared-extents
@@ -122,8 +122,8 @@ uninstall:
 csum-test: $(csum_test_obj) csum-test.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(csum_test_obj) -o csum-test csum-test.c  $(LIBRARY_FLAGS)
 
-show-shared-extents: $(show_shared_obj) filerec.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -DFILEREC_TEST filerec.c $(show_shared_obj) -o show-shared-extents $(LIBRARY_FLAGS)
+show-shared-extents: $(show_shared_obj) show-shared-extents.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) show-shared-extents.c $(show_shared_obj) -o show-shared-extents $(LIBRARY_FLAGS)
 
 hashstats: $(hashstats_obj) hashstats.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(hashstats_obj) hashstats.c -o hashstats $(LIBRARY_FLAGS)
