@@ -1616,9 +1616,9 @@ int dbfile_load_nondupe_file_extents(sqlite3 *db, struct filerec *file,
 				     struct file_extent **ret_extents,
 				     unsigned int *num_extents)
 {
-	int ret, i;
+	int ret;
 	sqlite3_stmt *stmt = NULL;
-	uint64_t count;
+	uint64_t count, i;
 	struct file_extent *extents = NULL;
 
 #define NONDUPE_JOIN							\

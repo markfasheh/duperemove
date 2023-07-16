@@ -354,7 +354,7 @@ struct find_dupes_cmp {
 };
 declare_alloc_tracking(find_dupes_cmp);
 
-static int find_dupes_worker(struct find_dupes_cmp *cmp,
+static void find_dupes_worker(struct find_dupes_cmp *cmp,
 			     struct results_tree *res)
 {
 	struct filerec *file1 = cmp->file1;
@@ -365,7 +365,7 @@ static int find_dupes_worker(struct find_dupes_cmp *cmp,
 	find_file_dupes(file1, file2, res);
 	update_extent_search_status(1);
 
-	return mark_filerecs_compared(file1, file2);
+	mark_filerecs_compared(file1, file2);
 }
 
 static int push_compares(GThreadPool *pool, struct dupe_blocks_list *dups,
@@ -737,11 +737,11 @@ static int search_extent(struct filerec *file, struct file_extent *extent,
 int search_file_extents(struct filerec *file, struct results_tree *dupe_extents)
 {
 
-	int ret, i;
+	int ret;
 	sqlite3 *db;
 	struct file_extent *extents = NULL;
 	struct file_extent *extent;
-	unsigned int num_extents;
+	unsigned int num_extents, i;
 
 	db = dbfile_open_handle(serialize_fname);
 	if (!db) {
@@ -792,7 +792,7 @@ struct cmp_ctxt {
 	struct results_tree *dupe_extents;
 };
 
-static int find_dupes_thread(struct cmp_ctxt *ctxt, void *priv [[maybe_unused]])
+static void find_dupes_thread(struct cmp_ctxt *ctxt, void *priv [[maybe_unused]])
 {
 
 	struct results_tree *dupe_extents = ctxt->dupe_extents;
@@ -800,7 +800,7 @@ static int find_dupes_thread(struct cmp_ctxt *ctxt, void *priv [[maybe_unused]])
 
 	free(ctxt);
 
-	return search_file_extents(file, dupe_extents);
+	search_file_extents(file, dupe_extents);
 }
 
 int find_additional_dedupe(struct results_tree *dupe_extents)

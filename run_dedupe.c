@@ -523,20 +523,17 @@ static int extent_dedupe_worker(struct dupe_extents *dext,
 	return 0;
 }
 
-static int dedupe_worker(void *priv, struct dedupe_counts *counts)
+static void dedupe_worker(void *priv, struct dedupe_counts *counts)
 {
-	int ret;
 	uint64_t fiemap_bytes = 0ULL;
 	uint64_t kern_bytes = 0ULL;
 
-	ret = extent_dedupe_worker(priv, &fiemap_bytes, &kern_bytes);
+	extent_dedupe_worker(priv, &fiemap_bytes, &kern_bytes);
 
 	g_mutex_lock(&dedupe_counts_mutex);
 	counts->fiemap_bytes += fiemap_bytes;
 	counts->kern_bytes += kern_bytes;
 	g_mutex_unlock(&dedupe_counts_mutex);
-
-	return ret;
 }
 
 static GThreadPool *dedupe_pool = NULL;

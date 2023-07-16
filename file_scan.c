@@ -558,7 +558,7 @@ static void run_pool(GThreadPool *pool, struct filerec *file,
 	GError *err = NULL;
 	struct filerec *tmp;
 
-	int counter = 0;
+	unsigned int counter = 0;
 
 	qprintf("Using %u threads for file hashing phase\n", io_threads);
 
