@@ -31,8 +31,6 @@
 #include "util.h"
 #include "dbfile.h"
 
-extern sqlite3 *gdb;
-
 unsigned int blocksize;
 int v2_hashfile = 0;
 static int version_only = 0;
@@ -59,13 +57,13 @@ int add_file_db(const char *filename [[maybe_unused]],
 	return 0;
 }
 
-static int prepare_statements(void)
+static int prepare_statements(struct sqlite3 *db)
 {
 	int ret;
 
 #define	FIND_TOP_HASHES							\
 "select digest, count(digest) from hashes group by digest having (count(digest) > 1) order by (count(digest)) desc;"
-	ret = sqlite3_prepare_v2(gdb, FIND_TOP_HASHES, -1, &top_hashes_stmt,
+	ret = sqlite3_prepare_v2(db, FIND_TOP_HASHES, -1, &top_hashes_stmt,
 				 NULL);
 	if (ret) {
 		fprintf(stderr, "error %d while prepping hash search stmt: %s\n",
@@ -75,7 +73,7 @@ static int prepare_statements(void)
 
 #define	FIND_FILES_COUNT						\
 "select count (distinct files.filename) from files INNER JOIN hashes on hashes.digest = ?1 AND files.subvol=hashes.subvol AND files.ino=hashes.ino;"
-	ret = sqlite3_prepare_v2(gdb, FIND_FILES_COUNT, -1, &files_count_stmt,
+	ret = sqlite3_prepare_v2(db, FIND_FILES_COUNT, -1, &files_count_stmt,
 				 NULL);
 	if (ret) {
 		fprintf(stderr, "error %d while preparing file count stmt: %s\n",
@@ -86,7 +84,7 @@ static int prepare_statements(void)
 #define	FIND_BLOCKS							\
 "select files.filename, hashes.loff, hashes.flags from files INNER JOIN hashes on hashes.digest = ?1 AND files.subvol=hashes.subvol AND files.ino=hashes.ino;"
 
-	ret = sqlite3_prepare_v2(gdb, FIND_BLOCKS, -1, &find_blocks_stmt, NULL);
+	ret = sqlite3_prepare_v2(db, FIND_BLOCKS, -1, &find_blocks_stmt, NULL);
 	if (ret) {
 		fprintf(stderr, "error %d while prepping find blocks stmt: %s\n",
 			ret, sqlite3_errstr(ret));
@@ -231,7 +229,7 @@ static int print_files_cb(void *priv [[maybe_unused]], int argc,
 	return 0;
 }
 
-static void print_filerecs(void)
+static void print_filerecs(struct sqlite3 *db)
 {
 	int ret;
 	char *errorstr;
@@ -242,7 +240,7 @@ static void print_filerecs(void)
 	printf("Showing %"PRIu64" files.\nInode\tSubvol ID\tBlocks Stored\tSize\tFilename\n",
 		dbfile_cfg.num_files);
 
-	ret = sqlite3_exec(gdb, LIST_FILES, print_files_cb, NULL, &errorstr);
+	ret = sqlite3_exec(db, LIST_FILES, print_files_cb, NULL, &errorstr);
 	if (ret) {
 		fprintf(stderr, "error %d, executing file search: %s\n", ret,
 			errorstr);
@@ -344,27 +342,33 @@ int main(int argc, char **argv)
 		return EINVAL;
 	}
 
-	ret = dbfile_open(serialize_fname, &dbfile_cfg);
+	struct sqlite3 *db = dbfile_open_handle(serialize_fname);
+	if (!db) {
+		fprintf(stderr, "ERROR: Couldn't open db file %s\n",
+			serialize_fname);
+		return ENOMEM;
+	}
+
+	ret = dbfile_get_config(db, &dbfile_cfg);
 	if (ret)
 		return ret;
 
 	blocksize = dbfile_cfg.blocksize;
+	print_file_info();
 
-	ret = prepare_statements();
+	ret = prepare_statements(db);
 	if (ret)
 		return ret;
-
-	print_file_info();
 
 	if (num_to_print || print_all_hashes)
 		print_by_size();
 
 	if (print_file_list)
-		print_filerecs();
+		print_filerecs(db);
 
 	finalize_statements();
 
-	dbfile_close();
+	dbfile_close_handle(db);
 
 	return ret;
 }
