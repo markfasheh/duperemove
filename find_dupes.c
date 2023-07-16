@@ -827,26 +827,33 @@ int find_additional_dedupe(struct results_tree *dupe_extents)
 	set_extent_search_status_count(num_filerecs);
 
 	list_for_each_entry(file, &filerec_list, rec_list) {
-		if (file->size) {
-			struct cmp_ctxt *ctxt = malloc(sizeof(*ctxt));
-
-			if (!ctxt)
-				return ENOMEM;
-
-			ctxt->file = file;
-			ctxt->dupe_extents = dupe_extents;
-
-			g_thread_pool_push(pool, ctxt, &err);
-			if (err) {
-				fprintf(stderr,
-					"Error from thread pool: %s\n ",
-					err->message);
-				g_error_free(err);
-				return ENOMEM;
-			}
-
-			/* XXX: Need to throttle here? */
+		/*
+		 * This is an empty file - or maybe an error somewhere ?
+		 * Anyway, let's skip it and mark it as "processed"
+		 */
+		if (file->size == 0) {
+			update_extent_search_status(1);
+			continue;
 		}
+
+		struct cmp_ctxt *ctxt = malloc(sizeof(*ctxt));
+
+		if (!ctxt)
+			return ENOMEM;
+
+		ctxt->file = file;
+		ctxt->dupe_extents = dupe_extents;
+
+		g_thread_pool_push(pool, ctxt, &err);
+		if (err) {
+			fprintf(stderr,
+				"Error from thread pool: %s\n ",
+				err->message);
+			g_error_free(err);
+			return ENOMEM;
+		}
+
+		/* XXX: Need to throttle here? */
 	}
 
 	wait_update_extent_search_status();
