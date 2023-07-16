@@ -14,22 +14,15 @@
  */
 
 #include <limits.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <stddef.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
 #include <getopt.h>
 #include <inttypes.h>
 
-#include "rbtree.h"
-#include "list.h"
 #include "csum.h"
-#include "filerec.h"
-#include "hash-tree.h"
-#include "util.h"
 #include "dbfile.h"
+#include "file_flags.h"
 
 unsigned int blocksize;
 int v2_hashfile = 0;
@@ -332,10 +325,6 @@ static int parse_options(int argc, char **argv)
 int main(int argc, char **argv)
 {
 	int ret;
-	struct hash_tree tree;
-
-	init_filerec();
-	init_hash_tree(&tree);
 
 	if (parse_options(argc, argv)) {
 		usage(argv[0]);
