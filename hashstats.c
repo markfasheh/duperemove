@@ -32,7 +32,6 @@ static int print_blocks = 0;
 static int num_to_print = 10;
 static int print_file_list = 0;
 static char *serialize_fname = NULL;
-static struct dbfile_config dbfile_cfg;
 
 static sqlite3_stmt *top_hashes_stmt = NULL;
 static sqlite3_stmt *files_count_stmt = NULL;
@@ -230,9 +229,6 @@ static void print_filerecs(struct sqlite3 *db)
 #define	LIST_FILES							\
 "select ino, subvol, blocks, size, filename from files;"
 
-	printf("Showing %"PRIu64" files.\nInode\tSubvol ID\tBlocks Stored\tSize\tFilename\n",
-		dbfile_cfg.num_files);
-
 	ret = sqlite3_exec(db, LIST_FILES, print_files_cb, NULL, &errorstr);
 	if (ret) {
 		fprintf(stderr, "error %d, executing file search: %s\n", ret,
@@ -241,13 +237,13 @@ static void print_filerecs(struct sqlite3 *db)
 	}
 }
 
-static void print_file_info(void)
+static void print_file_info(char *fname, struct dbfile_config *cfg)
 {
-	printf("Raw header info for \"%s\":\n", serialize_fname);
-	printf("  version: %d.%d\tblock_size: %u\n", dbfile_cfg.major,
-	       dbfile_cfg.minor, dbfile_cfg.blocksize);
+	printf("Raw header info for \"%s\":\n", fname);
+	printf("  version: %d.%d\tblock_size: %u\n", cfg->major,
+	       cfg->minor, cfg->blocksize);
 	printf("  num_files: %"PRIu64"\tnum_hashes: %"PRIu64"\n",
-	       dbfile_cfg.num_files, dbfile_cfg.num_hashes);
+	       cfg->num_files, cfg->num_hashes);
 }
 
 static void usage(const char *prog)
@@ -325,6 +321,7 @@ static int parse_options(int argc, char **argv)
 int main(int argc, char **argv)
 {
 	int ret;
+	struct dbfile_config dbfile_cfg;
 
 	if (parse_options(argc, argv)) {
 		usage(argv[0]);
@@ -343,7 +340,7 @@ int main(int argc, char **argv)
 		return ret;
 
 	blocksize = dbfile_cfg.blocksize;
-	print_file_info();
+	print_file_info(serialize_fname, &dbfile_cfg);
 
 	ret = prepare_statements(db);
 	if (ret)
@@ -352,8 +349,11 @@ int main(int argc, char **argv)
 	if (num_to_print || print_all_hashes)
 		print_by_size();
 
-	if (print_file_list)
+	if (print_file_list) {
+		printf("Showing %"PRIu64" files.\nInode\tSubvol ID\tBlocks Stored\tSize\tFilename\n",
+			dbfile_cfg.num_files);
 		print_filerecs(db);
+	}
 
 	finalize_statements();
 
