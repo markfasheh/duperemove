@@ -33,10 +33,6 @@ static int num_to_print = 10;
 static int print_file_list = 0;
 static char *serialize_fname = NULL;
 
-static sqlite3_stmt *top_hashes_stmt = NULL;
-static sqlite3_stmt *files_count_stmt = NULL;
-static sqlite3_stmt *find_blocks_stmt = NULL;
-
 /* dirty hack so we don't have to add file_scan.o to hashstats */
 int add_file_db(const char *filename [[maybe_unused]],
 		uint64_t inum [[maybe_unused]],
@@ -47,49 +43,6 @@ int add_file_db(const char *filename [[maybe_unused]],
 		int *delete [[maybe_unused]])
 {
 	return 0;
-}
-
-static int prepare_statements(struct sqlite3 *db)
-{
-	int ret;
-
-#define	FIND_TOP_HASHES							\
-"select digest, count(digest) from hashes group by digest having (count(digest) > 1) order by (count(digest)) desc;"
-	ret = sqlite3_prepare_v2(db, FIND_TOP_HASHES, -1, &top_hashes_stmt,
-				 NULL);
-	if (ret) {
-		fprintf(stderr, "error %d while prepping hash search stmt: %s\n",
-			ret, sqlite3_errstr(ret));
-		return ret;
-	}
-
-#define	FIND_FILES_COUNT						\
-"select count (distinct files.filename) from files INNER JOIN hashes on hashes.digest = ?1 AND files.subvol=hashes.subvol AND files.ino=hashes.ino;"
-	ret = sqlite3_prepare_v2(db, FIND_FILES_COUNT, -1, &files_count_stmt,
-				 NULL);
-	if (ret) {
-		fprintf(stderr, "error %d while preparing file count stmt: %s\n",
-			ret, sqlite3_errstr(ret));
-		return ret;
-	}
-
-#define	FIND_BLOCKS							\
-"select files.filename, hashes.loff, hashes.flags from files INNER JOIN hashes on hashes.digest = ?1 AND files.subvol=hashes.subvol AND files.ino=hashes.ino;"
-
-	ret = sqlite3_prepare_v2(db, FIND_BLOCKS, -1, &find_blocks_stmt, NULL);
-	if (ret) {
-		fprintf(stderr, "error %d while prepping find blocks stmt: %s\n",
-			ret, sqlite3_errstr(ret));
-		return ret;
-	}
-	return 0;
-}
-
-static void finalize_statements(void)
-{
-	sqlite3_finalize(top_hashes_stmt);
-	sqlite3_finalize(files_count_stmt);
-	sqlite3_finalize(find_blocks_stmt);
 }
 
 static void printf_file_block_flags(unsigned int flags)
@@ -109,7 +62,7 @@ static void printf_file_block_flags(unsigned int flags)
 	printf(")");
 }
 
-static int print_all_blocks(unsigned char *digest)
+static int print_all_blocks(unsigned char *digest, sqlite3_stmt *find_blocks_stmt)
 {
 	int ret;
 	uint64_t loff;
@@ -149,12 +102,46 @@ static int print_all_blocks(unsigned char *digest)
 	return 0;
 }
 
-static void print_by_size(void)
+static void print_by_size(sqlite3 *db)
 {
 	int ret;
 	int header_printed = 0;
 	unsigned char *digest;
 	uint64_t count, files_count;
+
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *find_blocks_stmt = NULL;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *top_hashes_stmt = NULL;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *files_count_stmt = NULL;
+
+#define	FIND_BLOCKS							\
+"select files.filename, hashes.loff, hashes.flags from files INNER JOIN hashes on hashes.digest = ?1 AND files.subvol=hashes.subvol AND files.ino=hashes.ino;"
+
+	ret = sqlite3_prepare_v2(db, FIND_BLOCKS, -1, &find_blocks_stmt, NULL);
+	if (ret) {
+		fprintf(stderr, "error %d while prepping find blocks stmt: %s\n",
+			ret, sqlite3_errstr(ret));
+		return;
+	}
+
+#define	FIND_TOP_HASHES							\
+"select digest, count(digest) from hashes group by digest having (count(digest) > 1) order by (count(digest)) desc;"
+	ret = sqlite3_prepare_v2(db, FIND_TOP_HASHES, -1, &top_hashes_stmt,
+				 NULL);
+	if (ret) {
+		fprintf(stderr, "error %d while prepping hash search stmt: %s\n",
+			ret, sqlite3_errstr(ret));
+		return;
+	}
+
+#define	FIND_FILES_COUNT						\
+"select count (distinct files.filename) from files INNER JOIN hashes on hashes.digest = ?1 AND files.subvol=hashes.subvol AND files.ino=hashes.ino;"
+	ret = sqlite3_prepare_v2(db, FIND_FILES_COUNT, -1, &files_count_stmt,
+				 NULL);
+	if (ret) {
+		fprintf(stderr, "error %d while preparing file count stmt: %s\n",
+			ret, sqlite3_errstr(ret));
+		return;
+	}
 
 	if (print_all_hashes)
 		printf("Print all hashes ");
@@ -195,7 +182,7 @@ static void print_by_size(void)
 		sqlite3_reset(files_count_stmt);
 
 		if (print_blocks) {
-			ret = print_all_blocks(digest);
+			ret = print_all_blocks(digest, find_blocks_stmt);
 			if (ret)
 				return;
 		}
@@ -326,20 +313,14 @@ int main(int argc, char **argv)
 	blocksize = dbfile_cfg.blocksize;
 	print_file_info(serialize_fname, &dbfile_cfg);
 
-	ret = prepare_statements(db);
-	if (ret)
-		return ret;
-
 	if (num_to_print || print_all_hashes)
-		print_by_size();
+		print_by_size(db);
 
 	if (print_file_list) {
 		printf("Showing %"PRIu64" files.\nInode\tSubvol ID\tBlocks Stored\tSize\tFilename\n",
 			dbfile_cfg.num_files);
 		dbfile_list_files(db, print_files_cb);
 	}
-
-	finalize_statements();
 
 	dbfile_close_handle(db);
 

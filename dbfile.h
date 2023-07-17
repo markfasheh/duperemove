@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <sqlite3.h>
+#include "util.h"
+
 struct filerec;
 struct block_csum;
 struct extent_csum;
@@ -97,4 +99,8 @@ int dbfile_remove_file(sqlite3 *db, struct dbfile_config *cfg,
 
 void dbfile_list_files(sqlite3 *db, int (*callback)(void*, int, char**, char**));
 
+static inline void sqlite3_stmt_cleanup(void *p)
+{
+        sqlite3_finalize(*(sqlite3_stmt**) p);
+}
 #endif	/* __DBFILE_H__ */
