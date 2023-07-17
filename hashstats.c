@@ -221,22 +221,6 @@ static int print_files_cb(void *priv [[maybe_unused]], int argc,
 	return 0;
 }
 
-static void print_filerecs(struct sqlite3 *db)
-{
-	int ret;
-	char *errorstr;
-
-#define	LIST_FILES							\
-"select ino, subvol, blocks, size, filename from files;"
-
-	ret = sqlite3_exec(db, LIST_FILES, print_files_cb, NULL, &errorstr);
-	if (ret) {
-		fprintf(stderr, "error %d, executing file search: %s\n", ret,
-			errorstr);
-		return;
-	}
-}
-
 static void print_file_info(char *fname, struct dbfile_config *cfg)
 {
 	printf("Raw header info for \"%s\":\n", fname);
@@ -352,7 +336,7 @@ int main(int argc, char **argv)
 	if (print_file_list) {
 		printf("Showing %"PRIu64" files.\nInode\tSubvol ID\tBlocks Stored\tSize\tFilename\n",
 			dbfile_cfg.num_files);
-		print_filerecs(db);
+		dbfile_list_files(db, print_files_cb);
 	}
 
 	finalize_statements();

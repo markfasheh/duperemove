@@ -1776,3 +1776,20 @@ out:
 
 	return ret;
 }
+
+void dbfile_list_files(sqlite3 *db, int (*callback)(void*, int, char**, char**))
+{
+	int ret;
+	char *err;
+
+#define LIST_FILERECS							\
+"select ino, subvol, blocks, size, filename from files;"
+
+	ret = sqlite3_exec(db, LIST_FILERECS, callback, NULL, &err);
+	if (ret) {
+		fprintf(stderr, "error %d, executing file search: %s\n", ret,
+			err);
+		return;
+	}
+	return;
+}

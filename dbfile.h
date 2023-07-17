@@ -1,6 +1,8 @@
 #ifndef	__DBFILE_H__
 #define	__DBFILE_H__
 
+#include <stdlib.h>
+#include <stdint.h>
 #include <sqlite3.h>
 struct filerec;
 struct block_csum;
@@ -92,5 +94,7 @@ int dbfile_iter_files(sqlite3 *db, iter_files_func func);
 
 int dbfile_remove_file(sqlite3 *db, struct dbfile_config *cfg,
 		       const char *filename);
+
+void dbfile_list_files(sqlite3 *db, int (*callback)(void*, int, char**, char**));
 
 #endif	/* __DBFILE_H__ */
