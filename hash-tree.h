@@ -118,7 +118,4 @@ struct file_hash_head *find_file_hash_head(struct dupe_blocks_list *dups,
 
 void init_hash_tree(struct hash_tree *tree);
 void free_hash_tree(struct hash_tree *tree);
-
-void debug_print_block(struct file_block *e);
-
 #endif /* __HASH_TREE__ */
