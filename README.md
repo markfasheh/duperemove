@@ -4,7 +4,7 @@ This README is for duperemove v0.12.
 
 Duperemove is a simple tool for finding duplicated extents and
 submitting them for deduplication. When given a list of files it will
-hash their contents on a extent by extent basis and compare those hashes
+hash their contents on an extent by extent basis and compare those hashes
 to each other, finding and categorizing extents that match each
 other. Optionally, a per-block hash can be applied for further duplication lookup.
 When given the -d option, duperemove will submit those
