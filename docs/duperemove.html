@@ -1,634 +1,562 @@
-<html>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
 <head>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-<title>duperemove(8) - </title>
-<style type="text/css">
-h1 { font-size: 100%; margin-top: 2em; margin-bottom: 0; }
-h2 { font-size: 100%; margin-left: 4ex; margin-top: 2em; margin-bottom: 0; }
-p { margin-top: 1ex; margin-bottom: 1ex; }
-.j { text-align: justify; }
-.pp { margin-left: 8ex; }
-.tp1 { margin-left: 12ex; }
-.tp2 { margin-left: 16ex; }
-.pre { font-family: monospace; }
-</style>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="dcterms.date" content="2023-08-07" />
+  <title>Duperemove</title>
+  <style>
+    html {
+      line-height: 1.5;
+      font-family: Georgia, serif;
+      font-size: 20px;
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 1em;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, 'Lucida Console', Consolas, monospace;
+      font-size: 85%;
+      margin: 0;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      background-color: #1a1a1a;
+      border: none;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    span.underline{text-decoration: underline;}
+    div.column{display: inline-block; vertical-align: top; width: 50%;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    ul.task-list{list-style: none;}
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
 </head>
-
 <body>
-
-<table width="98%">
-	<tr>
-		<td>duperemove(8)</td>
-		<td align="center">Version 0.12</td>
-
-		<td>duperemove(8)</td>
-
-		</tr>
-</table>
-
-<h1><a name="0"></a>"NAME"</h1>
-
-<p class="pp j">duperemove - Find duplicate extents and print them to stdout
-</p>
-
-<h1><a name="1"></a>"SYNOPSIS"</h1>
-
-<p class="pp j"><b>duperemove</b> <i>[options]</i> \fIfiles...\fI
-</p>
-
-<h1><a name="2"></a>"DESCRIPTION"</h1>
-
-<p class="pp j"><b>duperemove</b> is a simple tool for finding duplicated extents and
-submitting them for deduplication. When given a list of files it will
-hash their contents on a block by block basis and compare those hashes
-to each other, finding and categorizing blocks that match each
-other. When given the <b>-d</b> option, <b>duperemove</b> will submit
-those extents for deduplication using the Linux kernel FIDEDUPERANGE
-ioctl.
-<br />
-<br />
-<b>duperemove</b> can store the hashes it computes in a <i>hashfile</i>. If
-given an existing hashfile, <b>duperemove</b> will only compute hashes
-for those files which have changed since the last run.  Thus you can run
-<b>duperemove</b> repeatedly on your data as it changes, without having to
-re-checksum unchanged data.  For more on hashfiles see the
-<b>--hashfile</b> option below as well as the <i>Examples</i> section.
-<br />
-<br />
-<b>duperemove</b> can also take input from the <b>fdupes</b> program, see the
-<b>--fdupes</b> option below.
-<br />
-<br />
-</p>
-
-<h1><a name="3"></a>"GENERAL"</h1>
-
-<p class="pp j">Duperemove has two major modes of operation one of which is a subset
-of the other.
-<br />
-<br />
-</p>
-
-<h2><a name="4"></a>"Readonly / Non-deduplicating Mode"</h2>
-
-<br />
-<br />
-<p class="pp j">When run without <b>-d</b> (the default) duperemove will print out one or
-more tables of matching extents it has determined would be ideal
-candidates for deduplication. As a result, readonly mode is useful for
-seeing what duperemove might do when run with <b>-d</b>. The output could
-also be used by some other software to submit the extents for
-deduplication at a later time.
-<br />
-<br />
-Generally, duperemove does not concern itself with the underlying
+<header id="title-block-header">
+<h1 class="title">Duperemove</h1>
+<p class="date">07 Aug 2023</p>
+</header>
+<h1 id="name">NAME</h1>
+<p><code>duperemove</code> - Find duplicate extents and submit them for
+deduplication</p>
+<h1 id="synopsis">SYNOPSIS</h1>
+<p><strong>duperemove</strong> <em><a href="#options">options</a></em>
+<em>files…</em></p>
+<h1 id="description">DESCRIPTION</h1>
+<p><code>duperemove</code> is a simple tool for finding duplicated
+extents and submitting them for deduplication. When given a list of
+files it will hash the contents of their extents and compare those
+hashes to each other, finding and categorizing extents that match each
+other. When given the <code>-d</code> option, <code>duperemove</code>
+will submit those extents for deduplication using the Linux kernel
+FIDEDUPERANGE ioctl.</p>
+<p><code>duperemove</code> can store the hashes it computes in a
+<code>hashfile</code>. If given an existing hashfile,
+<code>duperemove</code> will only compute hashes for those files which
+have changed since the last run. Thus you can run
+<code>duperemove</code> repeatedly on your data as it changes, without
+having to re-checksum unchanged data. For more on hashfiles see the
+<code>--hashfile</code> option below as well as the
+<code>Examples</code> section.</p>
+<p><code>duperemove</code> can also take input from the
+<code>fdupes</code> program, see the <code>--fdupes</code> option
+below.</p>
+<h1 id="general">GENERAL</h1>
+<p>Duperemove has two major modes of operation, one of which is a subset
+of the other.</p>
+<h2 id="readonly-non-deduplicating-mode">Readonly / Non-deduplicating
+Mode</h2>
+<p>When run without <code>-d</code> (the default) duperemove will print
+out one or more tables of matching extents it has determined would be
+ideal candidates for deduplication. As a result, readonly mode is useful
+for seeing what duperemove might do when run with <code>-d</code>.</p>
+<p>Generally, duperemove does not concern itself with the underlying
 representation of the extents it processes. Some of them could be
 compressed, undergoing I/O, or even have already been deduplicated. In
 dedupe mode, the kernel handles those details and therefore we try not
-to replicate that work.
-<br />
-<br />
-</p>
-
-<h2><a name="5"></a>"Deduping Mode"</h2>
-
-<br />
-<br />
-<p class="pp j">This functions similarly to readonly mode with the exception that the
-duplicated extents found in our "read, hash, and compare" step will
-actually be submitted for deduplication. An estimate of the total data
-deduplicated will be printed after the operation is complete. This
-estimate is calculated by comparing the total amount of shared bytes
-in each file before and after the dedupe.
-<br />
-<br />
-</p>
-
-<h1><a name="6"></a>"OPTIONS"</h1>
-
-<p class="pp j"><i>files</i> can refer to a list of regular files and directories or be
-a hyphen (-) to read them from standard input.
-If a directory is specified, all regular files within it will also be
-scanned. Duperemove can also be told to recursively scan directories with
-the '-r' switch.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>-r</b>
-</p>
-
-<p class="tp2 j">Enable recursive dir traversal.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>-d</b>
-</p>
-
-<p class="tp2 j">De-dupe the results - only works on <i>btrfs</i> and <i>xfs</i>. Use this option twice to disable the check and try to run the ioctl anyway.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>-A</b>
-</p>
-
-<p class="tp2 j">Opens files readonly when deduping. Primarily for use by privileged
+to replicate that work.</p>
+<h2 id="deduping-mode">Deduping Mode</h2>
+<p>This functions similarly to readonly mode with the exception that the
+duplicated extents found in our “read, hash, and compare” step will
+actually be submitted for deduplication. Extents that have already been
+deduped will be skipped. An estimate of the total data deduplicated will
+be printed after the operation is complete. This estimate is calculated
+by comparing the total amount of shared bytes in each file before and
+after the dedupe.</p>
+<h1 id="options">OPTIONS</h1>
+<p><code>files</code> can refer to a list of regular files and
+directories or be a hyphen (-) to read them from standard input. If a
+directory is specified, all regular files within it will also be
+scanned. Duperemove can also be told to recursively scan directories
+with the <code>-r</code> switch.</p>
+<dl>
+<dt><strong>-r</strong></dt>
+<dd>
+Enable recursive dir traversal.
+</dd>
+<dt><strong>-d</strong></dt>
+<dd>
+De-dupe the results - only works on <code>btrfs</code> and
+<code>xfs</code>. Use this option twice to disable the check and try to
+run the ioctl anyway.
+</dd>
+<dt><strong>-A</strong></dt>
+<dd>
+Opens files readonly when deduping. Primarily for use by privileged
 users on readonly snapshots.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>-h</b>
-</p>
-
-<p class="tp2 j">Print numbers in human-readable format.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>--hashfile=hashfile</b>
-</p>
-
-<p class="tp2 j">Use a file for storage of hashes instead of memory. This option drastically
-reduces the memory footprint of duperemove and is recommended when your data
-set is more than a few files large.  <i>Hashfiles</i> are also reusable,
-allowing you to further reduce the amount of hashing done on subsequent
-dedupe runs.
-<br />
-<br />
-If <i>hashfile</i> does not exist it will be created.  If it exists,
-<b>duperemove</b> will check the file paths stored inside of it for changes.
-Files which have changed will be rescanned and their updated hashes will be
-written to the <i>hashfile</i>.  Deleted files will be removed from the <i>hashfile</i>.
-<br />
-<br />
-New files are only added to the <i>hashfile</i> if they are discoverable via
-the <i>files</i> argument.  For that reason you probably want to provide the
-same <i>files</i> list and <b>-r</b> arguments on each run of
-<b>duperemove</b>.  The file discovery algorithm is efficient and will only
-visit each file once, even if it is already in the <i>hashfile</i>.
-<br />
-<br />
-Adding a new path to a hashfile is as simple as adding it to the <i>files</i>
-argument.
-<br />
-<br />
-When deduping from a hashfile, duperemove will avoid deduping files which
-have not changed since the last dedupe.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>-L</b>
-</p>
-
-<p class="tp2 j">Print all files in the hashfile and exit. Requires the <b>--hashfile</b> option.
-Will print additional information about each file when run with <b>-v</b>.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>-R [file]</b>
-</p>
-
-<p class="tp2 j">Remove file from the db and exit. Can be specified multiple
-times. Duperemove will read the list from standard input if a hyphen
-(-) is provided. Requires the <b>--hashfile</b> option.
-<br />
-<br />
-<b>Note:</b> If you are piping filenames from another duperemove instance it
-is advisable to do so into a temporary file first as running duperemove
-simultaneously on the same hashfile may corrupt that hashfile.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>--fdupes</b>
-</p>
-
-<p class="tp2 j">Run in <b>fdupes</b> mode. With this option you can pipe the output of
-<b>fdupes</b> to duperemove to dedupe any duplicate files found. When
-receiving a file list in this manner, duperemove will skip the hashing phase.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>-v</b>
-</p>
-
-<p class="tp2 j">Be verbose.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>--skip-zeroes</b>
-</p>
-
-<p class="tp2 j">Read data blocks and skip any zeroed blocks, useful for speedup duperemove,
-but can prevent deduplication of zeroed files.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>-b size</b>
-</p>
-
-<p class="tp2 j">Use the specified block size. Raising the block size will consume less
-memory but may miss some duplicate blocks. Conversely, lowering the
-blocksize consumes more memory and may find more duplicate blocks. The
-default blocksize of <b>128K</b> was chosen with these parameters in
-mind.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>--io-threads=N</b>
-</p>
-
-<p class="tp2 j">Use N threads for I/O. This is used by the file hashing and dedupe
-stages. Default is automatically detected based on number of
-host cpus.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>--cpu-threads=N</b>
-</p>
-
-<p class="tp2 j">Use N threads for CPU bound tasks. This is used by the duplicate
-extent finding stage. Default is automatically detected based on
-number of host cpus.
-<br />
-<br />
-<b>Note:</b> Hyperthreading can adversely affect performance of the
-extent finding stage. If duperemove detects an Intel CPU with
+</dd>
+<dt><strong>-h</strong></dt>
+<dd>
+Print numbers in human-readable format.
+</dd>
+<dt><strong>-q</strong></dt>
+<dd>
+Quiet mode. Duperemove will only print errors and a short summary of any
+dedupe.
+</dd>
+<dt><strong>--hashfile</strong>=<code>hashfile</code></dt>
+<dd>
+<p>Use a file for storage of hashes instead of memory. This option
+drastically reduces the memory footprint of duperemove and is
+recommended when your data set is more than a few files large.
+<code>Hashfiles</code> are also reusable, allowing you to further reduce
+the amount of hashing done on subsequent dedupe runs.</p>
+<p>If <code>hashfile</code> does not exist it will be created. If it
+exists, <code>duperemove</code> will check the file paths stored inside
+of it for changes. Files which have changed will be rescanned and their
+updated hashes will be written to the <code>hashfile</code>. Deleted
+files will be removed from the <code>hashfile</code>.</p>
+<p>New files are only added to the <code>hashfile</code> if they are
+discoverable via the <code>files</code> argument. For that reason you
+probably want to provide the same <code>files</code> list and
+<code>-r</code> arguments on each run of <code>duperemove</code>. The
+file discovery algorithm is efficient and will only visit each file
+once, even if it is already in the <code>hashfile</code>.</p>
+<p>Adding a new path to a hashfile is as simple as adding it to the
+<code>files</code> argument.</p>
+<p>When deduping from a hashfile, duperemove will avoid deduping files
+which have not changed since the last dedupe.</p>
+</dd>
+<dt><strong>-L</strong></dt>
+<dd>
+Print all files in the hashfile and exit. Requires the
+<code>--hashfile</code> option. Will print additional information about
+each file when run with <code>-v</code>.
+</dd>
+<dt><strong>-R</strong> <code>file</code></dt>
+<dd>
+<p>Remove file from the db and exit. Can be specified multiple times.
+Duperemove will read the list from standard input if a hyphen (-) is
+provided. Requires the <code>--hashfile</code> option.</p>
+<p><code>Note:</code> If you are piping filenames from another
+duperemove instance it is advisable to do so into a temporary file first
+as running duperemove simultaneously on the same hashfile may corrupt
+that hashfile.</p>
+</dd>
+<dt><strong>--fdupes</strong></dt>
+<dd>
+Run in <code>fdupes</code> mode. With this option you can pipe the
+output of <code>fdupes</code> to duperemove to dedupe any duplicate
+files found. When receiving a file list in this manner, duperemove will
+skip the hashing phase.
+</dd>
+<dt><strong>-v</strong></dt>
+<dd>
+Be verbose.
+</dd>
+<dt><strong>--skip-zeroes</strong></dt>
+<dd>
+Read data blocks and skip any zeroed blocks, useful for speedup
+duperemove, but can prevent deduplication of zeroed files.
+</dd>
+<dt><strong>-b</strong> <code>size</code></dt>
+<dd>
+Use the specified block size for reading file extents. Defaults to 128K.
+</dd>
+<dt><strong>--io-threads</strong>=<code>N</code></dt>
+<dd>
+Use N threads for I/O. This is used by the file hashing and dedupe
+stages. Default is automatically detected based on number of host cpus.
+</dd>
+<dt><strong>--cpu-threads</strong>=<code>N</code></dt>
+<dd>
+<p>Use N threads for CPU bound tasks. This is used by the duplicate
+extent finding stage. Default is automatically detected based on number
+of host cpus.</p>
+<p><code>Note:</code> Hyperthreading can adversely affect performance of
+the extent finding stage. If duperemove detects an Intel CPU with
 hyperthreading it will use half the number of cores reported by the
-system for cpu bound tasks.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>--dedupe-options=</b><i>options</i>
-</p>
-
-<p class="tp2 j">Comma separated list of options which alter how we dedupe. Prepend 'no' to an
-option in order to turn it off.
-</p>
-
-<p class="tp1"><b>[no]same</b>
-</p>
-
-<p class="tp2 j">Defaults to <b>off</b>. Allow dedupe of extents within the same
+system for cpu bound tasks.</p>
+</dd>
+<dt><strong>--dedupe-options</strong>=<code>options</code></dt>
+<dd>
+<p>Comma separated list of options which alter how we dedupe. Prepend
+‘no’ to an option in order to turn it off.</p>
+<dl>
+<dt><strong>[no]partial</strong></dt>
+<dd>
+<p>Duperemove can often find more dedupe by comparing portions of
+extents to each other. This can be a lengthy, CPU intensive task so it
+is turned off by default. Using <code>--batchsize</code> is recommended
+to limit the negative effects of this option.</p>
+<p>The code behind this option is under active development and as a
+result the semantics of the <code>partial</code> argument may
+change.</p>
+</dd>
+<dt><strong>[no]same</strong></dt>
+<dd>
+Defaults to <code>off</code>. Allow dedupe of extents within the same
 file.
-</p>
-
-<p class="tp1"><b>[no]fiemap</b>
-</p>
-
-<p class="tp2 j">Defaults to <b>on</b>. Duperemove uses the <i>fiemap</i> ioctl during
-the dedupe stage to optimize out already deduped extents as well as to
-provide an estimate of the space saved after dedupe operations are
-complete.
-<br />
-<br />
-Unfortunately, some versions of Btrfs exhibit extremely poor
-performance in fiemap as the number of references on a file extent
-goes up. If you are experiencing the dedupe phase slowing down
-or 'locking up' this option may give you a significant amount of
-performance back.
-<br />
-<br />
-<b>Note:</b> This does not turn off all usage of fiemap, to disable
-fiemap during the file scan stage, you will also want to use the
-<b>--lookup-extents=no</b> option.
-</p>
-
-<p class="tp1"><b>--help</b>
-</p>
-
-<p class="tp2 j">Prints help text.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>--lookup-extents=[yes|no]</b>
-</p>
-
-<p class="tp2 j">Defaults to no. Allows duperemove to skip checksumming some blocks by
-checking their extent state.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>-x</b>
-</p>
-
-<p class="tp2 j">Don't cross filesystem boundaries, this is the default behavior since
-duperemove v0.11. The option is kept for backwards compatibility.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>--read-hashes=hashfile</b>
-</p>
-
-<p class="tp2 j"><b>\This option is primarily for testing.</b> See the <b>--hashfile</b> option if you want to use hashfiles.
-<br />
-<br />
-Read hashes from a hashfile. A file list is not required with this
+</dd>
+<dt><strong>[no]fiemap</strong></dt>
+<dd>
+<p>Defaults to <code>on</code>. Duperemove uses the <code>fiemap</code>
+ioctl during the dedupe stage to optimize out already deduped extents as
+well as to provide an estimate of the space saved after dedupe
+operations are complete.</p>
+<p>Unfortunately, some versions of Btrfs exhibit extremely poor
+performance in fiemap as the number of references on a file extent goes
+up. If you are experiencing the dedupe phase slowing down or ‘locking
+up’ this option may give you a significant amount of performance
+back.</p>
+<p><code>Note:</code> This does not turn off all usage of fiemap, to
+disable fiemap during the file scan stage, you will also want to use the
+<code>--lookup-extents=no</code> option.</p>
+</dd>
+<dt><strong>[no]block</strong></dt>
+<dd>
+Deprecated.
+</dd>
+</dl>
+</dd>
+<dt><strong>--help</strong></dt>
+<dd>
+Prints help text.
+</dd>
+<dt><strong>--lookup-extents</strong>={yes|no}</dt>
+<dd>
+Defaults to <code>yes</code>. Allows duperemove to skip checksumming
+some blocks by checking their extent state.
+</dd>
+<dt><strong>--read-hashes</strong>=<code>hashfile</code></dt>
+<dd>
+<p><strong>This option is primarily for testing</strong>. See the
+<code>--hashfile</code> option if you want to use hashfiles.</p>
+<p>Read hashes from a hashfile. A file list is not required with this
 option. Dedupe can be done if duperemove is run from the same base
-directory as is stored in the hash file (basically duperemove has to
-be able to find the files).
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>--write-hashes=hashfile</b>
-</p>
-
-<p class="tp2 j"><b>\This option is primarily for testing.</b> See the <b>--hashfile</b> option if you want to use hashfiles.
-<br />
-<br />
-Write hashes to a hashfile. These can be read in at a later date and
-deduped from.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>--debug</b>
-</p>
-
-<p class="tp2 j">Print debug messages, forces <b>-v</b> if selected.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>--hash-threads=N</b>
-</p>
-
-<p class="tp2 j">Deprecated, see <b>--io-threads</b> above.
-<br />
-<br />
-</p>
-
-<p class="tp1"><b>-B</b>, <b>--batchsize=N</b>
-</p>
-
-<p class="tp2 j">Run the deduplication phase every <b>N</b> files newly scanned.
-This greatly reduces memory usage for large dataset, or when you are doing partial extents lookup, but reduces multithreading efficiency.
-<br />
-Because of that small overhead, its value shall be selected based on the average file size and <b>blocksize</b>.
-<br />
-<i>1000</i> is a sane value for
-extents-only lookups, while you can go as low as <i>1</i> if you are
-running <b>duperemove</b> on very large files (like virtual machines etc).
-<br />
-By default, batching is disabled.
-<br />
-<br />
-</p>
-
-
-<h1><a name="7"></a>"EXAMPLES"</h1>
-
-<h2><a name="8"></a>"Simple Usage"</h2>
-
-<p class="pp j">Dedupe the files in directory /foo, recurse into all subdirectories. You only want to use this for small data sets.
-</p>
-
-<p class="tp2 j">duperemove -dr /foo
-</p>
-
-<p class="pp j">Use duperemove with fdupes to dedupe identical files below directory foo.
-</p>
-
-<p class="tp2 j">fdupes -r /foo | duperemove --fdupes
-<br />
-<br />
-</p>
-
-<h2><a name="9"></a>"Using Hashfiles"</h2>
-
-<p class="pp j">Duperemove can optionally store the hashes it calculates in a
+directory as is stored in the hash file (basically duperemove has to be
+able to find the files).</p>
+</dd>
+<dt><strong>--write-hashes</strong>=<code>hashfile</code></dt>
+<dd>
+<p><strong>This option is primarily for testing</strong>. See the
+<code>--hashfile</code> option if you want to use hashfiles.</p>
+<p>Write hashes to a hashfile. These can be read in at a later date and
+deduped from.</p>
+</dd>
+<dt><strong>--debug</strong></dt>
+<dd>
+Print debug messages, forces <code>-v</code> if selected.
+</dd>
+<dt><strong>--hash-threads</strong>=<code>N</code></dt>
+<dd>
+Deprecated, see <code>--io-threads</code> above.
+</dd>
+<dt><strong>--exclude</strong>=<code>PATTERN</code></dt>
+<dd>
+You an exclude certain files and folders from the deduplication process.
+This might be benefical for skipping subvolume snapshot mounts, for
+instance. You need to provide full path for exclusion. For example
+providing just a file name with a wildcard i.e
+<code>duperemove --exclude file-*</code> won’t ever match because
+internally duperemove works with absolute paths. Another thing to keep
+in mind is that shells usually expand glob pattern so the passed in
+pattern ought to also be quoted. Taking everything into consideration
+the correct way to pass an exclusion pattern is
+<code>duperemove --exclude "/path/to/dir/file*" /path/to/dir</code>
+</dd>
+<dt><strong>-B</strong> <code>N</code>,
+<strong>–batchsize</strong>=<code>N</code></dt>
+<dd>
+<p>Run the deduplication phase every <code>N</code> files newly scanned.
+This greatly reduces memory usage for large dataset, or when you are
+doing partial extents lookup, but reduces multithreading efficiency.</p>
+<p>Because of that small overhead, its value shall be selected based on
+the average file size and <code>blocksize</code>.</p>
+<p><code>1000</code> is a sane value for extents-only lookups, while you
+can go as low as <code>1</code> if you are running
+<code>duperemove</code> on very large files (like virtual machines
+etc).</p>
+<p>By default, batching is disabled.</p>
+</dd>
+</dl>
+<h1 id="examples">EXAMPLES</h1>
+<h2 id="simple-usage">Simple Usage</h2>
+<p>Dedupe the files in directory /foo, recurse into all subdirectories.
+You only want to use this for small data sets:</p>
+<pre><code>duperemove -dr /foo</code></pre>
+<p>Use duperemove with fdupes to dedupe identical files below directory
+foo:</p>
+<pre><code>fdupes -r /foo | duperemove --fdupes</code></pre>
+<h2 id="using-hashfiles">Using Hashfiles</h2>
+<p>Duperemove can optionally store the hashes it calculates in a
 hashfile. Hashfiles have two primary advantages - memory usage and
 re-usability. When using a hashfile, duperemove will stream computed
-hashes to it, instead of main memory.
-<br />
-<br />
-If Duperemove is run with an existing hashfile, it will only scan
+hashes to it, instead of main memory.</p>
+<p>If Duperemove is run with an existing hashfile, it will only scan
 those files which have changed since the last time the hashfile was
-updated. The <i>files</i> argument controls which directories
+updated. The <code>files</code> argument controls which directories
 duperemove will scan for newly added files. In the simplest usage, you
-rerun duperemove with the same parameters and it will only scan
-changed or newly added files - see the first example below.
-<br />
-<br />
-</p>
-
-<p class="pp j">Dedupe the files in directory foo, storing hashes in foo.hash. We can
+rerun duperemove with the same parameters and it will only scan changed
+or newly added files - see the first example below.</p>
+<p>Dedupe the files in directory foo, storing hashes in foo.hash. We can
 run this command multiple times and duperemove will only checksum and
-dedupe changed or newly added files.
-</p>
-
-<p class="tp2 j">duperemove -dr --hashfile=foo.hash foo/
-</p>
-
-<p class="pp j">Don't scan for new files, only update changed or deleted files, then dedupe.
-</p>
-
-<p class="tp2 j">duperemove -dr --hashfile=foo.hash
-</p>
-
-<p class="pp j">Add directory bar to our hashfile and discover any files that were
-recently added to foo.
-</p>
-
-<p class="tp2 j">duperemove -dr --hashfile=foo.hash foo/ bar/
-</p>
-
-<p class="pp j">List the files tracked by foo.hash.
-</p>
-
-<p class="tp2 j">duperemove -L --hashfile=foo.hash
-<br />
-<br />
-</p>
-
-<h1><a name="10"></a>"FAQ"</h1>
-
-<h2><a name="11"></a>Is there an upper limit to the amount of data duperemove can process?</h2>
-
-<br />
-<br />
-<p class="pp j">Duperemove is fast at reading and cataloging data. Dedupe runs will be
-memory limited unless the '--hashfile' option is used. '--hashfile' allows
-duperemove to temporarily store duplicated hashes to disk, thus removing the
-large memory overhead and allowing for a far larger amount of data to be
-scanned and deduped. Realistically though you will be limited by the speed of
-your disks and cpu. In those situations where resources are limited you may
-have success by breaking up the input data set into smaller pieces.
-<br />
-<br />
-When using a hashfile, duperemove will only store duplicate hashes in
+dedupe changed or newly added files:</p>
+<pre><code>duperemove -dr --hashfile=foo.hash foo/</code></pre>
+<p>Don’t scan for new files, only update changed or deleted files, then
+dedupe:</p>
+<pre><code>duperemove -dr --hashfile=foo.hash</code></pre>
+<p>Add directory bar to our hashfile and discover any files that were
+recently added to foo:</p>
+<pre><code>duperemove -dr --hashfile=foo.hash foo/ bar/</code></pre>
+<p>List the files tracked by foo.hash:</p>
+<pre><code>duperemove -L --hashfile=foo.hash</code></pre>
+<h1 id="faq">FAQ</h1>
+<h2
+id="is-there-an-upper-limit-to-the-amount-of-data-duperemove-can-process">Is
+there an upper limit to the amount of data duperemove can process?</h2>
+<p>Duperemove is fast at reading and cataloging data. Dedupe runs will
+be memory limited unless the <code>--hashfile</code> option is used.
+<code>--hashfile</code> allows duperemove to temporarily store
+duplicated hashes to disk, thus removing the large memory overhead and
+allowing for a far larger amount of data to be scanned and deduped.
+Realistically though you will be limited by the speed of your disks and
+cpu. In those situations where resources are limited you may have
+success by breaking up the input data set into smaller pieces.</p>
+<p>When using a hashfile, duperemove will only store duplicate hashes in
 memory. During normal operation then the hash tree will make up the
-largest portion of dupremoves memory usage. As of Duperemove v0.11
-hash entries are 88 bytes in size. If you know the number of duplicate
-blocks in your data set you can get a rough approximation of memory
-usage by multiplying with the hash entry size.
-<br />
-<br />
-Actual performance numbers are dependent on hardware - up to date
-testing information is kept on the duperemove wiki (see below for the link).
-<br />
-<br />
-</p>
-
-<h2><a name="12"></a>How large of a hashfile will duperemove create?</h2>
-
-<br />
-<br />
-<p class="pp j">Hashfiles are essentially sqlite3 database files with several tables,
-the largest of which are the files and hashes tables. Each hashes
-table entry is under 90 bytes though that may grow as features are
+largest portion of duperemove memory usage. As of Duperemove v0.11 hash
+entries are 88 bytes in size. If you know the number of duplicate blocks
+in your data set you can get a rough approximation of memory usage by
+multiplying with the hash entry size.</p>
+<p>Actual performance numbers are dependent on hardware - up to date
+testing information is kept on the duperemove wiki (see below for the
+link).</p>
+<h2 id="how-large-of-a-hashfile-will-duperemove-create">How large of a
+hashfile will duperemove create?</h2>
+<p>Hashfiles are essentially sqlite3 database files with several tables,
+the largest of which are the files and extents tables. Each extents
+table entry is about 72 bytes though that may grow as features are
 added. The size of a files table entry depends on the file path but a
-good estimate is around 270 bytes per file.
-<br />
-<br />
-If you know the total number of blocks and files in your data set then
-you can calculate the hashfile size as:
-<br />
-<br />
-<b>Hashfile Size = Num Hashes X 90 + Num Files X 270</b>
-<br />
-<br />
-Using a real world example of 1TB (8388608 128K blocks) of data over 1000 files:
-<br />
-<br />
-8388608 * 90 + 270 * 1000 = 755244720 or about <b>720MB for 1TB spread over 1000 files.</b>
-<br />
-<br />
-</p>
-
-<h2><a name="13"></a>Is it safe to interrupt the program (Ctrl-C)?</h2>
-
-<br />
-<br />
-<p class="pp j">Yes, Duperemove uses a transactional database engine and organizes db
+good estimate is around 270 bytes per file. The number of extents in a
+data set is directly proportional to file fragmentation level.</p>
+<p>If you know the total number of extents and files in your data set
+then you can calculate the hashfile size as:</p>
+<pre><code>Hashfile Size = Num Hashes * 72 + Num Files * 270</code></pre>
+<p>Using a real world example of 1TB (8388608 128K blocks) of data over
+1000 files:</p>
+<pre><code>8388608 * 72 + 270 * 1000 = 755244720 or about 720MB for 1TB spread over 1000 files.</code></pre>
+<p><code>Note that none of this takes database overhead into account.</code></p>
+<h2 id="is-is-safe-to-interrupt-the-program-ctrl-c">Is is safe to
+interrupt the program (Ctrl-C)?</h2>
+<p>Yes, Duperemove uses a transactional database engine and organizes db
 changes to take advantage of those features. The result is that you
 should be able to ctrl-c the program at any point and re-run without
-experiencing corruption of your hashfile.
-<br />
-<br />
-</p>
-
-<h2><a name="14"></a>How can I find out my space savings after a dedupe?</h2>
-
-<br />
-<br />
-<p class="pp j">Duperemove will print out an estimate of the saved space after a
-dedupe operation for you.
-<br />
-<br />
-You can get a more accurate picture by running 'btrfs fi df' before
-and after each duperemove run.
-<br />
-<br />
-Be careful about using the 'df' tool on btrfs - it is common for space
-reporting to be 'behind' while delayed updates get processed, so an
-immediate df after deduping might not show any savings.
-<br />
-<br />
-</p>
-
-<h2><a name="15"></a>Why is the total deduped data report an estimate?</h2>
-
-<br />
-<br />
-<p class="pp j">At the moment duperemove can detect that some underlying extents are
+experiencing corruption of your hashfile.</p>
+<h2 id="i-got-two-identical-files-why-are-they-not-deduped">I got two
+identical files, why are they not deduped?</h2>
+<p>Duperemove by default works on extent granularity. What this means is
+if there are two files which are logically identical (have the same
+content) but are laid out on disk with different extent structure they
+won’t be deduped. For example if 2 files are 128k each and their content
+are identical but one of them consists of a single 128k extent and the
+other of 2 * 64k extents then they won’t be deduped. This behavior is
+dependent on the current implementation and is subject to change as
+duperemove is being improved.</p>
+<h2 id="how-can-i-find-out-my-space-savings-after-a-dedupe">How can I
+find out my space savings after a dedupe?</h2>
+<p>Duperemove will print out an estimate of the saved space after a
+dedupe operation for you.</p>
+<p>You can get a more accurate picture by running ‘btrfs fi df’ before
+and after each duperemove run.</p>
+<p>Be careful about using the ‘df’ tool on btrfs - it is common for
+space reporting to be ‘behind’ while delayed updates get processed, so
+an immediate df after deduping might not show any savings.</p>
+<h2 id="why-is-the-total-deduped-data-report-an-estimate">Why is the
+total deduped data report an estimate?</h2>
+<p>At the moment duperemove can detect that some underlying extents are
 shared with other files, but it can not resolve which files those
-extents are shared with.
-<br />
-<br />
-Imagine duperemove is examining a series of files and it notes a shared
-data region in one of them. That data could be shared with a file
-outside of the series. Since duperemove can't resolve that information
+extents are shared with.</p>
+<p>Imagine duperemove is examining a series of files and it notes a
+shared data region in one of them. That data could be shared with a file
+outside of the series. Since duperemove can’t resolve that information
 it will account the shared data against our dedupe operation while in
-reality, the kernel might deduplicate it further for us.
-<br />
-<br />
-</p>
-
-<h2><a name="16"></a>Why are my files showing dedupe but my disk space is not shrinking?</h2>
-
-<br />
-<br />
-<p class="pp j">This is a little complicated, but it comes down to a feature in Btrfs
-called _bookending_. The Btrfs wiki explains this in detail:
-http://en.wikipedia.org/wiki/Btrfs#Extents.
-<br />
-<br />
-Essentially though, the underlying representation of an extent in
+reality, the kernel might deduplicate it further for us.</p>
+<h2
+id="why-are-my-files-showing-dedupe-but-my-disk-space-is-not-shrinking">Why
+are my files showing dedupe but my disk space is not shrinking?</h2>
+<p>This is a little complicated, but it comes down to a feature in Btrfs
+called <em>bookending</em>. The <a
+href="http://en.wikipedia.org/wiki/Btrfs#Extents">Btrfs wiki</a>
+explains this in detail.</p>
+<p>Essentially though, the underlying representation of an extent in
 Btrfs can not be split (with small exception). So sometimes we can end
 up in a situation where a file extent gets partially deduped (and the
-extents marked as shared) but the underlying extent item is not freed
-or truncated.
-<br />
-<br />
-</p>
-
-<h2><a name="17"></a>Is duperemove safe for my data?</h2>
-
-<br />
-<br />
-<p class="pp j">Yes. To be specific, duperemove does not deduplicate the data itself.
+extents marked as shared) but the underlying extent item is not freed or
+truncated.</p>
+<h2 id="is-duperemove-safe-for-my-data">Is duperemove safe for my
+data?</h2>
+<p>Yes. To be specific, duperemove does not deduplicate the data itself.
 It simply finds candidates for dedupe and submits them to the Linux
-kernel extent-same ioctl. In order to ensure data integrity, the
+kernel FIDEDUPERANGE ioctl. In order to ensure data integrity, the
 kernel locks out other access to the file and does a byte-by-byte
-compare before proceeding with the dedupe.
-<br />
-<br />
-</p>
-
-<h2><a name="18"></a>What is the cost of deduplication?</h2>
-
-<br />
-<br />
-<p class="pp j">Deduplication will lead to increased fragmentation. The blocksize
-chosen can have an effect on this. Larger blocksizes will fragment
-less but may not save you as much space. Conversely, smaller block
-sizes may save more space at the cost of increased fragmentation.
-<br />
-<br />
-</p>
-
-<h1><a name="19"></a>"NOTES"</h1>
-
-<p class="pp j">Deduplication is currently only supported by the <i>btrfs</i> and <i>xfs</i> filesystem. You may override this check.
-<br />
-<br />
-The Duperemove project page can be found at http://github.com/markfasheh/duperemove
-<br />
-<br />
-There is also a wiki at http://github.com/markfasheh/duperemove/wiki
-<br />
-<br />
-</p>
-
-<h1><a name="20"></a>"SEE ALSO"</h1>
-
-<p class="pp j"><b>hashstats(8)</b> <b>filesystems(5)</b> <b>btrfs(8)</b> <b>xfs(8)</b> <b>fdupes(1)</b> </p>
-
-<h1>Index</h1>
-
-<ol>
-<li><a href="#0">"NAME"</a></li><li><a href="#1">"SYNOPSIS"</a></li><li><a href="#2">"DESCRIPTION"</a></li><li><a href="#3">"GENERAL"</a></li><ol>
-<li><a href="#4">"Readonly / Non-deduplicating Mode"</a></li><li><a href="#5">"Deduping Mode"</a></li></ol>
-<li><a href="#6">"OPTIONS"</a></li><li><a href="#7">"EXAMPLES"</a></li><ol>
-<li><a href="#8">"Simple Usage"</a></li><li><a href="#9">"Using Hashfiles"</a></li></ol>
-<li><a href="#10">"FAQ"</a></li><ol>
-<li><a href="#11">Is there an upper limit to the amount of data duperemove can process?</a></li><li><a href="#12">How large of a hashfile will duperemove create?</a></li><li><a href="#13">Is it safe to interrupt the program (Ctrl-C)?</a></li><li><a href="#14">How can I find out my space savings after a dedupe?</a></li><li><a href="#15">Why is the total deduped data report an estimate?</a></li><li><a href="#16">Why are my files showing dedupe but my disk space is not shrinking?</a></li><li><a href="#17">Is duperemove safe for my data?</a></li><li><a href="#18">What is the cost of deduplication?</a></li></ol>
-<li><a href="#19">"NOTES"</a></li><li><a href="#20">"SEE ALSO"</a></li></ol>
+compare before proceeding with the dedupe.</p>
+<h2 id="what-is-the-cost-of-deduplication">What is the cost of
+deduplication?</h2>
+<p>Deduplication will lead to increased fragmentation. The blocksize
+chosen can have an effect on this. Larger blocksizes will fragment less
+but may not save you as much space. Conversely, smaller block sizes may
+save more space at the cost of increased fragmentation.</p>
+<h1 id="notes">NOTES</h1>
+<p>Deduplication is currently only supported by the <code>btrfs</code>
+and <code>xfs</code> filesystem.</p>
+<p>The Duperemove project page can be found on <a
+href="https://github.com/markfasheh/duperemove">github</a></p>
+<p>There is also a <a
+href="https://github.com/markfasheh/duperemove/wiki">wiki</a></p>
+<h1 id="see-also">SEE ALSO</h1>
+<ul>
+<li><code>hashstats(8)</code></li>
+<li><code>filesystems(5)</code></li>
+<li><code>btrfs(8)</code></li>
+<li><code>xfs(8)</code></li>
+<li><code>fdupes(1)</code></li>
+<li><code>ioctl_fideduprange(2)</code></li>
+</ul>
 </body>
 </html>

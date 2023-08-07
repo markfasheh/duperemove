@@ -83,12 +83,16 @@ all: $(progs)
 debug:
 	@echo "Deprecated, use \"make DEBUG=1\" instead please."
 
+$(MANPAGES): %.8: markdown/%.md
+	pandoc --standalone markdown/$(subst .8,,$@).md --to man -o $(subst .8,,$@).8
+	pandoc --standalone markdown/$(subst .8,,$@).md --to html -o docs/$(subst .8,,$@).html
+
 #TODO: Replace this with an auto-dependency
 $(objects): $(HEADERS)
 duperemove: $(objects)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(objects) -o duperemove $(LIBRARY_FLAGS)
 
-tarball: clean
+tarball: clean $(DIST_SOURCES)
 	mkdir -p $(TEMP_INSTALL_DIR)/$(DIST)
 	cp $(DIST_SOURCES) $(TEMP_INSTALL_DIR)/$(DIST)
 	tar -C $(TEMP_INSTALL_DIR) -zcf $(DIST_TARBALL) $(DIST)
@@ -126,5 +130,7 @@ hashstats: $(hashstats_obj) hashstats.c
 
 clean:
 	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same filerec-test show-shared-extents hashstats csum-*.o *~
+
+doc: $(MANPAGES)
 
 FORCE:
