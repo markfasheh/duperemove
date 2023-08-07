@@ -57,6 +57,9 @@ estimate is calculated by comparing the total amount of shared bytes
 in each file before and after the dedupe.
 
 # OPTIONS
+
+## Common options
+
 `files` can refer to a list of regular files and directories or be
 a hyphen (-) to read them from standard input.
 If a directory is specified, all regular files within it will also be
@@ -69,17 +72,6 @@ the `-r` switch.
 **-d**
   ~ De-dupe the results - only works on `btrfs` and `xfs`. Use this option
 twice to disable the check and try to run the ioctl anyway.
-
-**-A**
-  ~ Opens files readonly when deduping. Primarily for use by privileged
-users on readonly snapshots.
-
-**-h**
-  ~ Print numbers in human-readable format.
-
-**-q**
-  ~ Quiet mode. Duperemove will only print errors and a short summary of
-any dedupe.
 
 **\--hashfile**=`hashfile`
   ~ Use a file for storage of hashes instead of memory. This option drastically
@@ -105,6 +97,44 @@ argument.
     When deduping from a hashfile, duperemove will avoid deduping files which
 have not changed since the last dedupe.
 
+**-B** `N`, **\--batchsize**=`N`
+  ~ Run the deduplication phase every `N` files newly scanned. This greatly reduces
+memory usage for large dataset, or when you are doing partial extents lookup,
+but reduces multithreading efficiency.
+
+    Because of that small overhead, its value shall be selected based
+on the average file size and `blocksize`.
+
+    `1000` is a sane value for
+extents-only lookups, while you can go as low as `1` if you are
+running `duperemove` on very large files (like virtual machines etc).
+
+    By default, batching is disabled.
+
+**-h**
+  ~ Print numbers in human-readable format.
+
+**-q**
+  ~ Quiet mode. Duperemove will only print errors and a short summary of
+any dedupe.
+
+**-v**
+  ~ Be verbose.
+
+**\--help**
+  ~ Prints help text.
+
+## Advanced options
+
+**-A**
+  ~ Opens files readonly when deduping. Primarily for use by privileged
+users on readonly snapshots. Disabled by default.
+
+**\--fdupes**
+  ~ Run in `fdupes` mode. With this option you can pipe the output of
+`fdupes` to duperemove to dedupe any duplicate files found. When
+receiving a file list in this manner, duperemove will skip the hashing phase.
+
 **-L**
   ~ Print all files in the hashfile and exit. Requires the `--hashfile` option.
 Will print additional information about each file when run with `-v`.
@@ -117,14 +147,6 @@ times. Duperemove will read the list from standard input if a hyphen
     `Note:` If you are piping filenames from another duperemove instance it
 is advisable to do so into a temporary file first as running duperemove
 simultaneously on the same hashfile may corrupt that hashfile.
-
-**\--fdupes**
-  ~ Run in `fdupes` mode. With this option you can pipe the output of
-`fdupes` to duperemove to dedupe any duplicate files found. When
-receiving a file list in this manner, duperemove will skip the hashing phase.
-
-**-v**
-  ~ Be verbose.
 
 **\--skip-zeroes**
   ~ Read data blocks and skip any zeroed blocks, useful for speedup duperemove,
@@ -184,9 +206,6 @@ fiemap during the file scan stage, you will also want to use the
     **[no]block**
     ~ Deprecated.
 
-**\--help**
-  ~ Prints help text.
-
 **\--lookup-extents**={yes|no}
   ~ Defaults to `yes`. Allows duperemove to skip checksumming some blocks by
 checking their extent state.
@@ -220,20 +239,6 @@ duperemove works with absolute paths. Another thing to keep in mind is that
 shells usually expand glob pattern so the passed in pattern ought to also be
 quoted. Taking everything into consideration the correct way to pass an exclusion
 pattern is `duperemove --exclude "/path/to/dir/file*" /path/to/dir`
-
-**-B** `N`, **--batchsize**=`N`
-  ~ Run the deduplication phase every `N` files newly scanned. This greatly reduces
-memory usage for large dataset, or when you are doing partial extents lookup,
-but reduces multithreading efficiency.
-
-    Because of that small overhead, its value shall be selected based
-on the average file size and `blocksize`.
-
-    `1000` is a sane value for
-extents-only lookups, while you can go as low as `1` if you are
-running `duperemove` on very large files (like virtual machines etc).
-
-    By default, batching is disabled.
 
 # EXAMPLES
 
@@ -280,6 +285,76 @@ List the files tracked by foo.hash:
 	duperemove -L --hashfile=foo.hash
 
 # FAQ
+
+## Is duperemove safe for my data?
+
+Yes. To be specific, duperemove does not deduplicate the data itself.
+It simply finds candidates for dedupe and submits them to the Linux
+kernel FIDEDUPERANGE ioctl. In order to ensure data integrity, the
+kernel locks out other access to the file and does a byte-by-byte
+compare before proceeding with the dedupe.
+
+## Is is safe to interrupt the program (Ctrl-C)?
+
+Yes. The Linux kernel deals with the actual data. On Duperemove' side,
+a transactional database engine is used. The result is that you
+should be able to ctrl-c the program at any point and re-run without
+experiencing corruption of your hashfile. In case of a bug, your hashfile
+may be broken, but your data never will.
+
+## I got two identical files, why are they not deduped?
+
+Duperemove by default works on extent granularity. What this means is if there
+are two files which are logically identical (have the same content) but are
+laid out on disk with different extent structure they won't be deduped. For
+example if 2 files are 128k each and their content are identical but one of
+them consists of a single 128k extent and the other of 2 * 64k extents then
+they won't be deduped. This behavior is dependent on the current implementation
+and is subject to change as duperemove is being improved.
+
+## What is the cost of deduplication?
+
+Deduplication will lead to increased fragmentation. The blocksize
+chosen can have an effect on this. Larger blocksizes will fragment
+less but may not save you as much space. Conversely, smaller block
+sizes may save more space at the cost of increased fragmentation.
+
+## How can I find out my space savings after a dedupe?
+
+Duperemove will print out an estimate of the saved space after a
+dedupe operation for you.
+
+You can get a more accurate picture by running 'btrfs fi df' before
+and after each duperemove run.
+
+Be careful about using the 'df' tool on btrfs - it is common for space
+reporting to be 'behind' while delayed updates get processed, so an
+immediate df after deduping might not show any savings.
+
+## Why is the total deduped data report an estimate?
+
+At the moment duperemove can detect that some underlying extents are
+shared with other files, but it can not resolve which files those
+extents are shared with.
+
+Imagine duperemove is examining a series of files and it notes a shared
+data region in one of them. That data could be shared with a file
+outside of the series. Since duperemove can't resolve that information
+it will account the shared data against our dedupe operation while in
+reality, the kernel might deduplicate it further for us.
+
+## Why are my files showing dedupe but my disk space is not shrinking?
+
+This is a little complicated, but it comes down to a feature in Btrfs
+called _bookending_. The [Btrfs wiki](http://en.wikipedia.org/wiki/Btrfs#Extents)
+explains this in detail.
+
+Essentially though, the underlying representation of an extent in
+Btrfs can not be split (with small exception). So sometimes we can end
+up in a situation where a file extent gets partially deduped (and the
+extents marked as shared) but the underlying extent item is not freed
+or truncated.
+
 ## Is there an upper limit to the amount of data duperemove can process?
 
 Duperemove is fast at reading and cataloging data. Dedupe runs will be
@@ -319,73 +394,6 @@ Using a real world example of 1TB (8388608 128K blocks) of data over 1000 files:
 	8388608 * 72 + 270 * 1000 = 755244720 or about 720MB for 1TB spread over 1000 files.
 
 `Note that none of this takes database overhead into account.`
-
-## Is is safe to interrupt the program (Ctrl-C)?
-
-Yes, Duperemove uses a transactional database engine and organizes db
-changes to take advantage of those features. The result is that you
-should be able to ctrl-c the program at any point and re-run without
-experiencing corruption of your hashfile.
-
-## I got two identical files, why are they not deduped?
-
-Duperemove by default works on extent granularity. What this means is if there
-are two files which are logically identical (have the same content) but are
-laid out on disk with different extent structure they won't be deduped. For
-example if 2 files are 128k each and their content are identical but one of
-them consists of a single 128k extent and the other of 2 * 64k extents then
-they won't be deduped. This behavior is dependent on the current implementation
-and is subject to change as duperemove is being improved.
-
-## How can I find out my space savings after a dedupe?
-
-Duperemove will print out an estimate of the saved space after a
-dedupe operation for you.
-
-You can get a more accurate picture by running 'btrfs fi df' before
-and after each duperemove run.
-
-Be careful about using the 'df' tool on btrfs - it is common for space
-reporting to be 'behind' while delayed updates get processed, so an
-immediate df after deduping might not show any savings.
-
-## Why is the total deduped data report an estimate?
-
-At the moment duperemove can detect that some underlying extents are
-shared with other files, but it can not resolve which files those
-extents are shared with.
-
-Imagine duperemove is examining a series of files and it notes a shared
-data region in one of them. That data could be shared with a file
-outside of the series. Since duperemove can't resolve that information
-it will account the shared data against our dedupe operation while in
-reality, the kernel might deduplicate it further for us.
-
-## Why are my files showing dedupe but my disk space is not shrinking?
-
-This is a little complicated, but it comes down to a feature in Btrfs
-called _bookending_. The [Btrfs wiki](http://en.wikipedia.org/wiki/Btrfs#Extents) explains this in detail.
-
-Essentially though, the underlying representation of an extent in
-Btrfs can not be split (with small exception). So sometimes we can end
-up in a situation where a file extent gets partially deduped (and the
-extents marked as shared) but the underlying extent item is not freed
-or truncated.
-
-## Is duperemove safe for my data?
-
-Yes. To be specific, duperemove does not deduplicate the data itself.
-It simply finds candidates for dedupe and submits them to the Linux
-kernel FIDEDUPERANGE ioctl. In order to ensure data integrity, the
-kernel locks out other access to the file and does a byte-by-byte
-compare before proceeding with the dedupe.
-
-## What is the cost of deduplication?
-
-Deduplication will lead to increased fragmentation. The blocksize
-chosen can have an effect on this. Larger blocksizes will fragment
-less but may not save you as much space. Conversely, smaller block
-sizes may save more space at the cost of increased fragmentation.
 
 # NOTES
 Deduplication is currently only supported by the `btrfs` and `xfs` filesystem.
