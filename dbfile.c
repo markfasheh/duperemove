@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -23,6 +24,8 @@
 
 /* exported for hashstats.c */
 sqlite3 *gdb = NULL;
+
+extern bool rescan_files;
 
 #if (SQLITE_VERSION_NUMBER < 3007015)
 #define	perror_sqlite(_err, _why)					\
@@ -1356,7 +1359,8 @@ int dbfile_scan_files(struct dbfile_config *cfg)
 	if (ret)
 		goto out;
 
-	ret = dbfile_del_orphans(db, cfg, &orphans);
+	if (rescan_files)
+		ret = dbfile_del_orphans(db, cfg, &orphans);
 
 out:
 	if (!list_empty(&orphans))

@@ -2,6 +2,7 @@ PENDING
 ---
 
 **Notable changes**:
+ * Add a new dedupe option: `[no]rescan\_files`. It will increase performance in some use cases.
 
 Version 0.12
 ---

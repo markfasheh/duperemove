@@ -246,6 +246,18 @@ fiemap during the file scan stage, you will also want to use the
 \f[V]--lookup-extents=no\f[R] option.
 .RE
 .TP
+\f[B][no]rescan_files\f[R]
+Defaults to \f[V]on\f[R].
+Duperemove will check for files that were found and deduplicated in a
+previous run, based on the hashfile.
+Deduplicated files may have changed if new content was added, but also
+if their physical layout was modified (defrag for instance).
+You can disable those checks to increase performance when running
+\f[V]duperemove\f[R] against a specific directory or file which you know
+is the only part of a larger, unchanged dataset.
+Duperemove will still dedupe that specific target against any shared
+extent found in the existing files.
+.TP
 \f[B][no]block\f[R]
 Deprecated.
 .RE

@@ -85,6 +85,7 @@ int io_threads_opt = 0;
 int cpu_threads_opt = 0;
 int do_lookup_extents = 1;
 int fiemap_during_dedupe = 1;
+bool rescan_files = true;
 
 int stdout_is_tty = 0;
 bool do_block_hash = false;
@@ -262,6 +263,8 @@ static int parse_dedupe_opts(const char *opts)
 			fiemap_during_dedupe = !invert;
 		} else if (strcmp(token, "partial") == 0) {
 			partial_extent_search = !invert;
+		} else if (strcmp(token, "rescan_files") == 0) {
+			rescan_files = !invert;
 		} else {
 			print_usage = 1;
 			break;

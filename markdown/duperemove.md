@@ -203,6 +203,16 @@ performance back.
 fiemap during the file scan stage, you will also want to use the
 `--lookup-extents=no` option.
 
+    **[no]rescan_files**
+    ~ Defaults to `on`. Duperemove will check for files that were found
+and deduplicated in a previous run, based on the hashfile. Deduplicated
+files may have changed if new content was added, but also if their physical
+layout was modified (defrag for instance). You can disable those checks to
+increase performance when running `duperemove` against a specific directory
+or file which you know is the only part of a larger, unchanged dataset.
+Duperemove will still dedupe that specific target against any shared extent
+found in the existing files.
+
     **[no]block**
     ~ Deprecated.
 

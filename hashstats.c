@@ -19,6 +19,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <inttypes.h>
+#include <stdbool.h>
 
 #include "csum.h"
 #include "dbfile.h"
@@ -44,6 +45,8 @@ int add_file_db(const char *filename [[maybe_unused]],
 {
 	return 0;
 }
+
+bool rescan_files = true;
 
 static void printf_file_block_flags(unsigned int flags)
 {

@@ -77,6 +77,7 @@ struct thread_params {
 
 extern int v2_hashfile;
 extern struct dbfile_config dbfile_cfg;
+extern bool rescan_files;
 LIST_HEAD(exclude_list);
 
 extern bool do_block_hash;
@@ -471,35 +472,38 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 
 	if (!file) {
 		file = filerec_find_by_name(filename);
-		if (file) {
-			/*
-			 * We have a file by this name but a different
-			 * inode number. Delete the record and allow
-			 * scan to put the correct one in.
-			 */
-			file->dedupe_seq = seq;
-			print_file_changed(filename, inum, subvolid, file);
-			set_filerec_scan_flags(file);
-			*delete = 1;
-			return 0;
-		}
-		/* Go to disk and look up by filename */
-		ret = lstat(filename, &st);
-		if (ret == -1 && errno == ENOENT) {
-			vprintf("File path %s no longer exists. Skipping.\n",
-				filename);
-			*delete = 1;
-			return 0;
-		} else if (ret == -1) {
-			fprintf(stderr,	"Error %d: %s while stating file %s.\n",
-				errno, strerror(errno), filename);
-			*delete = 1;
-			return 0;
+		if (rescan_files) {
+			if (file) {
+				/*
+				 * We have a file by this name but a different
+				 * inode number. Delete the record and allow
+				 * scan to put the correct one in.
+				 */
+				file->dedupe_seq = seq;
+				print_file_changed(filename, inum, subvolid, file);
+				set_filerec_scan_flags(file);
+				*delete = 1;
+				return 0;
+			}
+			/* Go to disk and look up by filename */
+			ret = lstat(filename, &st);
+			if (ret == -1 && errno == ENOENT) {
+				vprintf("File path %s no longer exists. Skipping.\n",
+					filename);
+				*delete = 1;
+				return 0;
+			} else if (ret == -1) {
+				fprintf(stderr,	"Error %d: %s while stating file %s.\n",
+					errno, strerror(errno), filename);
+				*delete = 1;
+				return 0;
+			}
+
+			ret = __add_file(filename, &st, &file);
+			if (ret)
+				return ret;
 		}
 
-		ret = __add_file(filename, &st, &file);
-		if (ret)
-			return ret;
 		if (!file) {
 			/*
 			 * File is in DB and on disk but _add_file()
