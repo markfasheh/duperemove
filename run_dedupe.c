@@ -41,7 +41,6 @@
 
 #include "run_dedupe.h"
 
-extern int dedupe_same_file;
 extern int fiemap_during_dedupe;
 
 static GMutex mutex;
