@@ -213,9 +213,6 @@ or file which you know is the only part of a larger, unchanged dataset.
 Duperemove will still dedupe that specific target against any shared extent
 found in the existing files.
 
-    **[no]block**
-    ~ Deprecated.
-
 **\--lookup-extents**={yes|no}
   ~ Defaults to `yes`. Allows duperemove to skip checksumming some blocks by
 checking their extent state.
