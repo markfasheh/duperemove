@@ -297,7 +297,7 @@ enum {
 	DEDUPE_OPTS_OPTION,
 	QUIET_OPTION,
 	EXCLUDE_OPTION,
-	BATCH_SIZE,
+	BATCH_SIZE_OPTION,
 };
 
 static int add_files_from_stdin(int fdupes)
@@ -382,7 +382,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		{ "dedupe-options=", 1, NULL, DEDUPE_OPTS_OPTION },
 		{ "quiet", 0, NULL, QUIET_OPTION },
 		{ "exclude", 1, NULL, EXCLUDE_OPTION },
-		{ "batchsize", 1, NULL, BATCH_SIZE },
+		{ "batchsize", 1, NULL, BATCH_SIZE_OPTION },
 		{ NULL, 0, NULL, 0}
 	};
 
@@ -484,7 +484,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		case EXCLUDE_OPTION:
 			add_exclude_pattern(optarg);
 			break;
-		case BATCH_SIZE:
+		case BATCH_SIZE_OPTION:
 		case 'B':
 			batch_size = parse_size(optarg);
 			break;
