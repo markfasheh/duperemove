@@ -96,15 +96,13 @@ static int list_db_files(char *filename)
 {
 	int ret;
 
-	ret = dbfile_open(filename, &dbfile_cfg);
-	if (ret) {
+	_cleanup_(sqlite3_close_cleanup) sqlite3 *db = dbfile_open_handle(filename);
+	if (!db) {
 		fprintf(stderr, "Error: Could not open \"%s\"\n", filename);
-		return ret;
+		return -1;
 	}
 
-	ret = dbfile_iter_files(dbfile_get_handle(), &print_file);
-
-	dbfile_close();
+	ret = dbfile_iter_files(db, &print_file);
 	return ret;
 }
 
@@ -163,10 +161,10 @@ static int rm_db_files(char *dbfilename)
 	int ret, err = 0;
 	struct rm_file *rm, *tmp;
 
-	ret = dbfile_open(dbfilename, &dbfile_cfg);
-	if (ret) {
+	_cleanup_(sqlite3_close_cleanup) sqlite3 *db = dbfile_open_handle(dbfilename);
+	if (!db) {
 		fprintf(stderr, "Error: Could not open \"%s\"\n", dbfilename);
-		return ret;
+		return -1;
 	}
 
 restart:
@@ -181,7 +179,7 @@ restart:
 			 */
 			goto restart;
 		}
-		ret = dbfile_remove_file(dbfile_get_handle(), rm->filename);
+		ret = dbfile_remove_file(db, rm->filename);
 		if (ret == 0)
 			vprintf("Removed \"%s\" from hashfile.\n",
 				rm->filename);
@@ -190,8 +188,6 @@ restart:
 
 		free_rm_file(rm);
 	}
-
-	dbfile_close();
 
 	return err;
 }

@@ -95,4 +95,9 @@ static inline void sqlite3_stmt_cleanup(void *p)
 {
         sqlite3_finalize(*(sqlite3_stmt**) p);
 }
+
+static inline void sqlite3_close_cleanup(void *p)
+{
+	sqlite3_close(*(sqlite3**) p);
+}
 #endif	/* __DBFILE_H__ */
