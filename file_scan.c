@@ -75,7 +75,6 @@ struct thread_params {
 	struct dbfile_config	*dbfile_cfg; /* global dbfile config */
 };
 
-extern int v2_hashfile;
 extern struct dbfile_config dbfile_cfg;
 extern bool rescan_files;
 LIST_HEAD(exclude_list);
@@ -770,77 +769,6 @@ static int fiemap_helper(struct fiemap_ctxt *fc, struct filerec *file,
 	return 0;
 }
 
-static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
-			 struct block_csum **ret_block_hashes, uint64_t *ret_nb_hash)
-{
-	int ret;
-	uint64_t loff, poff, fieloff, bytes_read, fielen;
-	unsigned int fieflags, read_size = blocksize;
-	struct filerec *file = ctxt->file;
-	struct block_csum *block_hashes;
-	uint64_t size = file->size;
-
-
-	block_hashes = malloc(sizeof(struct block_csum));
-	if (block_hashes == NULL)
-		return ENOMEM;
-
-	ctxt->block_hashes = block_hashes;
-        loff = fieloff = fielen = 0;
-	fieflags = 0;
-	while (loff < size) {
-		if (fc && loff >= (fieloff + fielen)) {
-			ret = fiemap_helper(fc, file, &poff, &fieloff, &fielen,
-					    &fieflags);
-			if (ret < 0)
-				return ret;
-			/*
-			 * Cap loop to the size of the last _real_ extent.
-			 * Applies to truncated files
-			 */
-			if (fieflags & FIEMAP_EXTENT_LAST)
-				size = fieloff + fielen;
-
-			if (ret == 1) {
-				loff = fieloff + fielen;
-				continue;
-			}
-			loff = fieloff;
-
-		}
-
-//		printf("loff %"PRIu64"\n", loff);
-		read_size = MAX(fielen, blocksize);
-		ret = csum_extent(ctxt, loff, read_size, fieflags, &bytes_read);
-		if (ret == 0) /* EOF */
-			break;
-
-		if (ret < 0) /* Err */
-			return ret;
-
-		if (bytes_read < blocksize && bytes_read + loff != file->size) {
-			/*
-			 * Don't want to store the len of each
-			 * block, so hash-tree makes the
-			 * assumption that a partial block is
-			 * the last one.
-			 */
-			return -1;
-		}
-		loff += bytes_read;
-		if (bytes_read < blocksize) {
-			/* Partial read, don't get any more blocks */
-			break;
-		}
-	}
-	ret = 0;
-	ctxt->blocks_recorded = ctxt->nr_block_hashes;
-	*ret_nb_hash = ctxt->nr_block_hashes;
-	*ret_block_hashes = ctxt->block_hashes;
-
-	return ret;
-}
-
 static int get_file_extent_count(struct filerec *file, uint32_t *count)
 {
 	struct fiemap fiemap;
@@ -984,13 +912,8 @@ static void csum_whole_file(struct filerec *file,
 	if (ret)
 		goto err_noclose;
 
-	if (v2_hashfile) {
-		errfunc = "csum_by_block";
-		ret = csum_by_block(&csum_ctxt, fc, &block_hashes, &nb_hash);
-	} else {
-		errfunc = "csum_by_extent";
-		ret = csum_by_extent(&csum_ctxt, fc, &extent_hashes, &nb_hash);
-	}
+	errfunc = "csum_by_extent";
+	ret = csum_by_extent(&csum_ctxt, fc, &extent_hashes, &nb_hash);
 	if (ret)
 		goto err;
 
@@ -1010,30 +933,20 @@ static void csum_whole_file(struct filerec *file,
 		goto err;
 	}
 
-	if (v2_hashfile) {
-		ret = dbfile_store_block_hashes(db, params->dbfile_cfg, file,
-						nb_hash, block_hashes);
+	if (do_block_hash) {
+		ret = dbfile_store_block_hashes(db, file,
+						csum_ctxt.nr_block_hashes,
+						csum_ctxt.block_hashes);
 		if (ret) {
 			g_mutex_unlock(&io_mutex);
 			goto err;
 		}
-	} else {
-		if (do_block_hash) {
-			ret = dbfile_store_block_hashes(db, params->dbfile_cfg, file,
-							csum_ctxt.nr_block_hashes,
-							csum_ctxt.block_hashes);
-			if (ret) {
-				g_mutex_unlock(&io_mutex);
-				goto err;
-			}
-		}
+	}
 
-		ret = dbfile_store_extent_hashes(db, params->dbfile_cfg, file,
-						 nb_hash, extent_hashes);
-		if (ret) {
-			g_mutex_unlock(&io_mutex);
-			goto err;
-		}
+	ret = dbfile_store_extent_hashes(db, file, nb_hash, extent_hashes);
+	if (ret) {
+		g_mutex_unlock(&io_mutex);
+		goto err;
 	}
 
 	ret = dbfile_commit_trans(db);

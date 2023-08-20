@@ -26,7 +26,6 @@
 #include "file_flags.h"
 
 unsigned int blocksize;
-int v2_hashfile = 0;
 static int version_only = 0;
 static int print_all_hashes = 0;
 static int print_blocks = 0;

@@ -21,7 +21,6 @@
 #include <glib.h>
 #include "rbtree.h"
 #include "list.h"
-#include "interval_tree.h"
 
 extern struct list_head filerec_list;
 extern unsigned long long num_filerecs;
@@ -55,9 +54,6 @@ struct filerec {
 
 	/* interval tree of dup-extents belonging to this file */
 	struct rb_root		extent_tree;
-#ifdef	ITDEBUG
-	uint64_t		num_extents;
-#endif
 	/* mtime in nanoseconds */
 	uint64_t		mtime;
 	unsigned int		dedupe_seq;

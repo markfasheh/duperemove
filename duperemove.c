@@ -53,7 +53,6 @@ unsigned int blocksize = DEFAULT_BLOCKSIZE;
 
 int run_dedupe = 0;
 int recurse_dirs = 0;
-int v2_hashfile = 0;
 int dedupe_same_file = 1;
 int skip_zeroes = 0;
 
@@ -67,7 +66,6 @@ static int stdin_filelist = 0;
 static unsigned int list_only_opt = 0;
 static unsigned int rm_only_opt = 0;
 struct dbfile_config dbfile_cfg;
-static bool force_v2_hashfile = false;
 
 static enum {
 	H_READ,
@@ -183,8 +181,7 @@ restart:
 			 */
 			goto restart;
 		}
-		ret = dbfile_remove_file(dbfile_get_handle(), &dbfile_cfg,
-					 rm->filename);
+		ret = dbfile_remove_file(dbfile_get_handle(), rm->filename);
 		if (ret == 0)
 			vprintf("Removed \"%s\" from hashfile.\n",
 				rm->filename);
@@ -274,7 +271,6 @@ enum {
 	HELP_OPTION,
 	VERSION_OPTION,
 	WRITE_HASHES_OPTION,
-	WRITE_OLD_HASHES_OPTION,
 	READ_HASHES_OPTION,
 	HASHFILE_OPTION,
 	IO_THREADS_OPTION,
@@ -357,7 +353,6 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		{ "help", 0, NULL, HELP_OPTION },
 		{ "version", 0, NULL, VERSION_OPTION },
 		{ "write-hashes", 1, NULL, WRITE_HASHES_OPTION },
-		{ "write-hashes-v2", 1, NULL, WRITE_OLD_HASHES_OPTION },
 		{ "read-hashes", 1, NULL, READ_HASHES_OPTION },
 		{ "hashfile", 1, NULL, HASHFILE_OPTION },
 		{ "io-threads", 1, NULL, IO_THREADS_OPTION },
@@ -411,8 +406,6 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		case 'h':
 			human_readable = 1;
 			break;
-		case WRITE_OLD_HASHES_OPTION:
-			force_v2_hashfile = true;
 		case WRITE_HASHES_OPTION:
 			write_hashes = 1;
 			serialize_fname = strdup(optarg);
@@ -558,7 +551,7 @@ out_nofiles:
 static void print_header(void)
 {
 	vprintf("Using %uK blocks\n", blocksize / 1024);
-	vprintf("Using %s hashing\n", v2_hashfile ? "block-based" : "extent-based");
+	vprintf("Using %s hashing\n", do_block_hash ? "block+extent" : "extent");
 #ifdef	DEBUG_BUILD
 	printf("Debug build, performance may be impacted.\n");
 #endif
@@ -579,8 +572,7 @@ static int update_config_from_dbfile(void)
 		return EINVAL;
 	}
 
-	if (dbfile_cfg.blocksize != blocksize &&
-	    dbfile_cfg.major == BLOCK_DEDUPE_DBFILE_VER) {
+	if (dbfile_cfg.blocksize != blocksize) {
 		vprintf("Using blocksize %uK from hashfile (%uK "
 			"blocksize requested).\n", dbfile_cfg.blocksize/1024,
 			blocksize/1024);
@@ -600,34 +592,19 @@ void process_duplicates() {
 
 	qprintf("Loading only duplicated hashes from hashfile.\n");
 
-	if (v2_hashfile) {
+	ret = dbfile_load_extent_hashes(&res);
+	if (ret)
+		goto out;
+
+	printf("Found %llu identical extents.\n", res.num_extents);
+	if (do_block_hash) {
 		ret = dbfile_load_block_hashes(&dups_tree);
 		if (ret)
 			goto out;
 
-		ret = find_all_dupes(&dups_tree, &res);
-		if (ret) {
-			/* Only error for this should be enomem */
-			fprintf(stderr,
-				"Error %d: %s while finding duplicate extents.\n",
-				ret, strerror(ret));
-			goto out;
-		}
-	} else {
-		ret = dbfile_load_extent_hashes(&res);
+		ret = find_additional_dedupe(&res);
 		if (ret)
 			goto out;
-
-		printf("Found %llu identical extents.\n", res.num_extents);
-		if (do_block_hash) {
-			ret = dbfile_load_block_hashes(&dups_tree);
-			if (ret)
-				goto out;
-
-			ret = find_additional_dedupe(&res);
-			if (ret)
-				goto out;
-		}
 	}
 
 	if (run_dedupe) {
@@ -663,21 +640,9 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 	int ret;
 	int dbfile_is_new = 0;
 
-	ret = dbfile_create(serialize_fname, &dbfile_is_new,
-			    force_v2_hashfile ? BLOCK_DEDUPE_DBFILE_VER : DB_FILE_MAJOR,
-			    &dbfile_cfg);
+	ret = dbfile_create(serialize_fname, &dbfile_is_new, &dbfile_cfg);
 	if (ret)
 		goto out;
-
-	if (force_v2_hashfile && dbfile_cfg.major != BLOCK_DEDUPE_DBFILE_VER) {
-		ret = EINVAL;
-		fprintf(stderr, "Error: asked to force hashfile version 2 but "
-			"existing hashfile has version %d\n", dbfile_cfg.major);
-		goto out;
-	}
-
-	if (dbfile_cfg.major == BLOCK_DEDUPE_DBFILE_VER)
-		v2_hashfile = 1;
 
 	if (!dbfile_is_new) {
 		ret = update_config_from_dbfile();
@@ -707,7 +672,7 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 	} else {
 		qprintf("Adding files from database for hashing.\n");
 
-		ret = dbfile_scan_files(&dbfile_cfg);
+		ret = dbfile_scan_files();
 		if (ret)
 			goto out;
 	}
@@ -718,7 +683,7 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 		goto out;
 	}
 
-	ret = create_indexes(dbfile_get_handle(), &dbfile_cfg);
+	ret = create_indexes(dbfile_get_handle());
 	if (ret)
 		goto out;
 
@@ -823,9 +788,6 @@ int main(int argc, char **argv)
 				serialize_fname);
 			goto out;
 		}
-
-		if (dbfile_cfg.major == BLOCK_DEDUPE_DBFILE_VER)
-			v2_hashfile = 1;
 
 		/*
 		 * Skips the file scan, used to isolate the

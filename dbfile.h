@@ -14,10 +14,8 @@ struct dbfile_config;
 
 #define DB_FILE_MAJOR	3
 #define DB_FILE_MINOR	1
-#define BLOCK_DEDUPE_DBFILE_VER	2
 
-int dbfile_create(char *filename, int *dbfile_is_new, int requested_version,
-		  struct dbfile_config *cfg);
+int dbfile_create(char *filename, int *dbfile_is_new, struct dbfile_config *cfg);
 int dbfile_open(char *filename, struct dbfile_config *cfg);
 void dbfile_close(void);
 
@@ -42,7 +40,7 @@ struct hash_tree;
 struct hash_file_header;
 struct rb_root;
 
-int create_indexes(sqlite3 *db, struct dbfile_config *cfg);
+int create_indexes(sqlite3 *db);
 
 /*
  * Load hashes into hash_tree only if they have a duplicate in the db.
@@ -64,7 +62,7 @@ int dbfile_load_one_file_extent(sqlite3 *db, struct filerec *file,
 				uint64_t loff, struct file_extent *extent);
 
 /* Scan files based on db contents. Removes any orphaned file records. */
-int dbfile_scan_files(struct dbfile_config *cfg);
+int dbfile_scan_files();
 
 /* Write any filerecs marked as needing update to the db */
 int dbfile_sync_files(sqlite3 *db);
@@ -75,12 +73,10 @@ int dbfile_sync_files(sqlite3 *db);
  */
 sqlite3 *dbfile_get_handle(void);
 int dbfile_store_file_info(sqlite3 *db, struct filerec *file);
-int dbfile_store_block_hashes(sqlite3 *db, struct dbfile_config *cfg,
-			      struct filerec *file, uint64_t nb_hash,
-			      struct block_csum *hashes);
-int dbfile_store_extent_hashes(sqlite3 *db, struct dbfile_config *cfg,
-			       struct filerec *file, uint64_t nb_hash,
-			       struct extent_csum *hashes);
+int dbfile_store_block_hashes(sqlite3 *db, struct filerec *file,
+				uint64_t nb_hash, struct block_csum *hashes);
+int dbfile_store_extent_hashes(sqlite3 *db, struct filerec *file,
+				uint64_t nb_hash, struct extent_csum *hashes);
 int dbfile_begin_trans(sqlite3 *db);
 int dbfile_commit_trans(sqlite3 *db);
 
@@ -91,8 +87,7 @@ int dbfile_commit_trans(sqlite3 *db);
 typedef void (*iter_files_func)(char *filename, char *ino, char *subvol);
 int dbfile_iter_files(sqlite3 *db, iter_files_func func);
 
-int dbfile_remove_file(sqlite3 *db, struct dbfile_config *cfg,
-		       const char *filename);
+int dbfile_remove_file(sqlite3 *db, const char *filename);
 
 void dbfile_list_files(sqlite3 *db, int (*callback)(void*, int, char**, char**));
 
