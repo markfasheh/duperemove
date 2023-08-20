@@ -163,9 +163,9 @@ static int dbfile_set_modes(sqlite3 *db)
 }
 #define MEMDB_FILENAME	"file::memory:?cache=shared"
 
-int dbfile_create(char *filename, int *dbfile_is_new, struct dbfile_config *cfg)
+int dbfile_create(char *filename, bool *dbfile_is_new, struct dbfile_config *cfg)
 {
-	int ret, inmem = 0, newfile = 0;
+	int ret, inmem = 0;
 	sqlite3 *db = NULL;
 	int vmajor, vminor;
 
@@ -175,12 +175,12 @@ int dbfile_create(char *filename, int *dbfile_is_new, struct dbfile_config *cfg)
 		 * Set this so main() doesn't try to get config, etc
 		 * from a memory file.
 		 */
-		newfile = 1;
+		*dbfile_is_new = true;
 		filename = MEMDB_FILENAME;
 	} else {
 		ret = access(filename, R_OK|W_OK);
 		if (ret == -1 && errno == ENOENT)
-			newfile = 1;
+			*dbfile_is_new = true;
 	}
 
 reopen:
@@ -191,7 +191,7 @@ reopen:
 		return ret;
 	}
 
-	if (newfile || inmem) {
+	if (*dbfile_is_new || inmem) {
 		ret = create_tables(db);
 		if (ret) {
 			perror_sqlite(ret, "creating tables");
@@ -237,7 +237,7 @@ reopen:
 					filename, strerror(ret));
 				return ret;
 			}
-			newfile = 1;
+			*dbfile_is_new = true;
 			goto reopen;
 		}
 
@@ -264,7 +264,6 @@ reopen:
 		return ret;
 	}
 
-	*dbfile_is_new = newfile;
 	gdb = db;
 	return 0;
 }

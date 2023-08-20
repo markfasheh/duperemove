@@ -634,7 +634,7 @@ out:
 static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 {
 	int ret;
-	int dbfile_is_new = 0;
+	bool dbfile_is_new = false;
 
 	ret = dbfile_create(serialize_fname, &dbfile_is_new, &dbfile_cfg);
 	if (ret)
