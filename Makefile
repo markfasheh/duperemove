@@ -10,10 +10,10 @@ HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
 	ioctl.h filerec.h btrfs-util.h debug.h util.h \
 	memstats.h file_scan.h find_dupes.h run_dedupe.h xxhash.h \
 	dbfile.h interval_tree.h interval_tree_generic.h \
-	rbtree_augmented.h list_sort.h stats.h
+	rbtree_augmented.h list_sort.h
 CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
 	btrfs-util.c util.c memstats.c file_scan.c find_dupes.c run_dedupe.c \
-	csum.c dbfile.c interval_tree.c list_sort.c stats.c debug.c \
+	csum.c dbfile.c interval_tree.c list_sort.c debug.c \
 	csum-xxhash.c
 
 hashstats_CFILES=hashstats.c

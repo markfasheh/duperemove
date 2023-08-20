@@ -38,7 +38,6 @@
 #include "util.h"
 #include "btrfs-util.h"
 #include "dbfile.h"
-#include "stats.h"
 #include "memstats.h"
 #include "debug.h"
 
@@ -870,10 +869,6 @@ int main(int argc, char **argv)
 		abort_lineno();
 		break;
 	}
-
-#ifdef	PRINT_STATS
-	run_filerec_stats();
-#endif
 
 out:
 	free_all_filerecs();

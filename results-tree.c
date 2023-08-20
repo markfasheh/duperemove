@@ -382,25 +382,6 @@ again:
 	return result;
 }
 
-#ifdef	ITDEBUG
-static void print_all_extents(struct filerec *file)
-{
-	struct extent *extent;
-	struct interval_tree_node *node;
-
-	node = interval_tree_iter_first(&file->extent_tree, 0, -1ULL);
-	while (node) {
-		extent = container_of(node, struct extent, e_itnode);
-
-		printf("file: %s, start: %"PRIu64", end: %"PRIu64" ep: %p\n",
-		       file->filename, extent->e_loff, extent_end(extent),
-		       extent);
-
-		node = interval_tree_iter_next(node, 0, -1ULL);
-	}
-}
-#endif	/* ITDEBUG */
-
 static inline int check_tag_extent(struct extent *extent)
 {
 	struct extent *extent2;
