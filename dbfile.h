@@ -13,7 +13,7 @@ struct results_tree;
 struct dbfile_config;
 
 #define DB_FILE_MAJOR	3
-#define DB_FILE_MINOR	0
+#define DB_FILE_MINOR	1
 #define BLOCK_DEDUPE_DBFILE_VER	2
 
 int dbfile_create(char *filename, int *dbfile_is_new, int requested_version,
@@ -34,9 +34,6 @@ struct dbfile_config {
 	int		minor;
 	char		hash_type[8];
 	unsigned int	dedupe_seq;
-#define EXTENT_HASH_SRC_DIGEST	0
-#define EXTENT_HASH_SRC_DATA	1
-	unsigned int	extent_hash_src;
 };
 int dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg);
 int dbfile_sync_config(struct dbfile_config *cfg);

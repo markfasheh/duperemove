@@ -665,10 +665,7 @@ static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
 					break;
 			}
 
-			if (!v2_hashfile &&
-			    dbfile_cfg.extent_hash_src == EXTENT_HASH_SRC_DIGEST)
-				add_to_running_checksum(csum, DIGEST_LEN,
-							data->block_digest);
+			add_to_running_checksum(csum, DIGEST_LEN, data->block_digest);
 		}
 
 		start += cmp_len;
@@ -676,11 +673,6 @@ static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
 		if (cmp_len > blocksize)
 			cmp_len = blocksize;
 	}
-
-	if (!v2_hashfile &&
-	    dbfile_cfg.extent_hash_src == EXTENT_HASH_SRC_DATA)
-		add_to_running_checksum(csum, extlen,
-					(unsigned char *)data->buf);
 
 	assert(start == extlen);
 

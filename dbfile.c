@@ -50,8 +50,7 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 			       uint64_t *num_hashes, uint64_t *num_files,
 			       dev_t *onefs_dev, uint64_t *onefs_fsid,
 			       int *major, int *minor, char *db_hash_type,
-			       unsigned int *db_dedupe_seq,
-			       unsigned int *extent_hash_src);
+			       unsigned int *db_dedupe_seq);
 
 static void dbfile_config_defaults(struct dbfile_config *cfg)
 {
@@ -234,7 +233,7 @@ reopen:
 	} else {
 		/* Get only version numbers initially */
 		ret = __dbfile_get_config(db, NULL, NULL, NULL, NULL, NULL,
-					  &vmajor, &vminor, NULL, NULL, NULL);
+					  &vmajor, &vminor, NULL, NULL);
 		if (ret && ret != SQLITE_CORRUPT) {
 			perror_sqlite(ret, "reading initial db config");
 			sqlite3_close(db);
@@ -262,7 +261,7 @@ reopen:
 		}
 
 		if (vmajor != BLOCK_DEDUPE_DBFILE_VER &&
-		    vmajor != DB_FILE_MAJOR) {
+		    (vmajor != DB_FILE_MAJOR || vminor != DB_FILE_MINOR)) {
 			fprintf(stderr, "Error: Hashfile \"%s\" has unknown "
 				"version, %d.%d (I understand %d.%d)\n",
 				filename, vmajor, vminor, DB_FILE_MAJOR,
@@ -454,10 +453,6 @@ int __dbfile_sync_config(sqlite3 *db, struct dbfile_config *cfg)
 	}
 
 	ret = sync_config_text(stmt, "hash_type", cfg->hash_type, 8);
-	if (ret)
-		goto out;
-
-	ret = sync_config_int(stmt, "extent_hash_src", cfg->extent_hash_src);
 	if (ret)
 		goto out;
 
@@ -724,8 +719,7 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 			       uint64_t *num_hashes, uint64_t *num_files,
 			       dev_t *onefs_dev, uint64_t *onefs_fsid,
 			       int *ret_ver_major, int *ver_minor,
-			       char *db_hash_type, unsigned int *db_dedupe_seq,
-			       unsigned int *extent_hash_src)
+			       char *db_hash_type, unsigned int *db_dedupe_seq)
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
@@ -778,15 +772,6 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 	if (ret)
 		goto out;
 
-	if (ver_major > BLOCK_DEDUPE_DBFILE_VER) {
-		ret = get_config_int(stmt, "extent_hash_src",
-				     (int *)extent_hash_src);
-		if (ret)
-			goto out;
-	} else 	if (extent_hash_src) {
-		*extent_hash_src = 0;
-	}
-
 	sqlite3_finalize(stmt);
 	stmt = NULL;
 
@@ -808,7 +793,7 @@ int dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg)
 				  &cfg->num_files, &cfg->onefs_dev,
 				  &cfg->onefs_fsid, &cfg->major,
 				  &cfg->minor, cfg->hash_type,
-				  &cfg->dedupe_seq, &cfg->extent_hash_src);
+				  &cfg->dedupe_seq);
 
 	return ret;
 }
@@ -819,7 +804,7 @@ static int dbfile_check_version(sqlite3 *db)
 	int ver_major, ver_minor;
 
 	ret = __dbfile_get_config(db, NULL, NULL, NULL, NULL, NULL, &ver_major,
-				  &ver_minor, NULL, NULL, NULL);
+				  &ver_minor, NULL, NULL);
 	if (ret)
 		return ret;
 
