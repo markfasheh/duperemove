@@ -229,23 +229,6 @@ the semantics of the \f[V]partial\f[R] argument may change.
 Defaults to \f[V]off\f[R].
 Allow dedupe of extents within the same file.
 .TP
-\f[B][no]fiemap\f[R]
-Defaults to \f[V]on\f[R].
-Duperemove uses the \f[V]fiemap\f[R] ioctl during the dedupe stage to
-optimize out already deduped extents as well as to provide an estimate
-of the space saved after dedupe operations are complete.
-.RS
-.PP
-Unfortunately, some versions of Btrfs exhibit extremely poor performance
-in fiemap as the number of references on a file extent goes up.
-If you are experiencing the dedupe phase slowing down or `locking up'
-this option may give you a significant amount of performance back.
-.PP
-\f[V]Note:\f[R] This does not turn off all usage of fiemap, to disable
-fiemap during the file scan stage, you will also want to use the
-\f[V]--lookup-extents=no\f[R] option.
-.RE
-.TP
 \f[B][no]rescan_files\f[R]
 Defaults to \f[V]on\f[R].
 Duperemove will check for files that were found and deduplicated in a
@@ -258,11 +241,6 @@ is the only part of a larger, unchanged dataset.
 Duperemove will still dedupe that specific target against any shared
 extent found in the existing files.
 .RE
-.TP
-\f[B]--lookup-extents\f[R]={yes|no}
-Defaults to \f[V]yes\f[R].
-Allows duperemove to skip checksumming some blocks by checking their
-extent state.
 .TP
 \f[B]--read-hashes\f[R]=\f[V]hashfile\f[R]
 \f[B]This option is primarily for testing\f[R].

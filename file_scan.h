@@ -8,7 +8,6 @@ extern int run_dedupe;
 extern int one_file_system;
 extern int recurse_dirs;
 extern unsigned int blocksize;
-extern int do_lookup_extents;
 extern unsigned int io_threads;
 extern int skip_zeroes;
 /*

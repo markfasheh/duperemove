@@ -748,13 +748,11 @@ static void csum_whole_file_init(struct filerec *file,
 		(double)cur_scan_files / (double)files_to_scan * 100,
 		file->filename);
 
-	if (do_lookup_extents) {
-		*fc = alloc_fiemap_ctxt();
-		if (*fc == NULL) /* This should be non-fatal */
-			fprintf(stderr,
-				"Low memory allocating fiemap context for \"%s\"\n",
-				file->filename);
-	}
+	*fc = alloc_fiemap_ctxt();
+	if (*fc == NULL) /* This should be non-fatal */
+		fprintf(stderr,
+			"Low memory allocating fiemap context for \"%s\"\n",
+			file->filename);
 }
 
 /*

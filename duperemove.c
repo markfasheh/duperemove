@@ -68,7 +68,6 @@ static unsigned int list_only_opt = 0;
 static unsigned int rm_only_opt = 0;
 struct dbfile_config dbfile_cfg;
 static bool force_v2_hashfile = false;
-static int partial_extent_search = 0;
 
 static enum {
 	H_READ,
@@ -82,8 +81,6 @@ unsigned int io_threads;
 unsigned int cpu_threads;
 int io_threads_opt = 0;
 int cpu_threads_opt = 0;
-int do_lookup_extents = 1;
-int fiemap_during_dedupe = 1;
 bool rescan_files = true;
 
 int stdout_is_tty = 0;
@@ -222,15 +219,6 @@ static void print_version()
 	printf("duperemove %s%s\n", VERSTRING, s ? s : "");
 }
 
-static int parse_yesno_option(char *arg, int default_val)
-{
-	if (strncmp(arg, "yes", 3) == 0)
-		return 1;
-	else if (strncmp(arg, "no", 2) == 0)
-		return 0;
-	return default_val;
-}
-
 /* adapted from ocfs2-tools */
 static int parse_dedupe_opts(const char *opts)
 {
@@ -258,10 +246,8 @@ static int parse_dedupe_opts(const char *opts)
 
 		if (strcmp(token, "same") == 0) {
 			dedupe_same_file = !invert;
-		} else if (strcmp(token, "fiemap") == 0) {
-			fiemap_during_dedupe = !invert;
 		} else if (strcmp(token, "partial") == 0) {
-			partial_extent_search = !invert;
+			do_block_hash = !invert;
 		} else if (strcmp(token, "rescan_files") == 0) {
 			rescan_files = !invert;
 		} else {
@@ -293,7 +279,6 @@ enum {
 	HASHFILE_OPTION,
 	IO_THREADS_OPTION,
 	CPU_THREADS_OPTION,
-	LOOKUP_EXTENTS_OPTION,
 	SKIP_ZEROES_OPTION,
 	FDUPES_OPTION,
 	DEDUPE_OPTS_OPTION,
@@ -378,7 +363,6 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		{ "io-threads", 1, NULL, IO_THREADS_OPTION },
 		{ "hash-threads", 1, NULL, IO_THREADS_OPTION },
 		{ "cpu-threads", 1, NULL, CPU_THREADS_OPTION },
-		{ "lookup-extents", 1, NULL, LOOKUP_EXTENTS_OPTION },
 		{ "skip-zeroes", 0, NULL, SKIP_ZEROES_OPTION },
 		{ "fdupes", 0, NULL, FDUPES_OPTION },
 		{ "dedupe-options=", 1, NULL, DEDUPE_OPTS_OPTION },
@@ -459,9 +443,6 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			}
 			cpu_threads_opt = 1;
 			break;
-		case LOOKUP_EXTENTS_OPTION:
-			do_lookup_extents = parse_yesno_option(optarg, 0);
-			break;
 		case SKIP_ZEROES_OPTION:
 			skip_zeroes = 1;
 			break;
@@ -499,12 +480,6 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			return 1;
 		}
 	}
-
-	if (!do_lookup_extents || !fiemap_during_dedupe)
-		force_v2_hashfile = true;
-
-	if (force_v2_hashfile || partial_extent_search)
-		do_block_hash = true;
 
 	numfiles = argc - optind;
 
@@ -644,7 +619,7 @@ void process_duplicates() {
 			goto out;
 
 		printf("Found %llu identical extents.\n", res.num_extents);
-		if (partial_extent_search) {
+		if (do_block_hash) {
 			ret = dbfile_load_block_hashes(&dups_tree);
 			if (ret)
 				goto out;

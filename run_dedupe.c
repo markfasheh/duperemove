@@ -41,8 +41,6 @@
 
 #include "run_dedupe.h"
 
-extern int fiemap_during_dedupe;
-
 static GMutex mutex;
 static GMutex console_mutex;
 static struct results_tree *results_tree;
@@ -324,20 +322,18 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 	 * goes below 2. If that happens, we return a special value so
 	 * the caller knows not to reference dext any more.
 	 */
-	if (fiemap_during_dedupe) {
-		clean_deduped(&dext);
-		if (!dext) {
-			qprintf("[%p] Skipping - extents are already deduped.\n",
-			       g_thread_self());
-			return DEDUPE_EXTENTS_CLEANED;
-		}
-
-		/*
-		 * Do this after clean_deduped as we may have removed some
-		 * extents.
-		 */
-		add_shared_extents(dext, &shared_prev);
+	clean_deduped(&dext);
+	if (!dext) {
+		qprintf("[%p] Skipping - extents are already deduped.\n",
+		       g_thread_self());
+		return DEDUPE_EXTENTS_CLEANED;
 	}
+
+	/*
+	 * Do this after clean_deduped as we may have removed some
+	 * extents.
+	 */
+	add_shared_extents(dext, &shared_prev);
 
 	list_for_each_entry(extent, &dext->de_extents, e_list) {
 		if (list_is_last(&extent->e_list, &dext->de_extents))
@@ -462,8 +458,7 @@ close_files:
 	abort_on(ctxt != NULL);
 	abort_on(!RB_EMPTY_ROOT(&open_files.root));
 
-	if (fiemap_during_dedupe)
-		add_shared_extents_post(dext, &shared_post);
+	add_shared_extents_post(dext, &shared_post);
 
 	/*
 	 * It's entirely possible that some other process is
@@ -615,10 +610,9 @@ void dedupe_results(struct results_tree *res)
 	if (ret == 0) {
 		vprintf("Kernel processed data (excludes target files): "
 			"%s\n", pretty_size(counts.kern_bytes));
-		if (fiemap_during_dedupe)
-			printf("Comparison of extent info shows a net "
-			       "change in shared extents of: %s\n",
-			       pretty_size(counts.fiemap_bytes));
+		printf("Comparison of extent info shows a net "
+		       "change in shared extents of: %s\n",
+		       pretty_size(counts.fiemap_bytes));
 	}
 }
 
