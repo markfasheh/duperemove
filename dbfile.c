@@ -630,8 +630,8 @@ static int get_config_int64(sqlite3_stmt *stmt, const char *name, uint64_t *val)
 	return 0;
 }
 
-static int get_config_text(sqlite3_stmt *stmt, const char *name,
-			   const unsigned char *val, unsigned int len)
+static int get_config_hashtype(sqlite3_stmt *stmt, const char *name,
+			   unsigned char *val)
 {
 	int ret, found = 0;
 	const unsigned char *local;
@@ -647,7 +647,7 @@ static int get_config_text(sqlite3_stmt *stmt, const char *name,
 
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
 		local = sqlite3_column_text(stmt, 0);
-		strncpy((char *)val, (char *)local, len);
+		memcpy(val, local, 8);
 		found++;
 	}
 
@@ -686,8 +686,8 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 	if (ret)
 		goto out;
 
-	ret = get_config_text(stmt, "hash_type",
-			      (const unsigned char *)db_hash_type, 8);
+	ret = get_config_hashtype(stmt, "hash_type",
+			      (unsigned char *)db_hash_type);
 	if (ret)
 		goto out;
 
