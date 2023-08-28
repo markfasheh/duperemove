@@ -59,6 +59,20 @@ static void dbfile_config_defaults(struct dbfile_config *cfg)
 	memcpy(cfg->hash_type, HASH_TYPE, 8);
 }
 
+static int dbfile_check_version(struct dbfile_config *cfg)
+{
+	if (cfg->major != DB_FILE_MAJOR || cfg->minor != DB_FILE_MINOR) {
+		fprintf(stderr,
+			"Hash db version mismatch (mine: %d.%d, file: %d.%d)\n",
+			DB_FILE_MAJOR, DB_FILE_MINOR, cfg->major, cfg->minor);
+		return EIO;
+	}
+
+	/* XXX: Check hash type here! */
+
+	return 0;
+}
+
 static int create_tables(sqlite3 *db)
 {
 	int ret;
@@ -250,6 +264,10 @@ reopen:
 		sqlite3_close(db);
 		return ret;
 	}
+
+	dbfile_check_version(cfg);
+	if (ret)
+		return ret;
 
 	gdb = db;
 	return 0;
@@ -745,28 +763,6 @@ int dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg)
 				  &cfg->dedupe_seq);
 
 	return ret;
-}
-
-static int dbfile_check_version(sqlite3 *db)
-{
-	int ret;
-	int ver_major, ver_minor;
-
-	ret = __dbfile_get_config(db, NULL, NULL, NULL, NULL, NULL, &ver_major,
-				  &ver_minor, NULL, NULL);
-	if (ret)
-		return ret;
-
-	if (ver_major > DB_FILE_MAJOR) {
-		fprintf(stderr,
-			"Hash db version mismatch (mine: %d.%d, file: %d.%d)\n",
-			DB_FILE_MAJOR, DB_FILE_MINOR, ver_major, ver_minor);
-		return EIO;
-	}
-
-	/* XXX: Check hash type here! */
-
-	return 0;
 }
 
 static int __dbfile_store_file_info(sqlite3_stmt *stmt, struct filerec *file)
@@ -1367,10 +1363,6 @@ int dbfile_load_block_hashes(struct hash_tree *hash_tree)
 	if (!db)
 		return ENOENT;
 
-	ret = dbfile_check_version(db);
-	if (ret)
-		return ret;
-
 #define GET_DUPLICATE_HASHES \
 	"SELECT hashes.digest, ino, subvol, loff, flags FROM hashes " \
 	"JOIN (SELECT DISTINCT digest FROM hashes WHERE digest IN " \
@@ -1437,10 +1429,6 @@ int dbfile_load_extent_hashes(struct results_tree *res)
 	db = dbfile_get_handle();
 	if (!db)
 		return ENOENT;
-
-	ret = dbfile_check_version(db);
-	if (ret)
-		return ret;
 
 	/*
 	 * We need to select on both digest and len, otherwise we
