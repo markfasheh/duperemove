@@ -554,30 +554,6 @@ static void print_header(void)
 	qprintf("Gathering file list...\n");
 }
 
-static int update_config_from_dbfile(void)
-{
-	dedupe_seq = dbfile_cfg.dedupe_seq;
-
-	if (strncasecmp(dbfile_cfg.hash_type, HASH_TYPE, 8)) {
-		fprintf(stderr,
-			"Error: Hashfile %s uses \"%.*s\" for checksums "
-			"but we are using %.*s.\nYou are probably "
-			"using a hashfile generated from an old version, "
-			"which cannot be read anymore.\n", serialize_fname, 8,
-			dbfile_cfg.hash_type, 8, HASH_TYPE);
-		return EINVAL;
-	}
-
-	if (dbfile_cfg.blocksize != blocksize) {
-		vprintf("Using blocksize %uK from hashfile (%uK "
-			"blocksize requested).\n", dbfile_cfg.blocksize/1024,
-			blocksize/1024);
-		blocksize = dbfile_cfg.blocksize;
-	}
-
-	return 0;
-}
-
 void process_duplicates() {
 	int ret;
 	struct results_tree res;
@@ -742,9 +718,8 @@ int main(int argc, char **argv)
 	if (ret)
 		goto out;
 
-	ret = update_config_from_dbfile();
-	if (ret)
-		goto out;
+	dedupe_seq = dbfile_cfg.dedupe_seq;
+
 	print_header();
 
 	switch (use_hashfile) {

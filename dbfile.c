@@ -64,8 +64,39 @@ static void dbfile_config_defaults(struct dbfile_config *cfg)
 	cfg->blocksize = blocksize;
 }
 
-static int dbfile_check_version(struct dbfile_config *cfg)
+static int dbfile_get_dbpath(sqlite3 *db, char *path)
 {
+	int ret;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
+	const char *buf;
+
+#define GET_DBPATH "select file from pragma_database_list where name = 'main' limit 1;"
+	ret = sqlite3_prepare_v2(db, GET_DBPATH, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing statement");
+		return ret;
+	}
+
+	ret = sqlite3_step(stmt);
+	if (ret != SQLITE_ROW) {
+		perror_sqlite(ret, "fetching database's backend path");
+		return ret;
+	}
+
+	buf = (char *)sqlite3_column_text(stmt, 0);
+	if (strnlen(buf, PATH_MAX) != 0) {
+		strncpy(path, buf, PATH_MAX);
+	} else {
+		strcpy(path, "(null)");
+	}
+
+	return 0;
+}
+
+static int dbfile_check(struct dbfile_config *cfg)
+{
+	char path[PATH_MAX + 1];
+
 	if (cfg->major != DB_FILE_MAJOR || cfg->minor != DB_FILE_MINOR) {
 		fprintf(stderr,
 			"Hash db version mismatch (mine: %d.%d, file: %d.%d)\n",
@@ -73,7 +104,24 @@ static int dbfile_check_version(struct dbfile_config *cfg)
 		return EIO;
 	}
 
-	/* XXX: Check hash type here! */
+	dbfile_get_dbpath(gdb, path);
+
+	if (strncasecmp(cfg->hash_type, HASH_TYPE, 8)) {
+		fprintf(stderr,
+			"Error: Hashfile %s uses \"%.*s\" for checksums "
+			"but we are using %.*s.\nYou are probably "
+			"using a hashfile generated from an old version, "
+			"which cannot be read anymore.\n", path, 8,
+			cfg->hash_type, 8, HASH_TYPE);
+		return EINVAL;
+	}
+
+	if (cfg->blocksize != blocksize) {
+		vprintf("Using blocksize %uK from hashfile (%uK "
+			"blocksize requested).\n", cfg->blocksize/1024,
+			blocksize/1024);
+		blocksize = cfg->blocksize;
+	}
 
 	return 0;
 }
@@ -201,11 +249,11 @@ int dbfile_open(char *filename, struct dbfile_config *cfg)
 		return ret;
 	}
 
-	ret = dbfile_check_version(cfg);
+	gdb = db;
+
+	ret = dbfile_check(cfg);
 	if (ret)
 		return ret;
-
-	gdb = db;
 
 	/* May store the default config, if fields were missing
 	 * or if the database did not exist
