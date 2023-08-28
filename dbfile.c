@@ -64,26 +64,26 @@ static int create_tables(sqlite3 *db)
 	int ret;
 
 #define CREATE_TABLE_CONFIG	\
-"CREATE TABLE config(keyname TEXT PRIMARY KEY NOT NULL, keyval BLOB);"
+"CREATE TABLE IF NOT EXISTS config(keyname TEXT PRIMARY KEY NOT NULL, keyval BLOB);"
 	ret = sqlite3_exec(db, CREATE_TABLE_CONFIG, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
 #define	CREATE_TABLE_FILES	\
-"CREATE TABLE files(filename TEXT PRIMARY KEY NOT NULL, ino INTEGER, "\
+"CREATE TABLE IF NOT EXISTS files(filename TEXT PRIMARY KEY NOT NULL, ino INTEGER, "\
 "subvol INTEGER, size INTEGER, blocks INTEGER, mtime INTEGER, dedupe_seq INTEGER);"
 	ret = sqlite3_exec(db, CREATE_TABLE_FILES, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
 #define	CREATE_TABLE_EXTENTS						\
-"CREATE TABLE extents(digest BLOB KEY NOT NULL, ino INTEGER, subvol INTEGER, loff INTEGER, poff INTEGER, len INTEGER, flags INTEGER);"
+"CREATE TABLE IF NOT EXISTS extents(digest BLOB KEY NOT NULL, ino INTEGER, subvol INTEGER, loff INTEGER, poff INTEGER, len INTEGER, flags INTEGER);"
 	ret = sqlite3_exec(db, CREATE_TABLE_EXTENTS, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
 #define	CREATE_TABLE_HASHES					\
-"CREATE TABLE hashes(digest BLOB KEY NOT NULL, ino INTEGER, subvol INTEGER, loff INTEGER, flags INTEGER);"
+"CREATE TABLE IF NOT EXISTS hashes(digest BLOB KEY NOT NULL, ino INTEGER, subvol INTEGER, loff INTEGER, flags INTEGER);"
 	ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, NULL);
 
 out:
