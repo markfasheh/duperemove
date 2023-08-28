@@ -394,8 +394,8 @@ out:
 
 int __dbfile_sync_config(sqlite3 *db, struct dbfile_config *cfg)
 {
-	int ret;
-	sqlite3_stmt *stmt = NULL;
+	int ret = 0;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
 	unsigned int onefs_major, onefs_minor;
 
 	ret = sqlite3_prepare_v2(db,
@@ -444,10 +444,7 @@ int __dbfile_sync_config(sqlite3 *db, struct dbfile_config *cfg)
 	if (ret)
 		goto out;
 
-	ret = 0;
 out:
-	sqlite3_finalize(stmt);
-
 	if (ret) {
 		perror_sqlite(ret, "binding");
 	}
