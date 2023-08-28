@@ -59,19 +59,6 @@ static void dbfile_config_defaults(struct dbfile_config *cfg)
 	memcpy(cfg->hash_type, HASH_TYPE, 8);
 }
 
-#if 0
-static int debug_print_cb(void *priv, int argc, char **argv, char **column)
-{
-	int i;
-
-	printf("(");
-	for(i = 0; i < argc; i++)
-		printf("%s:%s, ", column[i], argv[i]);
-	printf(")\n");
-	return 0;
-}
-#endif
-
 static int create_tables(sqlite3 *db)
 {
 	int ret;
