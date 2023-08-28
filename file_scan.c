@@ -99,16 +99,6 @@ static void clear_filerec_scan_flags(struct filerec *file)
 	file->flags &= ~FILEREC_UPDATE_DB;
 }
 
-void fs_set_onefs(dev_t dev, uint64_t fsid)
-{
-	if (dev || fsid) {
-		if (dev)
-			one_fs_dev = dev;
-		else if (fsid)
-			one_fs_btrfs = fsid;
-	}
-}
-
 dev_t fs_onefs_dev(void)
 {
 	return one_fs_dev;

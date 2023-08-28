@@ -24,6 +24,7 @@
 #include "csum.h"
 #include "dbfile.h"
 #include "file_flags.h"
+#include "file_scan.h"
 
 unsigned int blocksize;
 static int version_only = 0;
@@ -33,17 +34,12 @@ static int num_to_print = 10;
 static int print_file_list = 0;
 static char *serialize_fname = NULL;
 
-/* dirty hack so we don't have to add file_scan.o to hashstats */
-int add_file_db(const char *filename [[maybe_unused]],
-		uint64_t inum [[maybe_unused]],
-		uint64_t subvolid [[maybe_unused]],
-		uint64_t size [[maybe_unused]],
-		uint64_t mtime [[maybe_unused]],
-		unsigned int seq [[maybe_unused]],
-		int *delete [[maybe_unused]])
-{
-	return 0;
-}
+/* Useless global variables for file_scan.c */
+int run_dedupe = 0;
+int skip_zeroes = 0;
+bool do_block_hash = false;
+int recurse_dirs = 0;
+unsigned int io_threads = 0;
 
 bool rescan_files = true;
 

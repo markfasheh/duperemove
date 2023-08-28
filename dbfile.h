@@ -16,7 +16,6 @@ struct dbfile_config;
 #define DB_FILE_MAJOR	3
 #define DB_FILE_MINOR	1
 
-int dbfile_create(char *filename, bool *dbfile_is_new, struct dbfile_config *cfg);
 int dbfile_open(char *filename, struct dbfile_config *cfg);
 void dbfile_close(void);
 

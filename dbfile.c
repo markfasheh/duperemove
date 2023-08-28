@@ -57,6 +57,11 @@ static void dbfile_config_defaults(struct dbfile_config *cfg)
 	memset(cfg, 0, sizeof(*cfg));
 	cfg->blocksize = blocksize;
 	memcpy(cfg->hash_type, HASH_TYPE, 8);
+
+	cfg->major = DB_FILE_MAJOR;
+	cfg->minor = DB_FILE_MINOR;
+
+	cfg->blocksize = blocksize;
 }
 
 static int dbfile_check_version(struct dbfile_config *cfg)
@@ -162,114 +167,56 @@ static int dbfile_set_modes(sqlite3 *db)
 
 	return ret;
 }
+
 #define MEMDB_FILENAME	"file::memory:?cache=shared"
-
-int dbfile_create(char *filename, bool *dbfile_is_new, struct dbfile_config *cfg)
-{
-	int ret, inmem = 0;
-	sqlite3 *db = NULL;
-	int vmajor, vminor;
-
-	if (!filename) {
-		inmem = 1;
-		/*
-		 * Set this so main() doesn't try to get config, etc
-		 * from a memory file.
-		 */
-		*dbfile_is_new = true;
-		filename = MEMDB_FILENAME;
-	} else {
-		ret = access(filename, R_OK|W_OK);
-		if (ret == -1 && errno == ENOENT)
-			*dbfile_is_new = true;
-	}
-
-reopen:
 #define OPEN_FLAGS	(SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE|SQLITE_OPEN_NOMUTEX|SQLITE_OPEN_URI)
-	ret = sqlite3_open_v2(filename, &db, OPEN_FLAGS, NULL);
+
+int dbfile_open(char *filename, struct dbfile_config *cfg)
+{
+	int ret;
+	sqlite3 *db = NULL;
+
+	db = dbfile_open_handle(filename);
+
+	ret = create_tables(db);
 	if (ret) {
-		perror_sqlite_open(db, filename);
-		return ret;
-	}
-
-	if (*dbfile_is_new || inmem) {
-		ret = create_tables(db);
-		if (ret) {
-			perror_sqlite(ret, "creating tables");
-			sqlite3_close(db);
-			return ret;
-		}
-		/* Config is not written yet, but we can load some defaults. */
-		dbfile_config_defaults(cfg);
-		cfg->major = DB_FILE_MAJOR;
-		cfg->minor = DB_FILE_MINOR;
-		if (!inmem) {
-			ret = chmod(filename, S_IRUSR|S_IWUSR);
-			if (ret) {
-				perror("setting db file permissions");
-				sqlite3_close(db);
-				return ret;
-			}
-
-		}
-	} else {
-		/* Get only version numbers initially */
-		ret = __dbfile_get_config(db, NULL, NULL, NULL, NULL, NULL,
-					  &vmajor, &vminor, NULL, NULL);
-		if (ret && ret != SQLITE_CORRUPT) {
-			perror_sqlite(ret, "reading initial db config");
-			sqlite3_close(db);
-			return ret;
-		}
-
-		if (ret || vmajor <= 1) {
-			/*
-			 * Behavior for v1 dbfiles was to delete
-			 * them on every run. They also didn't store
-			 * mtime so any attempt to 'upgrade' would
-			 * include rescanning all files anyway.
-			 */
-			sqlite3_close(db);
-			ret = unlink(filename);
-			if (ret && errno != ENOENT) {
-				ret = errno;
-				fprintf(stderr, "Error %d while unlinking old "
-					"or damaged db file \"%s\": %s", ret,
-					filename, strerror(ret));
-				return ret;
-			}
-			*dbfile_is_new = true;
-			goto reopen;
-		}
-
-		if (vmajor != DB_FILE_MAJOR || vminor != DB_FILE_MINOR) {
-			fprintf(stderr, "Error: Hashfile \"%s\" has unknown "
-				"version, %d.%d (I understand %d.%d)\n",
-				filename, vmajor, vminor, DB_FILE_MAJOR,
-				DB_FILE_MINOR);
-			sqlite3_close(db);
-			return -EIO;
-		}
-
-		ret = dbfile_get_config(db, cfg);
-		if (ret) {
-			perror_sqlite(ret, "loading dbfile config");
-			return ret;
-		}
-	}
-
-	ret = dbfile_set_modes(db);
-	if (ret) {
-		perror_sqlite(ret, "setting journal modes");
+		perror_sqlite(ret, "creating tables");
 		sqlite3_close(db);
 		return ret;
 	}
 
-	dbfile_check_version(cfg);
+	if (filename) {
+		ret = chmod(filename, S_IRUSR|S_IWUSR);
+		if (ret) {
+			perror("setting db file permissions");
+			sqlite3_close(db);
+			return ret;
+		}
+	}
+
+	ret = dbfile_get_config(db, cfg);
+	if (ret) {
+		perror_sqlite(ret, "reading initial db config");
+		sqlite3_close(db);
+		return ret;
+	}
+
+	ret = dbfile_check_version(cfg);
 	if (ret)
 		return ret;
 
 	gdb = db;
+
+	/* May store the default config, if fields were missing
+	 * or if the database did not exist
+	 */
+	ret = dbfile_sync_config(cfg);
+	if (ret) {
+		perror_sqlite(ret, "sync db config");
+		sqlite3_close(db);
+		return ret;
+	}
+
 	return 0;
 }
 
@@ -301,25 +248,6 @@ struct sqlite3 *dbfile_open_handle(char *filename)
 void dbfile_close_handle(struct sqlite3 *db)
 {
 	sqlite3_close(db);
-}
-
-int dbfile_open(char *filename, struct dbfile_config *cfg)
-{
-	int ret;
-	sqlite3 *db;
-
-	db = dbfile_open_handle(filename);
-
-	dbfile_config_defaults(cfg);
-	ret = dbfile_get_config(db, cfg);
-	if (ret) {
-		perror_sqlite(ret, "loading config");
-		sqlite3_close(db);
-		return ret;
-	}
-
-	gdb = db;
-	return 0;
 }
 
 void dbfile_close(void)
@@ -590,7 +518,7 @@ static int dbfile_count_rows(sqlite3 *db, uint64_t *num_hashes,
 
 static int get_config_int(sqlite3_stmt *stmt, const char *name, int *val)
 {
-	int ret, found = 0;
+	int ret;
 
 	if (!val)
 		return 0;
@@ -603,15 +531,12 @@ static int get_config_int(sqlite3_stmt *stmt, const char *name, int *val)
 
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
 		*val = sqlite3_column_int(stmt, 0);
-		found++;
 	}
+
 	if (ret != SQLITE_DONE) {
 		perror_sqlite(ret, "retrieving row from config table (step)");
 		return ret;
 	}
-
-	if (!found)
-		return SQLITE_CORRUPT;
 
 	sqlite3_reset(stmt);
 
@@ -620,7 +545,7 @@ static int get_config_int(sqlite3_stmt *stmt, const char *name, int *val)
 
 static int get_config_int64(sqlite3_stmt *stmt, const char *name, uint64_t *val)
 {
-	int ret, found = 0;;
+	int ret;
 
 	if (!val)
 		return 0;
@@ -633,25 +558,20 @@ static int get_config_int64(sqlite3_stmt *stmt, const char *name, uint64_t *val)
 
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
 		*val = sqlite3_column_int64(stmt, 0);
-		found++;
 	}
 	if (ret != SQLITE_DONE) {
 		perror_sqlite(ret, "retrieving row from config table (step)");
 		return ret;
 	}
 
-	if (!found)
-		return SQLITE_CORRUPT;
-
 	sqlite3_reset(stmt);
 
 	return 0;
 }
 
-static int get_config_hashtype(sqlite3_stmt *stmt, const char *name,
-			   unsigned char *val)
+static int get_config_hashtype(sqlite3_stmt *stmt, const char *name, char *val)
 {
-	int ret, found = 0;
+	int ret;
 	const unsigned char *local;
 
 	if (!val)
@@ -666,16 +586,12 @@ static int get_config_hashtype(sqlite3_stmt *stmt, const char *name,
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
 		local = sqlite3_column_text(stmt, 0);
 		memcpy(val, local, 8);
-		found++;
 	}
 
 	if (ret != SQLITE_DONE) {
 		perror_sqlite(ret, "retrieving row from config table (step)");
 		return ret;
 	}
-
-	if (!found)
-		return SQLITE_CORRUPT;
 
 	sqlite3_reset(stmt);
 
@@ -685,13 +601,12 @@ static int get_config_hashtype(sqlite3_stmt *stmt, const char *name,
 static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 			       uint64_t *num_hashes, uint64_t *num_files,
 			       dev_t *onefs_dev, uint64_t *onefs_fsid,
-			       int *ret_ver_major, int *ver_minor,
+			       int *ver_major, int *ver_minor,
 			       char *db_hash_type, unsigned int *db_dedupe_seq)
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
-	unsigned int onefs_major, onefs_minor;
-	int ver_major; /* We always query this */
+	unsigned int onefs_major = 0, onefs_minor = 0;
 
 #define SELECT_CONFIG "select keyval from config where keyname=?1;"
 	ret = sqlite3_prepare_v2(db, SELECT_CONFIG, -1, &stmt, NULL);
@@ -704,16 +619,13 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 	if (ret)
 		goto out;
 
-	ret = get_config_hashtype(stmt, "hash_type",
-			      (unsigned char *)db_hash_type);
+	ret = get_config_hashtype(stmt, "hash_type", db_hash_type);
 	if (ret)
 		goto out;
 
-	ret = get_config_int(stmt, "version_major", &ver_major);
+	ret = get_config_int(stmt, "version_major", ver_major);
 	if (ret)
 		goto out;
-	if (ret_ver_major)
-		*ret_ver_major = ver_major;
 
 	ret = get_config_int(stmt, "version_minor", ver_minor);
 	if (ret)
@@ -755,6 +667,8 @@ out:
 int dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg)
 {
 	int ret;
+
+	dbfile_config_defaults(cfg);
 
 	ret = __dbfile_get_config(db, &cfg->blocksize, &cfg->num_hashes,
 				  &cfg->num_files, &cfg->onefs_dev,

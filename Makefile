@@ -30,7 +30,7 @@ TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
 objects = $(CFILES:.c=.o)
 
 hashstats_obj = csum-xxhash.o rbtree.o hash-tree.o filerec.o util.o \
-	results-tree.o csum.o dbfile.o list_sort.o debug.o
+	results-tree.o csum.o dbfile.o list_sort.o debug.o file_scan.o btrfs-util.o
 show_shared_obj = rbtree.o util.o debug.o filerec.o
 csum_test_obj = csum-xxhash.o util.o csum.o debug.o
 

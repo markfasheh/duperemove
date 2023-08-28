@@ -629,25 +629,9 @@ out:
 	free_hash_tree(&dups_tree);
 }
 
-
-
 static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 {
 	int ret;
-	bool dbfile_is_new = false;
-
-	ret = dbfile_create(serialize_fname, &dbfile_is_new, &dbfile_cfg);
-	if (ret)
-		goto out;
-
-	if (!dbfile_is_new) {
-		ret = update_config_from_dbfile();
-		if (ret)
-			goto out;
-		fs_set_onefs(dbfile_cfg.onefs_dev, dbfile_cfg.onefs_fsid);
-	}
-
-	print_header();
 
 	if (stdin_filelist)
 		ret = add_files_from_stdin(0);
@@ -657,21 +641,21 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 	if (ret)
 		goto out;
 
-	if (dbfile_is_new) {
-		dbfile_cfg.blocksize = blocksize;
-		dbfile_cfg.onefs_dev = fs_onefs_dev();
-		dbfile_cfg.onefs_fsid = fs_onefs_id();
-		dbfile_cfg.dedupe_seq = dedupe_seq;
-		ret = dbfile_sync_config(&dbfile_cfg);
-		if (ret)
-			goto out;
-	} else {
-		qprintf("Adding files from database for hashing.\n");
+	/*
+	 * Those fields are 0 by default, and are added by
+	 * the add_files_from_cmdline call above. Let's sync them.
+	 */
+	dbfile_cfg.onefs_dev = fs_onefs_dev();
+	dbfile_cfg.onefs_fsid = fs_onefs_id();
+	ret = dbfile_sync_config(&dbfile_cfg);
+	if (ret)
+		goto out;
 
-		ret = dbfile_scan_files();
-		if (ret)
-			goto out;
-	}
+	qprintf("Adding files from database for hashing.\n");
+
+	ret = dbfile_scan_files();
+	if (ret)
+		goto out;
 
 	if (list_empty(&filerec_list)) {
 		fprintf(stderr, "No dedupe candidates found.\n");
@@ -754,6 +738,15 @@ int main(int argc, char **argv)
 	else if (rm_only_opt)
 		return rm_db_files(serialize_fname);
 
+	ret = dbfile_open(serialize_fname, &dbfile_cfg);
+	if (ret)
+		goto out;
+
+	ret = update_config_from_dbfile();
+	if (ret)
+		goto out;
+	print_header();
+
 	switch (use_hashfile) {
 	case H_UPDATE:
 	case H_WRITE:
@@ -778,24 +771,6 @@ int main(int argc, char **argv)
 		}
 		break;
 	case H_READ:
-		ret = dbfile_open(serialize_fname, &dbfile_cfg);
-		if (ret) {
-			fprintf(stderr, "Error: Could not open dbfile %s.\n",
-				serialize_fname);
-			goto out;
-		}
-
-		/*
-		 * Skips the file scan, used to isolate the
-		 * extent-find and dedupe stages
-		 */
-		blocksize = dbfile_cfg.blocksize;
-		ret = update_config_from_dbfile();
-		if (ret)
-			goto out;
-
-		print_header();
-
 		process_duplicates();
 		break;
 	default:
