@@ -303,19 +303,7 @@ int dbfile_open(char *filename, struct dbfile_config *cfg)
 	int ret;
 	sqlite3 *db;
 
-	ret = sqlite3_open_v2(filename, &db, OPEN_FLAGS, NULL);
-	if (ret) {
-		perror_sqlite_open(db, filename);
-		sqlite3_close(db);
-		return ret;
-	}
-
-	ret = dbfile_set_modes(db);
-	if (ret) {
-		perror_sqlite(ret, "setting journal modes");
-		sqlite3_close(db);
-		return ret;
-	}
+	db = dbfile_open_handle(filename);
 
 	dbfile_config_defaults(cfg);
 	ret = dbfile_get_config(db, cfg);
