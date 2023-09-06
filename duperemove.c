@@ -555,7 +555,8 @@ static void print_header(void)
 	qprintf("Gathering file list...\n");
 }
 
-void process_duplicates() {
+void process_duplicates()
+{
 	int ret;
 	struct results_tree res;
 	struct hash_tree dups_tree;

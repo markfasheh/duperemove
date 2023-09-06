@@ -555,8 +555,14 @@ static void run_pool(GThreadPool *pool, struct filerec *file,
 
 	qprintf("Using %u threads for file hashing phase\n", io_threads);
 
+	/* Reset the scanned filerecs */
+	list_for_each_entry(file, &filerec_list, rec_list) {
+		file->scanned = false;
+	}
+
 	list_for_each_entry_safe(file, tmp, &filerec_list, rec_list) {
 		if (file->flags & FILEREC_NEEDS_SCAN) {
+			file->scanned = true;
 			g_thread_pool_push(pool, file, &err);
 			if (err != NULL) {
 				fprintf(stderr,

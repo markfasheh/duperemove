@@ -46,6 +46,9 @@ struct filerec {
 
 	struct list_head	rec_list;	/* all filerecs */
 
+	/* Used to mark filerec that were scanned in the last batch */
+	bool			scanned;
+
 	/* protects comparisons and extent_tree trees */
 	GMutex			tree_mutex;
 
