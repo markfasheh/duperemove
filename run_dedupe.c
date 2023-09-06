@@ -38,6 +38,7 @@
 #include "util.h"
 #include "memstats.h"
 #include "debug.h"
+#include "dbfile.h"
 
 #include "run_dedupe.h"
 
@@ -500,12 +501,21 @@ static int extent_dedupe_worker(struct dupe_extents *dext,
 	int ret;
 	unsigned long long passno = __atomic_add_fetch(&curr_dedupe_pass, 1, __ATOMIC_SEQ_CST);
 
+	struct extent *extent;
+	sqlite3 *db = dbfile_get_handle();
+
 	ret = dedupe_extent_list(dext, fiemap_bytes, kern_bytes, passno);
 	if (ret) {
 		if (ret == DEDUPE_EXTENTS_CLEANED)
 			return 0;
 		/* dedupe_extent_list already printed to stderr for us */
 		return ret;
+	}
+
+	/* Rescan physical offset and update the hashfile accordingly */
+	list_for_each_entry(extent, &dext->de_extents, e_list) {
+		fiemap_scan_extent(extent);
+		dbfile_update_extent_poff(db, extent->e_file->inum, extent->e_file->subvolid, extent->e_loff, extent->e_poff);
 	}
 
 	if (!list_empty(&dext->de_extents)) {

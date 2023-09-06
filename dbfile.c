@@ -315,6 +315,52 @@ int dbfile_begin_trans(sqlite3 *db)
 	return ret;
 }
 
+int dbfile_update_extent_poff(sqlite3 *db, uint64_t ino, uint64_t subvol,
+				uint64_t loff, uint64_t poff)
+{
+	int ret;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
+
+#define	UPDATE_EXTENT_POFF						\
+"update extents set poff = ?1 where ino = ?2 and subvol = ?3 and loff = ?4;"
+	ret = sqlite3_prepare_v2(db, UPDATE_EXTENT_POFF, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing extent update statement");
+		return ret;
+	}
+
+	ret = sqlite3_bind_int64(stmt, 1, poff);
+	if (ret)
+		goto bind_error;
+
+	ret = sqlite3_bind_int64(stmt, 2, ino);
+	if (ret)
+		goto bind_error;
+
+	ret = sqlite3_bind_int64(stmt, 3, subvol);
+	if (ret)
+		goto bind_error;
+
+	ret = sqlite3_bind_int64(stmt, 4, loff);
+	if (ret)
+		goto bind_error;
+
+	ret = sqlite3_step(stmt);
+	if (ret != SQLITE_DONE) {
+		perror_sqlite(ret, "executing statement");
+		return ret;
+	}
+
+	sqlite3_reset(stmt);
+
+	ret = 0;
+bind_error:
+	if (ret)
+		perror_sqlite(ret, "binding values");
+
+	return ret;
+}
+
 int dbfile_commit_trans(sqlite3 *db)
 {
 	int ret;

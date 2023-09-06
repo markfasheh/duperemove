@@ -79,6 +79,8 @@ int dbfile_store_extent_hashes(sqlite3 *db, struct filerec *file,
 				uint64_t nb_hash, struct extent_csum *hashes);
 int dbfile_begin_trans(sqlite3 *db);
 int dbfile_commit_trans(sqlite3 *db);
+int dbfile_update_extent_poff(sqlite3 *db, uint64_t ino, uint64_t subvol,
+				uint64_t loff, uint64_t poff);
 
 /*
  * This is used for printing so we can get away with chars from sqlite

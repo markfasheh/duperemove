@@ -34,6 +34,7 @@
 
 #include <glib.h>
 
+#include "util.h"
 #include "kernel.h"
 #include "rbtree.h"
 #include "list.h"
@@ -542,6 +543,29 @@ static int do_fiemap(struct fiemap *fiemap, struct filerec *file,
 		}
 	}
 	return 0;
+}
+
+int fiemap_scan_extent(struct extent *extent)
+{
+	int ret = 0;
+	unsigned int flags;
+	uint64_t loff, len;
+	_cleanup_(freep) struct fiemap_ctxt *ctxt = alloc_fiemap_ctxt();
+
+	flags = loff = len = 0;
+
+	ret = filerec_open(extent->e_file, 0);
+	if (ret)
+		return ret;
+
+	while (!(flags & FIEMAP_EXTENT_LAST) && loff + len < extent->e_file->size) {
+		ret = fiemap_iter_next_extent(ctxt, extent->e_file, &(extent->e_poff), &loff, &len, &flags);
+		if (ret)
+			break;
+	}
+
+	filerec_close(extent->e_file);
+	return ret;
 }
 
 int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, struct filerec *file,

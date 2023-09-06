@@ -21,6 +21,7 @@
 #include <glib.h>
 #include "rbtree.h"
 #include "list.h"
+#include "results-tree.h"
 
 extern struct list_head filerec_list;
 extern unsigned long long num_filerecs;
@@ -158,4 +159,5 @@ static inline void nano_to_timespec(uint64_t nanosecs, struct timespec *t)
 	t->tv_nsec = nanosecs % NANOSECONDS;
 }
 
+int fiemap_scan_extent(struct extent *extent);
 #endif /* __FILEREC__ */
