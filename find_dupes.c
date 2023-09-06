@@ -498,7 +498,7 @@ int find_additional_dedupe(struct results_tree *dupe_extents)
 	GThreadPool *pool = NULL;
 	struct filerec *file;
 
-	qprintf("Using %u threads to search within extents extents for "
+	qprintf("Using %u threads to search within extents for "
 		"additional dedupe. This process will take some time, during "
 		"which Duperemove can safely be ctrl-c'd.\n", cpu_threads);
 
