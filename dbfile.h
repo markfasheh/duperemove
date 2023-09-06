@@ -95,7 +95,7 @@ void dbfile_list_files(sqlite3 *db, int (*callback)(void*, int, char**, char**))
 
 static inline void sqlite3_stmt_cleanup(void *p)
 {
-        sqlite3_finalize(*(sqlite3_stmt**) p);
+	sqlite3_finalize(*(sqlite3_stmt**) p);
 }
 
 static inline void sqlite3_close_cleanup(void *p)
