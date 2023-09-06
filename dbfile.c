@@ -153,7 +153,7 @@ out:
 	return ret;
 }
 
-int create_indexes(sqlite3 *db)
+static int create_indexes(sqlite3 *db)
 {
 	int ret;
 
@@ -225,6 +225,13 @@ int dbfile_open(char *filename, struct dbfile_config *cfg)
 	ret = create_tables(db);
 	if (ret) {
 		perror_sqlite(ret, "creating tables");
+		sqlite3_close(db);
+		return ret;
+	}
+
+	ret = create_indexes(db);
+	if (ret) {
+		perror_sqlite(ret, "creating indexes");
 		sqlite3_close(db);
 		return ret;
 	}

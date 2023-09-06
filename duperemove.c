@@ -640,10 +640,6 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 		goto out;
 	}
 
-	ret = create_indexes(dbfile_get_handle());
-	if (ret)
-		goto out;
-
 	ret = populate_tree(&dbfile_cfg, batch_size, &process_duplicates);
 	if (ret) {
 		fprintf(stderr,	"Error while populating extent tree!\n");

@@ -46,8 +46,6 @@ struct hash_tree;
 struct hash_file_header;
 struct rb_root;
 
-int create_indexes(sqlite3 *db);
-
 /*
  * Load hashes into hash_tree only if they have a duplicate in the db.
  * The extent search is later run on the resulting hash_tree.
