@@ -19,6 +19,8 @@
 
 #include <glib.h>
 
+#include "csum.h"
+
 struct results_tree {
 	struct rb_root	root;
 	unsigned int	num_dupes;
@@ -41,7 +43,7 @@ struct dupe_extents {
 };
 
 struct extent_dedupe_info;
-struct extent	{
+struct extent {
 	struct dupe_extents	*e_parent;
 
 	uint64_t	e_loff;
