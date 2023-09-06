@@ -25,6 +25,8 @@
 /* exported for hashstats.c */
 sqlite3 *gdb = NULL;
 
+GMutex db_mutex; /* locks db writes */
+
 extern bool rescan_files;
 
 #if (SQLITE_VERSION_NUMBER < 3007015)
@@ -321,11 +323,14 @@ int dbfile_update_extent_poff(sqlite3 *db, uint64_t ino, uint64_t subvol,
 	int ret;
 	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
 
+	g_mutex_lock(&db_mutex);
+
 #define	UPDATE_EXTENT_POFF						\
 "update extents set poff = ?1 where ino = ?2 and subvol = ?3 and loff = ?4;"
 	ret = sqlite3_prepare_v2(db, UPDATE_EXTENT_POFF, -1, &stmt, NULL);
 	if (ret) {
 		perror_sqlite(ret, "preparing extent update statement");
+		g_mutex_unlock(&db_mutex);
 		return ret;
 	}
 
@@ -357,6 +362,8 @@ int dbfile_update_extent_poff(sqlite3 *db, uint64_t ino, uint64_t subvol,
 bind_error:
 	if (ret)
 		perror_sqlite(ret, "binding values");
+
+	g_mutex_unlock(&db_mutex);
 
 	return ret;
 }
