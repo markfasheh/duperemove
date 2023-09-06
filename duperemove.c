@@ -254,6 +254,7 @@ static int parse_dedupe_opts(const char *opts)
 			"options are:\n"
 			"\t[no]same\n"
 			"\t[no]fiemap\n"
+			"\t[no]rescan_files\n"
 			"\t[no]partial\n");
 		ret = EINVAL;
 	}
