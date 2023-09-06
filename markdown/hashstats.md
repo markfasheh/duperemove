@@ -27,6 +27,9 @@ or `--write-hashes` option.
 **-a**
   ~ Print all hashes (overrides `-n`, above)
 
+**-B**
+  ~ Show blocks hashes. By default, extents hashes are shown.
+
 **-b**
   ~ Print info on each block within our hash buckets.
 

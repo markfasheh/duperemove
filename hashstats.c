@@ -30,6 +30,7 @@ unsigned int blocksize;
 static int version_only = 0;
 static int print_all_hashes = 0;
 static int print_blocks = 0;
+static int show_block_hashes = false;
 static int num_to_print = 10;
 static int print_file_list = 0;
 static char *serialize_fname = NULL;
@@ -121,10 +122,18 @@ static void print_by_size(sqlite3 *db)
 		return;
 	}
 
-#define	FIND_TOP_HASHES							\
+#define	FIND_TOP_B_HASHES							\
 "select digest, count(digest) from hashes group by digest having (count(digest) > 1) order by (count(digest)) desc;"
-	ret = sqlite3_prepare_v2(db, FIND_TOP_HASHES, -1, &top_hashes_stmt,
-				 NULL);
+#define	FIND_TOP_E_HASHES							\
+"select digest, count(digest) from extents group by digest having (count(digest) > 1) order by (count(digest)) desc;"
+	if (show_block_hashes) {
+		ret = sqlite3_prepare_v2(db, FIND_TOP_B_HASHES, -1, &top_hashes_stmt,
+					 NULL);
+	} else {
+		ret = sqlite3_prepare_v2(db, FIND_TOP_E_HASHES, -1, &top_hashes_stmt,
+					 NULL);
+	}
+
 	if (ret) {
 		fprintf(stderr, "error %d while prepping hash search stmt: %s\n",
 			ret, sqlite3_errstr(ret));
@@ -206,13 +215,14 @@ static int print_files_cb(void *priv [[maybe_unused]], int argc,
 	return 0;
 }
 
-static void print_file_info(char *fname, struct dbfile_config *cfg)
+static void print_file_info(char *fname, struct dbfile_config *cfg,
+				struct dbfile_stats *stats)
 {
 	printf("Raw header info for \"%s\":\n", fname);
 	printf("  version: %d.%d\tblock_size: %u\n", cfg->major,
 	       cfg->minor, cfg->blocksize);
-	printf("  num_files: %"PRIu64"\tnum_hashes: %"PRIu64"\n",
-	       cfg->num_files, cfg->num_hashes);
+	printf("  num_files: %"PRIu64"\tnum_block_hashes: %"PRIu64"\tnum_extent_hashes: %"PRIu64"\n",
+	       stats->num_files, stats->num_b_hashes, stats->num_e_hashes);
 }
 
 static void usage(const char *prog)
@@ -230,6 +240,7 @@ static void usage(const char *prog)
 	printf("\t-n NUM\t\tPrint top N hashes, sorted by bucket size.\n");
 	printf("\t      \t\tDefault is 10.\n");
 	printf("\t-a\t\tPrint all hashes (overrides '-n', above)\n");
+	printf("\t-B\t\tShow block hashes, and not extents-hashes\n");
 	printf("\t-b\t\tPrint info on each block within our hash buckets\n");
 	printf("\t-l\t\tPrint a list of all files\n");
 	printf("\t--help\t\tPrints this help text.\n");
@@ -253,7 +264,7 @@ static int parse_options(int argc, char **argv)
 	if (argc < 2)
 		return 1;
 
-	while ((c = getopt_long(argc, argv, "labn:?", long_ops, NULL))
+	while ((c = getopt_long(argc, argv, "laBbn:?", long_ops, NULL))
 	       != -1) {
 		switch (c) {
 		case 'l':
@@ -261,6 +272,9 @@ static int parse_options(int argc, char **argv)
 			break;
 		case 'a':
 			print_all_hashes = 1;
+			break;
+		case 'B':
+			show_block_hashes = true;
 			break;
 		case 'b':
 			print_blocks = 1;
@@ -291,6 +305,7 @@ int main(int argc, char **argv)
 {
 	int ret;
 	struct dbfile_config dbfile_cfg;
+	struct dbfile_stats dbfile_stats;
 
 	if (parse_options(argc, argv)) {
 		usage(argv[0]);
@@ -308,15 +323,19 @@ int main(int argc, char **argv)
 	if (ret)
 		return ret;
 
+	ret = dbfile_get_stats(db, &dbfile_stats);
+	if (ret)
+		return ret;
+
 	blocksize = dbfile_cfg.blocksize;
-	print_file_info(serialize_fname, &dbfile_cfg);
+	print_file_info(serialize_fname, &dbfile_cfg, &dbfile_stats);
 
 	if (num_to_print || print_all_hashes)
 		print_by_size(db);
 
 	if (print_file_list) {
 		printf("Showing %"PRIu64" files.\nInode\tSubvol ID\tBlocks Stored\tSize\tFilename\n",
-			dbfile_cfg.num_files);
+			dbfile_stats.num_files);
 		dbfile_list_files(db, print_files_cb);
 	}
 

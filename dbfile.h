@@ -24,8 +24,6 @@ void dbfile_close_handle(struct sqlite3 *db);
 
 struct dbfile_config {
 	unsigned int	blocksize;
-	uint64_t	num_hashes;
-	uint64_t	num_files;
 	dev_t		onefs_dev;
 	uint64_t	onefs_fsid;
 	int		major;
@@ -35,6 +33,14 @@ struct dbfile_config {
 };
 int dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg);
 int dbfile_sync_config(struct dbfile_config *cfg);
+
+struct dbfile_stats {
+	uint64_t	num_b_hashes;
+	uint64_t	num_e_hashes;
+	uint64_t	num_files;
+};
+
+int dbfile_get_stats(sqlite3 *db, struct dbfile_stats *stats);
 
 struct hash_tree;
 struct hash_file_header;

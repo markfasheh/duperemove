@@ -48,12 +48,6 @@ sqlite3 *dbfile_get_handle(void)
 	return gdb;
 }
 
-static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
-			       uint64_t *num_hashes, uint64_t *num_files,
-			       dev_t *onefs_dev, uint64_t *onefs_fsid,
-			       int *major, int *minor, char *db_hash_type,
-			       unsigned int *db_dedupe_seq);
-
 static void dbfile_config_defaults(struct dbfile_config *cfg)
 {
 	memset(cfg, 0, sizeof(*cfg));
@@ -513,7 +507,7 @@ int dbfile_sync_config(struct dbfile_config *cfg)
 	return ret;
 }
 
-static int __dbfile_count_rows(sqlite3_stmt *stmt, uint64_t *num)
+static int __dbfile_count_rows_stmt(sqlite3_stmt *stmt, uint64_t *num)
 {
 	int ret;
 
@@ -530,91 +524,38 @@ static int __dbfile_count_rows(sqlite3_stmt *stmt, uint64_t *num)
 	return 0;
 }
 
-static int dbfile_count_rows_old(sqlite3 *db, uint64_t *num_hashes,
-				 uint64_t *num_files)
+static int __dbfile_count_rows(sqlite3 *db, char *query, uint64_t *num)
 {
-	int ret = 0;
-	sqlite3_stmt *stmt = NULL;
+	int ret;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt;
 
-	if (num_hashes) {
-#define COUNT_HASHES_OLD "select COUNT(*) from hashes;"
-		ret = sqlite3_prepare_v2(db, COUNT_HASHES_OLD, -1, &stmt, NULL);
-		if (ret)
-			goto out;
+	ret = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
+	if (ret)
+		return ret;
 
-		ret = __dbfile_count_rows(stmt, num_hashes);
-		if (ret)
-			goto out;
-
-		sqlite3_finalize(stmt);
-		stmt = NULL;
-	}
-
-	if (num_files) {
-#define COUNT_FILES_OLD "select COUNT(*) from files;"
-		ret = sqlite3_prepare_v2(db, COUNT_FILES_OLD, -1, &stmt, NULL);
-		if (ret)
-			goto out;
-
-		ret = __dbfile_count_rows(stmt, num_files);
-		if (ret)
-			goto out;
-
-		sqlite3_finalize(stmt);
-		stmt = NULL;
-	}
-out:
-	if (stmt)
-		sqlite3_finalize(stmt);
-
-	return ret;
+	return __dbfile_count_rows_stmt(stmt, num);
 }
 
-static int dbfile_count_rows_new(sqlite3 *db, uint64_t *num_hashes,
-				 uint64_t *num_files)
+int dbfile_get_stats(sqlite3 *db, struct dbfile_stats *stats)
 {
 	int ret = 0;
-	sqlite3_stmt *stmt = NULL;
 
-	if (num_hashes) {
-#define COUNT_HASHES "select COUNT(*) from extents;"
-		ret = sqlite3_prepare_v2(db, COUNT_HASHES, -1, &stmt, NULL);
-		if (ret)
-			goto out;
+#define COUNT_B_HASHES "select COUNT(*) from hashes;"
+	ret = __dbfile_count_rows(db, COUNT_B_HASHES, &(stats->num_b_hashes));
+	if (ret)
+		return ret;
 
-		ret = __dbfile_count_rows(stmt, num_hashes);
-		if (ret)
-			goto out;
+#define COUNT_E_HASHES "select COUNT(*) from extents;"
+	ret = __dbfile_count_rows(db, COUNT_E_HASHES, &(stats->num_e_hashes));
+	if (ret)
+		return ret;
 
-		sqlite3_finalize(stmt);
-		stmt = NULL;
-	}
-
-	if (num_files) {
 #define COUNT_FILES "select COUNT(*) from files;"
-		ret = sqlite3_prepare_v2(db, COUNT_FILES, -1, &stmt, NULL);
-		if (ret)
-			goto out;
-
-		ret = __dbfile_count_rows(stmt, num_files);
-		if (ret)
-			goto out;
-
-		sqlite3_finalize(stmt);
-		stmt = NULL;
-	}
-out:
-	if (stmt)
-		sqlite3_finalize(stmt);
+	ret = __dbfile_count_rows(db, COUNT_FILES, &(stats->num_files));
+	if (ret)
+		return ret;
 
 	return ret;
-}
-
-static int dbfile_count_rows(sqlite3 *db, uint64_t *num_hashes,
-				uint64_t *num_files)
-{
-// FIXME
-	return dbfile_count_rows_new(db, num_hashes, num_files);
 }
 
 static int get_config_int(sqlite3_stmt *stmt, const char *name, int *val)
@@ -700,7 +641,6 @@ static int get_config_hashtype(sqlite3_stmt *stmt, const char *name, char *val)
 }
 
 static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
-			       uint64_t *num_hashes, uint64_t *num_files,
 			       dev_t *onefs_dev, uint64_t *onefs_fsid,
 			       int *ver_major, int *ver_minor,
 			       char *db_hash_type, unsigned int *db_dedupe_seq)
@@ -755,10 +695,6 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 	sqlite3_finalize(stmt);
 	stmt = NULL;
 
-	ret = dbfile_count_rows(db, num_hashes, num_files);
-	if (ret)
-		goto out;
-
 out:
 	if (stmt)
 		sqlite3_finalize(stmt);
@@ -771,8 +707,7 @@ int dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg)
 
 	dbfile_config_defaults(cfg);
 
-	ret = __dbfile_get_config(db, &cfg->blocksize, &cfg->num_hashes,
-				  &cfg->num_files, &cfg->onefs_dev,
+	ret = __dbfile_get_config(db, &cfg->blocksize, &cfg->onefs_dev,
 				  &cfg->onefs_fsid, &cfg->major,
 				  &cfg->minor, cfg->hash_type,
 				  &cfg->dedupe_seq);
@@ -1581,7 +1516,7 @@ int dbfile_load_nondupe_file_extents(sqlite3 *db, struct filerec *file,
 	if (ret)
 		goto out;
 
-	ret = __dbfile_count_rows(stmt, &count);
+	ret = __dbfile_count_rows_stmt(stmt, &count);
 	if (ret)
 		goto out;
 
