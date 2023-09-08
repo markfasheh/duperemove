@@ -46,8 +46,6 @@ struct filerec {
 
 	struct list_head	rec_list;	/* all filerecs */
 
-	struct list_head	tmp_list;
-
 	/* protects comparisons and extent_tree trees */
 	GMutex			tree_mutex;
 
