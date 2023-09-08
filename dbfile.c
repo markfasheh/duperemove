@@ -1497,7 +1497,7 @@ int dbfile_load_nondupe_file_extents(sqlite3 *db, struct filerec *file,
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
-	uint64_t count, i;
+	uint64_t count = 0, i;
 	struct file_extent *extents = NULL;
 
 #define NONDUPE_JOIN							\
@@ -1506,42 +1506,6 @@ int dbfile_load_nondupe_file_extents(sqlite3 *db, struct filerec *file,
 	"nondupe_extents.digest where extents.ino = ?1 and extents.subvol = ?2;"
 #define GET_NONDUPE_EXTENTS						\
 	"select extents.loff, len, poff, flags " NONDUPE_JOIN
-#define GET_NONDUPE_EXTENTS_COUNT					\
-	"select COUNT(*) " NONDUPE_JOIN
-
-	ret = sqlite3_prepare_v2(db, GET_NONDUPE_EXTENTS_COUNT, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing get file extents statement");
-		goto out;
-	}
-
-	ret = sqlite3_bind_int64(stmt, 1, file->inum);
-	if (ret)
-		goto out;
-
-	ret = sqlite3_bind_int64(stmt, 2, file->subvolid);
-	if (ret)
-		goto out;
-
-	ret = __dbfile_count_rows_stmt(stmt, &count);
-	if (ret)
-		goto out;
-
-	sqlite3_finalize(stmt);
-	stmt = NULL;
-
-	if (count > UINT32_MAX) {
-		fprintf(stderr, "File \"%s\" has %"PRIu64" extents.\n",
-			file->filename, count);
-		count = UINT32_MAX;
-	}
-	*num_extents = count;
-
-	extents = calloc(count, sizeof(struct file_extent));
-	if (!extents) {
-		ret = ENOMEM;
-		goto out;
-	}
 
 	ret = sqlite3_prepare_v2(db, GET_NONDUPE_EXTENTS, -1, &stmt, NULL);
 	if (ret) {
@@ -1558,7 +1522,15 @@ int dbfile_load_nondupe_file_extents(sqlite3 *db, struct filerec *file,
 		goto out;
 
 	i = 0;
-	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW && i < count) {
+	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
+		count++;
+
+		extents = realloc(extents, count * sizeof(struct file_extent));
+		if (!extents) {
+			ret = ENOMEM;
+			goto out;
+		}
+
 		extents[i].loff = sqlite3_column_int64(stmt, 0);
 		extents[i].len = sqlite3_column_int64(stmt, 1);
 		extents[i].poff = sqlite3_column_int64(stmt, 2);
@@ -1566,6 +1538,8 @@ int dbfile_load_nondupe_file_extents(sqlite3 *db, struct filerec *file,
 
 		++i;
 	}
+
+	*num_extents = count;
 	if (ret != SQLITE_DONE) {
 		perror_sqlite(ret, "stepping nondupe extents statement");
 		goto out;
