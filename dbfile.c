@@ -127,7 +127,8 @@ static int create_tables(sqlite3 *db)
 	int ret;
 
 #define CREATE_TABLE_CONFIG	\
-"CREATE TABLE IF NOT EXISTS config(keyname TEXT PRIMARY KEY NOT NULL, keyval BLOB);"
+"CREATE TABLE IF NOT EXISTS config(keyname TEXT PRIMARY KEY NOT NULL, keyval BLOB, "\
+"UNIQUE(keyname));"
 	ret = sqlite3_exec(db, CREATE_TABLE_CONFIG, NULL, NULL, NULL);
 	if (ret)
 		goto out;
@@ -140,13 +141,16 @@ static int create_tables(sqlite3 *db)
 		goto out;
 
 #define	CREATE_TABLE_EXTENTS						\
-"CREATE TABLE IF NOT EXISTS extents(digest BLOB KEY NOT NULL, ino INTEGER, subvol INTEGER, loff INTEGER, poff INTEGER, len INTEGER, flags INTEGER);"
+"CREATE TABLE IF NOT EXISTS extents(digest BLOB KEY NOT NULL, ino INTEGER, "\
+"subvol INTEGER, loff INTEGER, poff INTEGER, len INTEGER, flags INTEGER, "\
+"UNIQUE(ino, subvol, loff, len));"
 	ret = sqlite3_exec(db, CREATE_TABLE_EXTENTS, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
 #define	CREATE_TABLE_HASHES					\
-"CREATE TABLE IF NOT EXISTS hashes(digest BLOB KEY NOT NULL, ino INTEGER, subvol INTEGER, loff INTEGER, flags INTEGER);"
+"CREATE TABLE IF NOT EXISTS hashes(digest BLOB KEY NOT NULL, ino INTEGER, "\
+"subvol INTEGER, loff INTEGER, flags INTEGER, UNIQUE(ino, subvol, loff));"
 	ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, NULL);
 
 out:
