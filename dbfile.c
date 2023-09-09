@@ -135,7 +135,8 @@ static int create_tables(sqlite3 *db)
 
 #define	CREATE_TABLE_FILES	\
 "CREATE TABLE IF NOT EXISTS files(filename TEXT PRIMARY KEY NOT NULL, ino INTEGER, "\
-"subvol INTEGER, size INTEGER, blocks INTEGER, mtime INTEGER, dedupe_seq INTEGER);"
+"subvol INTEGER, size INTEGER, blocks INTEGER, mtime INTEGER, dedupe_seq INTEGER, "\
+"UNIQUE(ino, subvol));"
 	ret = sqlite3_exec(db, CREATE_TABLE_FILES, NULL, NULL, NULL);
 	if (ret)
 		goto out;
