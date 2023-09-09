@@ -217,11 +217,11 @@ static int __add_file(const char *name, struct stat *st,
 	struct statfs fs;
 
 	if (S_ISDIR(st->st_mode))
-		goto out;
+		return 0;
 
 	if (!S_ISREG(st->st_mode)) {
 		vprintf("Skipping non-regular file %s\n", name);
-		goto out;
+		return 0;
 	}
 
 	ret = access(name, R_OK);
@@ -249,7 +249,7 @@ static int __add_file(const char *name, struct stat *st,
 	}
 
 	if (is_excluded(name))
-		goto out;
+		return 0;
 
 	if (run_dedupe == 1 &&
 	    ((fs.f_type != BTRFS_SUPER_MAGIC &&
