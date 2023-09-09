@@ -366,10 +366,8 @@ static struct filerec *filerec_alloc_insert(const char *filename,
 struct filerec *filerec_new(const char *filename, uint64_t inum,
 			    uint64_t subvolid, uint64_t size, uint64_t mtime)
 {
-	struct filerec *file = filerec_find(inum, subvolid);
-	if (!file)
-		file = filerec_alloc_insert(filename, inum, subvolid, size,
-					    mtime);
+	struct filerec *file;
+	file = filerec_alloc_insert(filename, inum, subvolid, size, mtime);
 	return file;
 }
 

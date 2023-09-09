@@ -285,8 +285,17 @@ static int __add_file(const char *name, struct stat *st,
 	close(fd);
 
 	walked_size += st->st_size;
-	file = filerec_new(name, st->st_ino, subvolid, st->st_size,
-			   timespec_to_nano(&st->st_mtim));
+
+	ret = dbfile_load_one_filerec(dbfile_get_handle(), st->st_ino, subvolid, &file);
+	if (ret) {
+		fprintf(stderr, "Error during file lookup in hashfile (ino = %lu, subvol = %lu)", st->st_ino, subvolid);
+		return 1;
+	}
+
+	if (!file)
+		file = filerec_new(name, st->st_ino, subvolid, st->st_size,
+				   timespec_to_nano(&st->st_mtim));
+
 	if (file == NULL) {
 		fprintf(stderr, "Out of memory while allocating file record "
 			"for: %s\n", name);

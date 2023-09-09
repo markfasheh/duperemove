@@ -1257,11 +1257,11 @@ out:
 	return ret;
 }
 
-static int dbfile_load_one_filerec(sqlite3 *db, uint64_t ino, uint64_t subvol,
+int dbfile_load_one_filerec(sqlite3 *db, uint64_t ino, uint64_t subvol,
 				   struct filerec **file)
 {
 	int ret;
-	sqlite3_stmt *stmt = NULL;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
 	const unsigned char *filename;
 	uint64_t size;
 	uint64_t mtime;
@@ -1281,20 +1281,24 @@ static int dbfile_load_one_filerec(sqlite3 *db, uint64_t ino, uint64_t subvol,
 	ret = sqlite3_bind_int64(stmt, 1, ino);
 	if (ret) {
 		perror_sqlite(ret, "binding ino");
-		goto out;
+		return ret;
 	}
 	ret = sqlite3_bind_int64(stmt, 2, subvol);
 	if (ret) {
 		perror_sqlite(ret, "binding subvol");
-		goto out;
+		return ret;
 	}
 
 	ret = sqlite3_step(stmt);
+	if (ret == SQLITE_DONE) {
+		dprintf("dbfile_load_one_filerec: no file found in hashdb: ino = %lu, subvol = %lu\n", ino, subvol);
+		return 0;
+	}
+
 	if (ret != SQLITE_ROW) {
 		perror_sqlite(ret, "executing statement");
-		goto out;
+		return ret;
 	}
-	ret = 0;
 
 	filename = sqlite3_column_text(stmt, 0);
 	size = sqlite3_column_int64(stmt, 1);
@@ -1306,9 +1310,7 @@ static int dbfile_load_one_filerec(sqlite3 *db, uint64_t ino, uint64_t subvol,
 		ret = ENOMEM;
 	(*file)->dedupe_seq = seq;
 
-out:
-	sqlite3_finalize(stmt);
-	return ret;
+	return 0;
 }
 
 int dbfile_load_block_hashes(struct hash_tree *hash_tree)
