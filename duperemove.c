@@ -307,8 +307,12 @@ static int add_files_from_stdin(int fdupes)
 			continue;
 		}
 
-		if (add_file(path))
+		if (add_file(path)) {
+			fprintf(stderr,
+				"Error: cannot add %s into the lookup list\n",
+				path);
 			return 1;
+		}
 
 		/* Give the user a chance to see some output from add_file(). */
 		if (!fdupes)
@@ -328,8 +332,12 @@ static int add_files_from_cmdline(int numfiles, char **files)
 	for (i = 0; i < numfiles; i++) {
 		const char *name = files[i];
 
-		if (add_file(name))
+		if (add_file(name)) {
+			fprintf(stderr,
+				"Error: cannot add %s into the file lookup list\n",
+				name);
 			return 1;
+		}
 	}
 
 	return 0;

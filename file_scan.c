@@ -294,8 +294,11 @@ static int __add_file(const char *name, struct stat *st,
 	}
 	if (ret_file)
 		*ret_file = file;
-out:
+
 	return 0;
+
+out:
+	return 1;
 }
 
 static bool will_cross_mountpoint(dev_t dev, uint64_t btrfs_fsid)
