@@ -144,14 +144,16 @@ static int create_tables(sqlite3 *db)
 #define	CREATE_TABLE_EXTENTS						\
 "CREATE TABLE IF NOT EXISTS extents(digest BLOB KEY NOT NULL, ino INTEGER, "\
 "subvol INTEGER, loff INTEGER, poff INTEGER, len INTEGER, flags INTEGER, "\
-"UNIQUE(ino, subvol, loff, len));"
+"UNIQUE(ino, subvol, loff, len) "\
+"FOREIGN KEY(ino, subvol) REFERENCES files(ino, subvol));"
 	ret = sqlite3_exec(db, CREATE_TABLE_EXTENTS, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
 #define	CREATE_TABLE_HASHES					\
 "CREATE TABLE IF NOT EXISTS hashes(digest BLOB KEY NOT NULL, ino INTEGER, "\
-"subvol INTEGER, loff INTEGER, flags INTEGER, UNIQUE(ino, subvol, loff));"
+"subvol INTEGER, loff INTEGER, flags INTEGER, UNIQUE(ino, subvol, loff) "\
+"FOREIGN KEY(ino, subvol) REFERENCES files(ino, subvol));"
 	ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, NULL);
 
 out:
@@ -211,6 +213,12 @@ static int dbfile_set_modes(sqlite3 *db)
 	ret = sqlite3_exec(db, "PRAGMA cache_size = -256000", NULL, NULL, NULL);
 	if (ret) {
 		perror_sqlite(ret, "configuring database (cache size)");
+		return ret;
+	}
+
+	ret = sqlite3_exec(db, "PRAGMA foreign_keys = ON", NULL, NULL, NULL);
+	if (ret) {
+		perror_sqlite(ret, "enabling foreign keys");
 		return ret;
 	}
 
@@ -293,7 +301,6 @@ struct sqlite3 *dbfile_open_handle(char *filename)
 
 	ret = dbfile_set_modes(db);
 	if (ret) {
-		perror_sqlite(ret, "setting journal modes");
 		sqlite3_close(db);
 		return NULL;
 	}
