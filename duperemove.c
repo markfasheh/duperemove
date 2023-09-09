@@ -540,6 +540,12 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		}
 	}
 
+	if ((use_hashfile == H_UPDATE || use_hashfile == H_WRITE)
+			&& numfiles == 0) {
+		fprintf(stderr, "Error: a file list argument is required.\n");
+		return 1;
+	}
+
 out_nofiles:
 
 	return 0;
