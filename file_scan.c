@@ -286,10 +286,18 @@ static int __add_file(const char *name, struct stat *st,
 
 	walked_size += st->st_size;
 
-	ret = dbfile_load_one_filerec(dbfile_get_handle(), st->st_ino, subvolid, &file);
-	if (ret) {
-		fprintf(stderr, "Error during file lookup in hashfile (ino = %lu, subvol = %lu)", st->st_ino, subvolid);
-		return 1;
+	/* Search for existing files: first in the hashfile,
+	 * then in our filerecs (files not yet committed to the hashfile).
+	 * If nothing is found, we create a new filerec.
+	 */
+	file = filerec_find(st->st_ino, subvolid);
+
+	if (!file) {
+		ret = dbfile_load_one_filerec(dbfile_get_handle(), st->st_ino, subvolid, &file);
+		if (ret) {
+			fprintf(stderr, "Error during file lookup in hashfile (ino = %lu, subvol = %lu)", st->st_ino, subvolid);
+			return 1;
+		}
 	}
 
 	if (!file)
