@@ -924,7 +924,7 @@ static void csum_whole_file(struct filerec *file,
 	if (!db)
 		goto err_noclose;
 
-	ret = filerec_open(file, 0);
+	ret = filerec_open(file);
 	if (ret)
 		goto err_noclose;
 

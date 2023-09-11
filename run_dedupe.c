@@ -172,7 +172,7 @@ static void add_shared_extents_post(struct dupe_extents *dext, uint64_t *shared)
 
 	list_for_each_entry(extent, &dext->de_extents, e_list) {
 		file = extent->e_file;
-		ret = filerec_open(file, target_rw);
+		ret = filerec_open(file);
 		if (ret)
 			return;
 
@@ -340,7 +340,7 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 		if (list_is_last(&extent->e_list, &dext->de_extents))
 			last = 1;
 
-		ret = filerec_open_once(extent->e_file, target_rw, &open_files);
+		ret = filerec_open_once(extent->e_file, &open_files);
 		if (ret) {
 			fprintf(stderr, "%s: Skipping dedupe.\n",
 				extent->e_file->filename);
@@ -445,7 +445,7 @@ close_files:
 
 		if (!last) {
 			/* reopen target file as it got closed above */
-			ret = filerec_open_once(tgt_extent->e_file, target_rw,
+			ret = filerec_open_once(tgt_extent->e_file,
 						&open_files);
 			if (ret) {
 				fprintf(stderr,
@@ -635,7 +635,7 @@ int fdupes_dedupe(void)
 	OPEN_ONCE(open_files);
 
 	list_for_each_entry(file, &filerec_list, rec_list) {
-		ret = filerec_open_once(file, 0, &open_files);
+		ret = filerec_open_once(file, &open_files);
 		if (ret) {
 			fprintf(stderr, "%s: Skipping dedupe.\n",
 				file->filename);

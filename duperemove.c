@@ -58,7 +58,6 @@ int skip_zeroes = 0;
 
 unsigned int batch_size = 0;
 
-int target_rw = 1;
 static int version_only = 0;
 static int help_option = 0;
 static int fdupes_mode = 0;
@@ -377,12 +376,9 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		return 0;
 	}
 
-	while ((c = getopt_long(argc, argv, "Ab:vdDrh?LR:qB:", long_ops, NULL))
+	while ((c = getopt_long(argc, argv, "b:vdDrh?LR:qB:", long_ops, NULL))
 	       != -1) {
 		switch (c) {
-		case 'A':
-			target_rw = 0;
-			break;
 		case 'b':
 			blocksize = parse_size(optarg);
 			if (blocksize < MIN_BLOCKSIZE ||

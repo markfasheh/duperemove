@@ -3,7 +3,6 @@
 
 /* from duperemove.c */
 extern unsigned int blocksize;
-extern int target_rw;
 extern unsigned int io_threads;
 
 void print_dupes_table(struct results_tree *res);
