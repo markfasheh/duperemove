@@ -37,16 +37,6 @@
 declare_alloc_tracking(dupe_extents);
 declare_alloc_tracking(extent);
 
-static inline uint64_t extent_end(struct extent *extent)
-{
-	return extent_len(extent) + extent->e_loff - 1;
-}
-
-static inline uint64_t extent_score(struct extent *extent)
-{
-	return extent->e_parent->de_score;
-}
-
 static struct extent *alloc_extent(struct filerec *file, uint64_t loff)
 {
 	struct extent *e = calloc_extent(1);
@@ -341,29 +331,6 @@ again:
 		res->num_dupes--;
 	}
 	return result;
-}
-
-static inline int check_tag_extent(struct extent *extent)
-{
-	struct extent *extent2;
-	struct dupe_extents *dext = extent->e_parent;
-
-	if (dext->de_num_dupes > 2)
-		return 1;
-
-	abort_on(extent->e_parent->de_num_dupes != 2);
-
-	extent->e_flags |= E_MAY_DELETE;
-
-	/* Only two items on the list now */
-	extent = list_first_entry(&dext->de_extents, struct extent, e_list);
-	extent2 = list_next_entry(extent, e_list);
-
-	if ((extent->e_flags & E_MAY_DELETE) &&
-	    (extent2->e_flags & E_MAY_DELETE))
-		return 1;
-
-	return 0;
 }
 
 void init_results_tree(struct results_tree *res)

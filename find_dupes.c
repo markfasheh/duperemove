@@ -195,24 +195,6 @@ static void record_match(struct results_tree *res, unsigned char *digest,
 		(unsigned long long)eoff[1] / blocksize);
 }
 
-static inline void mark_block_seen(uint64_t *off, struct file_block *block)
-{
-	/*
-	 * Add 1 so the check in block_seen triggers on block->b_loff. This
-	 * also allows it to catch the case where *off is initialized to 0 and
-	 * b_loff == 0 but we haven't actually seen the block yet.
-	 */
-	if ((*off) < block->b_loff)
-		*off = block->b_loff + 1;
-}
-
-static inline int block_seen(uint64_t off, struct file_block *block)
-{
-	if (off > block->b_loff)
-		return 1;
-	return 0;
-}
-
 struct find_dupes_cmp {
 	struct filerec *file1;
 	struct filerec *file2;
