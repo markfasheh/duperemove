@@ -22,8 +22,7 @@
 
 #include "dbfile.h"
 
-/* exported for hashstats.c */
-sqlite3 *gdb = NULL;
+static sqlite3 *gdb = NULL;
 
 GMutex db_mutex; /* locks db writes */
 
