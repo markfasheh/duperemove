@@ -156,6 +156,9 @@ static int create_tables(sqlite3 *db)
 	ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, NULL);
 
 out:
+	if (ret)
+		perror_sqlite(ret, "creating database tables");
+
 	return ret;
 }
 
