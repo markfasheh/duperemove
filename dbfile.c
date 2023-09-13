@@ -1050,47 +1050,11 @@ out_error:
 	return ret;
 }
 
-struct orphan_file
-{
-	struct list_head	list;
-	char			*filename;
-	uint64_t		ino;
-	uint64_t		subvol;
-	char			buf[0];
-};
-
-static inline struct orphan_file *alloc_orphan_file(const char *filename,
-						    uint64_t ino,
-						    uint64_t subvol)
-{
-	int len = strlen(filename) + 1;
-	struct orphan_file *o = calloc(1, sizeof(*o) + len);
-
-	if (o) {
-		o->filename = o->buf;
-		strcpy(o->filename, filename);
-		INIT_LIST_HEAD(&o->list);
-		o->subvol = subvol;
-		o->ino = ino;
-	}
-	return o;
-}
-
-static void free_orphan_list(struct list_head *orphans)
-{
-	struct orphan_file *o, *tmp;
-
-	list_for_each_entry_safe(o, tmp, orphans, list) {
-		list_del(&o->list);
-		free(o);
-	}
-}
-
 /*
  * Walk the files in our db and let the code in add_file_db() sort out
  * what to do with each one.
  */
-static int dbfile_load_files(struct sqlite3 *db, struct list_head *orphans)
+static int dbfile_load_files(struct sqlite3 *db)
 {
 	int ret, del_rec;
 	sqlite3_stmt *stmt = NULL;
@@ -1119,17 +1083,8 @@ static int dbfile_load_files(struct sqlite3 *db, struct list_head *orphans)
 		if (ret)
 			goto out;
 
-		if (del_rec) {
-			struct orphan_file *o = alloc_orphan_file(filename, ino,
-								  subvol);
-			if (!o) {
-				ret = ENOMEM;
-				fprintf(stderr, "Out of memory while loading "
-					"files from database.\n");
-				goto out;
-			}
-			list_add_tail(&o->list, orphans);
-		}
+		if (del_rec)
+			dbfile_remove_file(db, filename);
 	}
 	if (ret != SQLITE_DONE) {
 		perror_sqlite(ret, "looking up hash");
@@ -1141,50 +1096,6 @@ static int dbfile_load_files(struct sqlite3 *db, struct list_head *orphans)
 out:
 	if (stmt)
 		sqlite3_finalize(stmt);
-
-	return ret;
-}
-
-static int dbfile_del_orphans(struct sqlite3 *db, struct list_head *orphans)
-{
-	int ret;
-	sqlite3_stmt *files_stmt = NULL;
-	struct orphan_file *o, *tmp;
-
-#define	DELETE_FILE	"delete from files where filename = ?1;"
-	ret = sqlite3_prepare_v2(db, DELETE_FILE, -1, &files_stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing files statement");
-		goto out;
-	}
-
-	list_for_each_entry_safe(o, tmp, orphans, list) {
-		dprintf("Remove file \"%s\" from the db\n",
-			o->filename);
-
-		ret = sqlite3_bind_text(files_stmt, 1, o->filename, -1,
-					SQLITE_TRANSIENT);
-		if (ret) {
-			perror_sqlite(ret, "binding filename for sql");
-			goto out;
-		}
-
-		ret = sqlite3_step(files_stmt);
-		if (ret != SQLITE_DONE) {
-			perror_sqlite(ret, "executing sql");
-			goto out;
-		}
-
-		sqlite3_reset(files_stmt);
-
-		list_del(&o->list);
-		free(o);
-	}
-
-	ret = 0;
-out:
-	if (files_stmt)
-		sqlite3_finalize(files_stmt);
 
 	return ret;
 }
@@ -1207,22 +1118,12 @@ int dbfile_scan_files()
 {
 	int ret;
 	sqlite3 *db;
-	LIST_HEAD(orphans);
 
 	db = dbfile_get_handle();
 	if (!db)
 		return ENOENT;
 
-	ret = dbfile_load_files(db, &orphans);
-	if (ret)
-		goto out;
-
-	ret = dbfile_del_orphans(db, &orphans);
-
-out:
-	if (!list_empty(&orphans))
-		free_orphan_list(&orphans);
-
+	ret = dbfile_load_files(db);
 	return ret;
 }
 
@@ -1556,53 +1457,30 @@ int dbfile_iter_files(sqlite3 *db, iter_files_func func)
 int dbfile_remove_file(sqlite3 *db, const char *filename)
 {
 	int ret;
-	sqlite3_stmt *stmt = NULL;
-	uint64_t ino, subvol;
-	LIST_HEAD(orphans);
-	struct orphan_file *o = NULL;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
 
-#define	ONE_FILE_INFO	"select ino, subvol from files where filename = ?1;"
-	ret = sqlite3_prepare_v2(db, ONE_FILE_INFO, -1, &stmt, NULL);
+#define DELETE_FILE "delete from files where filename = ?1;"
+	ret = sqlite3_prepare_v2(db, DELETE_FILE, -1, &stmt, NULL);
 	if (ret) {
 		perror_sqlite(ret, "preparing files statement");
-		goto out;
+		return ret;
 	}
 
-	ret = sqlite3_bind_text(stmt, 1, filename, -1, SQLITE_TRANSIENT);
+	dprintf("Remove file \"%s\" from the db\n", filename);
+
+	ret = sqlite3_bind_text(stmt, 1, filename, -1, SQLITE_STATIC);
 	if (ret) {
 		perror_sqlite(ret, "binding filename for sql");
-		goto out;
+		return ret;
 	}
 
 	ret = sqlite3_step(stmt);
-	if (ret == SQLITE_DONE) {
-		ret = ENOENT;
-		goto out;
-	}
-	if (ret != SQLITE_ROW) {
-		perror_sqlite(ret, "finding file to remove");
-		goto out;
+	if (ret != SQLITE_DONE) {
+		perror_sqlite(ret, "executing sql");
+		return ret;
 	}
 
-	ino = sqlite3_column_int64(stmt, 0);
-	subvol = sqlite3_column_int64(stmt, 1);
-
-	o = alloc_orphan_file(filename, ino, subvol);
-	if (!o) {
-		ret = ENOMEM;
-		goto out;
-	}
-	list_add(&o->list, &orphans);
-
-	ret = dbfile_del_orphans(db, &orphans);
-
-out:
-	free_orphan_list(&orphans);
-
-	if (stmt)
-		sqlite3_finalize(stmt);
-
-	return ret;
+	return 0;
 }
 
 void dbfile_list_files(sqlite3 *db, int (*callback)(void*, int, char**, char**))
