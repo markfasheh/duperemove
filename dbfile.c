@@ -22,8 +22,7 @@
 
 #include "dbfile.h"
 
-/* exported for hashstats.c */
-sqlite3 *gdb = NULL;
+static sqlite3 *gdb = NULL;
 
 GMutex db_mutex; /* locks db writes */
 
@@ -157,6 +156,9 @@ static int create_tables(sqlite3 *db)
 	ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, NULL);
 
 out:
+	if (ret)
+		perror_sqlite(ret, "creating database tables");
+
 	return ret;
 }
 

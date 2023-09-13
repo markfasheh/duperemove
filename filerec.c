@@ -402,25 +402,20 @@ void free_all_filerecs(void)
 	}
 }
 
-int filerec_open(struct filerec *file, int write)
+int filerec_open(struct filerec *file)
 {
 	int ret = 0;
-	int flags = O_RDONLY;
 	int fd;
-
-	if (write)
-		flags = O_RDWR;
 
 	g_mutex_lock(&filerec_fd_mutex);
 	if (file->fd_refs == 0) {
 		abort_on(file->fd != -1);
 
-		fd = open(file->filename, flags);
+		fd = open(file->filename, O_RDONLY);
 		if (fd == -1) {
 			ret = errno;
-			fprintf(stderr, "Error %d: %s while opening \"%s\" "
-				"(write=%d)\n",
-				ret, strerror(ret), file->filename, write);
+			fprintf(stderr, "Error %d: %s while opening \"%s\"\n",
+				ret, strerror(ret), file->filename);
 			goto out_unlock;
 		}
 
@@ -448,7 +443,7 @@ void filerec_close(struct filerec *file)
 	g_mutex_unlock(&filerec_fd_mutex);
 }
 
-int filerec_open_once(struct filerec *file, int write,
+int filerec_open_once(struct filerec *file,
 		      struct open_once *open_files)
 {
 	int ret;
@@ -461,7 +456,7 @@ int filerec_open_once(struct filerec *file, int write,
 	if (!token)
 		return ENOMEM;
 
-	ret = filerec_open(file, write);
+	ret = filerec_open(file);
 	if (ret) {
 		filerec_token_free(token);
 		return ret;
@@ -550,7 +545,7 @@ int fiemap_scan_extent(struct extent *extent)
 
 	flags = loff = len = 0;
 
-	ret = filerec_open(extent->e_file, 0);
+	ret = filerec_open(extent->e_file);
 	if (ret)
 		return ret;
 

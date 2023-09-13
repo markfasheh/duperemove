@@ -58,7 +58,6 @@ int skip_zeroes = 0;
 
 unsigned int batch_size = 0;
 
-int target_rw = 1;
 static int version_only = 0;
 static int help_option = 0;
 static int fdupes_mode = 0;
@@ -73,12 +72,8 @@ static enum {
 	H_UPDATE,
 } use_hashfile = H_UPDATE;
 char *serialize_fname = NULL;
-static unsigned int nr_logical_cpus;
-static unsigned int nr_physical_cpus;
 unsigned int io_threads;
 unsigned int cpu_threads;
-int io_threads_opt = 0;
-int cpu_threads_opt = 0;
 bool rescan_files = true;
 
 int stdout_is_tty = 0;
@@ -377,12 +372,9 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		return 0;
 	}
 
-	while ((c = getopt_long(argc, argv, "Ab:vdDrh?LR:qB:", long_ops, NULL))
+	while ((c = getopt_long(argc, argv, "b:vdDrh?LR:qB:", long_ops, NULL))
 	       != -1) {
 		switch (c) {
-		case 'A':
-			target_rw = 0;
-			break;
 		case 'b':
 			blocksize = parse_size(optarg);
 			if (blocksize < MIN_BLOCKSIZE ||
@@ -430,7 +422,6 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 					"an integer, %s found\n", optarg);
 				return EINVAL;
 			}
-			io_threads_opt = 1;
 			break;
 		case CPU_THREADS_OPTION:
 			cpu_threads = strtoul(optarg, NULL, 10);
@@ -439,7 +430,6 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 					"an integer, %s found\n", optarg);
 				return EINVAL;
 			}
-			cpu_threads_opt = 1;
 			break;
 		case SKIP_ZEROES_OPTION:
 			skip_zeroes = 1;
@@ -682,6 +672,9 @@ int main(int argc, char **argv)
 
 	init_filerec();
 
+	/* Set the default CPU limits before parsing the user options */
+	get_num_cpus(&cpu_threads, &io_threads);
+
 	ret = parse_options(argc, argv, &filelist_idx);
 	if (ret) {
 		exit(1);
@@ -704,17 +697,6 @@ int main(int argc, char **argv)
 	 * files.
 	 */
 	increase_limits();
-	/*
-	 * Don't run detection if the user has supplied our cpu counts
-	 * already.
-	 */
-	if (!io_threads_opt || !cpu_threads_opt) {
-		get_num_cpus(&nr_physical_cpus, &nr_logical_cpus);
-		if (!io_threads)
-			io_threads = nr_logical_cpus;
-		if (!cpu_threads)
-			cpu_threads = nr_physical_cpus;
-	}
 
 	if (fdupes_mode)
 		return add_files_from_stdin(1);

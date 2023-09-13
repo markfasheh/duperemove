@@ -126,10 +126,6 @@ any dedupe.
 
 ## Advanced options
 
-**-A**
-  ~ Opens files readonly when deduping. Primarily for use by privileged
-users on readonly snapshots. Disabled by default.
-
 **\--fdupes**
   ~ Run in `fdupes` mode. With this option you can pipe the output of
 `fdupes` to duperemove to dedupe any duplicate files found. When

@@ -6,6 +6,7 @@ PENDING
  * New behaviors from v0.12 has been consolidated. Extent-based lookup is always enabled, as is fiemap. The v2 hashfile is no longer supported.
  * Hashfile are now updated after deduplication, to reflect the new physical offsets. This avoid (re)deduplicating extents in some cases.
  * Partial mode has been enhanced to support batching. The overall performance of this mode (which was previously known as "block-based mode") has been improved.
+ * All files are now open in readonly mode.
 
 Version 0.12
 ---

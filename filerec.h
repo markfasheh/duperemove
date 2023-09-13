@@ -91,7 +91,7 @@ struct filerec *filerec_find(uint64_t inum, uint64_t subvolid);
 struct filerec *filerec_find_by_name(const char *filename);
 
 void filerec_free(struct filerec *file);
-int filerec_open(struct filerec *file, int write);
+int filerec_open(struct filerec *file);
 void filerec_close(struct filerec *file);
 
 /*
@@ -115,7 +115,7 @@ struct open_once {
 #define	OPEN_ONCE_INIT	(struct open_once) { RB_ROOT, }
 #define OPEN_ONCE(name)	struct open_once name = OPEN_ONCE_INIT
 
-int filerec_open_once(struct filerec *file, int write,
+int filerec_open_once(struct filerec *file,
 		      struct open_once *open_files);
 void filerec_close_open_list(struct open_once *open_files);
 
