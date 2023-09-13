@@ -135,10 +135,9 @@ receiving a file list in this manner, duperemove will skip the hashing phase.
   ~ Print all files in the hashfile and exit. Requires the `--hashfile` option.
 Will print additional information about each file when run with `-v`.
 
-**-R** `file`
-  ~ Remove file from the db and exit. Can be specified multiple
-times. Duperemove will read the list from standard input if a hyphen
-(-) is provided. Requires the `--hashfile` option.
+**-R** `files ..`
+  ~ Remove file from the db and exit. Duperemove will read the list from
+standard input if a hyphen (-) is provided. Requires the `--hashfile` option.
 
     `Note:` If you are piping filenames from another duperemove instance it
 is advisable to do so into a temporary file first as running duperemove

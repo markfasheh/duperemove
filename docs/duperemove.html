@@ -296,11 +296,11 @@ Print all files in the hashfile and exit. Requires the
 <code>--hashfile</code> option. Will print additional information about
 each file when run with <code>-v</code>.
 </dd>
-<dt><strong>-R</strong> <code>file</code></dt>
+<dt><strong>-R</strong> <code>files ..</code></dt>
 <dd>
-<p>Remove file from the db and exit. Can be specified multiple times.
-Duperemove will read the list from standard input if a hyphen (-) is
-provided. Requires the <code>--hashfile</code> option.</p>
+<p>Remove file from the db and exit. Duperemove will read the list from
+standard input if a hyphen (-) is provided. Requires the
+<code>--hashfile</code> option.</p>
 <p><code>Note:</code> If you are piping filenames from another
 duperemove instance it is advisable to do so into a temporary file first
 as running duperemove simultaneously on the same hashfile may corrupt

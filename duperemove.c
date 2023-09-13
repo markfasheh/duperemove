@@ -101,33 +101,9 @@ static int list_db_files(char *filename)
 	return ret;
 }
 
-struct rm_file {
-	char *filename;
-	struct list_head list;
-};
-static LIST_HEAD(rm_files_list);
-
-static void add_rm_file(const char *filename)
+static void rm_db_files_from_stdin(sqlite3 *db)
 {
-	struct rm_file *rm = malloc(sizeof(*rm));
-	if (rm) {
-		rm->filename = strdup(filename);
-		list_add_tail(&rm->list, &rm_files_list);
-	}
-}
-
-static void free_rm_file(struct rm_file *rm)
-{
-	if (rm) {
-		list_del(&rm->list);
-		free(rm->filename);
-		free(rm);
-	}
-}
-
-static void add_rm_db_files_from_stdin(void)
-{
-	char *path = NULL;
+	_cleanup_(freep) char *path = NULL;
 	size_t pathlen = 0;
 	ssize_t readlen;
 
@@ -144,47 +120,33 @@ static void add_rm_db_files_from_stdin(void)
 			continue;
 		}
 
-		add_rm_file(path);
+		dbfile_remove_file(db, path);
 	}
-
-	if (path != NULL)
-		free(path);
 }
 
-static int rm_db_files(char *dbfilename)
+static int rm_db_files(int numfiles, char **files)
 {
-	int ret, err = 0;
-	struct rm_file *rm, *tmp;
-
-	_cleanup_(sqlite3_close_cleanup) sqlite3 *db = dbfile_open_handle(dbfilename);
+	int i, ret;
+	_cleanup_(sqlite3_close_cleanup) sqlite3 *db = dbfile_open_handle(serialize_fname);
 	if (!db) {
-		fprintf(stderr, "Error: Could not open \"%s\"\n", dbfilename);
+		fprintf(stderr, "Error: Could not open \"%s\"\n", serialize_fname);
 		return -1;
 	}
 
-restart:
-	list_for_each_entry_safe(rm, tmp, &rm_files_list, list) {
-		if (strlen(rm->filename) == 1 && rm->filename[0] == '-') {
-			add_rm_db_files_from_stdin();
-			free_rm_file(rm);
-			/*
-			 * We may have added to the end of the list
-			 * which messes up the next-entry condition
-			 * for list_for_each_entry_safe()
-			 */
-			goto restart;
-		}
-		ret = dbfile_remove_file(db, rm->filename);
+	for (i = 0; i < numfiles; i++) {
+		const char *name = files[i];
+
+		if (strlen(name) == 1 && name[0] == '-')
+			rm_db_files_from_stdin(db);
+
+		ret = dbfile_remove_file(db, name);
 		if (ret == 0)
-			vprintf("Removed \"%s\" from hashfile.\n",
-				rm->filename);
-		if (ret && ret != ENOENT && !err)
-			err = ret;
+			vprintf("Removed \"%s\" from hashfile.\n", name);
 
-		free_rm_file(rm);
+		if (ret)
+			printf("ret ?\n");
 	}
-
-	return err;
+	return 0;
 }
 
 extern struct list_head exclude_list;
@@ -372,7 +334,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		return 0;
 	}
 
-	while ((c = getopt_long(argc, argv, "b:vdDrh?LR:qB:", long_ops, NULL))
+	while ((c = getopt_long(argc, argv, "b:vdDrh?LRqB:", long_ops, NULL))
 	       != -1) {
 		switch (c) {
 		case 'b':
@@ -446,7 +408,6 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			break;
 		case 'R':
 			rm_only_opt = 1;
-			add_rm_file(optarg);
 			break;
 		case QUIET_OPTION:
 		case 'q':
@@ -512,12 +473,9 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		return 0;
 	}
 
-	*filelist_idx = 0;
+	*filelist_idx = optind;
 	if (numfiles == 1 && strcmp(argv[optind], "-") == 0)
 		stdin_filelist = 1;
-	else {
-		*filelist_idx = optind;
-	}
 
 	if (list_only_opt && rm_only_opt) {
 		fprintf(stderr, "Error: Can not mix '-L' and '-R' options.\n");
@@ -531,14 +489,14 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			return 1;
 		}
 
-		if (numfiles) {
-			fprintf(stderr, "Error: -L and -R options do not take "
+		if (list_only_opt && numfiles) {
+			fprintf(stderr, "Error: -L option do not take "
 				"a file list argument\n");
 			return 1;
 		}
 	}
 
-	if (!(version_only || fdupes_mode || list_only_opt || rm_only_opt)
+	if (!(version_only || fdupes_mode || list_only_opt)
 			&& numfiles == 0) {
 		fprintf(stderr, "Error: a file list argument is required.\n");
 		return 1;
@@ -707,7 +665,7 @@ int main(int argc, char **argv)
 	if (list_only_opt)
 		return list_db_files(serialize_fname);
 	else if (rm_only_opt)
-		return rm_db_files(serialize_fname);
+		return rm_db_files(argc - filelist_idx, &argv[filelist_idx]);
 
 	ret = dbfile_open(serialize_fname, &dbfile_cfg);
 	if (ret)
