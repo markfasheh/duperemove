@@ -14,7 +14,7 @@ struct results_tree;
 struct dbfile_config;
 
 #define DB_FILE_MAJOR	3
-#define DB_FILE_MINOR	2
+#define DB_FILE_MINOR	3
 
 int dbfile_open(char *filename, struct dbfile_config *cfg);
 void dbfile_close(void);

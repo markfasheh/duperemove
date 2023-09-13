@@ -145,7 +145,7 @@ static int create_tables(sqlite3 *db)
 "CREATE TABLE IF NOT EXISTS extents(digest BLOB KEY NOT NULL, ino INTEGER, "\
 "subvol INTEGER, loff INTEGER, poff INTEGER, len INTEGER, flags INTEGER, "\
 "UNIQUE(ino, subvol, loff, len) "\
-"FOREIGN KEY(ino, subvol) REFERENCES files(ino, subvol));"
+"FOREIGN KEY(ino, subvol) REFERENCES files(ino, subvol) ON DELETE CASCADE);"
 	ret = sqlite3_exec(db, CREATE_TABLE_EXTENTS, NULL, NULL, NULL);
 	if (ret)
 		goto out;
@@ -153,7 +153,7 @@ static int create_tables(sqlite3 *db)
 #define	CREATE_TABLE_HASHES					\
 "CREATE TABLE IF NOT EXISTS hashes(digest BLOB KEY NOT NULL, ino INTEGER, "\
 "subvol INTEGER, loff INTEGER, flags INTEGER, UNIQUE(ino, subvol, loff) "\
-"FOREIGN KEY(ino, subvol) REFERENCES files(ino, subvol));"
+"FOREIGN KEY(ino, subvol) REFERENCES files(ino, subvol) ON DELETE CASCADE);"
 	ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, NULL);
 
 out:
@@ -872,18 +872,16 @@ out:
 	return ret;
 }
 
-static int remove_file_hashes_prep(sqlite3 *db,
-				   sqlite3_stmt **hashes_stmt,
-				   sqlite3_stmt **extents_stmt)
+static int dbfile_remove_file_hashes(sqlite3 *db, struct filerec *file)
 {
 	int ret;
-
-	*hashes_stmt = *extents_stmt = NULL;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *hashes_stmt = NULL;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *extents_stmt = NULL;
 
 #define	REMOVE_FILE_HASHES					\
 	"delete from hashes where ino = ?1 and subvol = ?2;"
 	ret = sqlite3_prepare_v2(db, REMOVE_FILE_HASHES, -1,
-				 hashes_stmt, NULL);
+				 &hashes_stmt, NULL);
 	if (ret) {
 		perror_sqlite(ret, "preparing hash insert statement");
 		return ret;
@@ -892,23 +890,9 @@ static int remove_file_hashes_prep(sqlite3 *db,
 #define	REMOVE_EXTENT_HASHES					\
 	"delete from extents where ino = ?1 and subvol = ?2;"
 	ret = sqlite3_prepare_v2(db, REMOVE_EXTENT_HASHES, -1,
-				 extents_stmt, NULL);
+				 &extents_stmt, NULL);
 	if (ret) {
 		perror_sqlite(ret, "preparing hash insert statement");
-		return ret;
-	}
-	return 0;
-}
-
-static int dbfile_remove_file_hashes(sqlite3 *db, struct filerec *file)
-{
-	int ret;
-	sqlite3_stmt *hashes_stmt = NULL;
-	sqlite3_stmt *extents_stmt = NULL;
-
-	ret = remove_file_hashes_prep(db, &hashes_stmt, &extents_stmt);
-	if (ret) {
-		perror_sqlite(ret, "preparing file hash removal statement");
 		return ret;
 	}
 
@@ -1167,8 +1151,6 @@ static int dbfile_del_orphans(struct sqlite3 *db, struct list_head *orphans)
 {
 	int ret;
 	sqlite3_stmt *files_stmt = NULL;
-	sqlite3_stmt *hashes_stmt = NULL;
-	sqlite3_stmt *extents_stmt = NULL;
 	struct orphan_file *o, *tmp;
 
 #define	DELETE_FILE	"delete from files where filename = ?1;"
@@ -1178,20 +1160,9 @@ static int dbfile_del_orphans(struct sqlite3 *db, struct list_head *orphans)
 		goto out;
 	}
 
-	ret = remove_file_hashes_prep(db, &hashes_stmt, &extents_stmt);
-	if (ret) {
-		perror_sqlite(ret, "preparing hashes statement");
-		goto out;
-	}
-
 	list_for_each_entry_safe(o, tmp, orphans, list) {
 		dprintf("Remove file \"%s\" from the db\n",
 			o->filename);
-
-		ret = __dbfile_remove_file_hashes(hashes_stmt, extents_stmt,
-						  o->ino, o->subvol);
-		if (ret)
-			goto out;
 
 		ret = sqlite3_bind_text(files_stmt, 1, o->filename, -1,
 					SQLITE_TRANSIENT);
@@ -1206,8 +1177,6 @@ static int dbfile_del_orphans(struct sqlite3 *db, struct list_head *orphans)
 			goto out;
 		}
 
-		sqlite3_reset(hashes_stmt);
-		sqlite3_reset(extents_stmt);
 		sqlite3_reset(files_stmt);
 
 		list_del(&o->list);
@@ -1218,10 +1187,6 @@ static int dbfile_del_orphans(struct sqlite3 *db, struct list_head *orphans)
 out:
 	if (files_stmt)
 		sqlite3_finalize(files_stmt);
-	if (hashes_stmt)
-		sqlite3_finalize(hashes_stmt);
-	if (extents_stmt)
-		sqlite3_finalize(extents_stmt);
 
 	return ret;
 }
