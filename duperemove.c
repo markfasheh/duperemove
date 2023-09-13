@@ -538,7 +538,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		}
 	}
 
-	if ((use_hashfile == H_UPDATE || use_hashfile == H_WRITE)
+	if (!(version_only || fdupes_mode || list_only_opt || rm_only_opt)
 			&& numfiles == 0) {
 		fprintf(stderr, "Error: a file list argument is required.\n");
 		return 1;
