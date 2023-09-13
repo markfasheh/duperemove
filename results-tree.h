@@ -19,7 +19,7 @@
 
 #include <glib.h>
 
-#include "interval_tree.h"
+#include "csum.h"
 
 struct results_tree {
 	struct rb_root	root;
@@ -43,7 +43,7 @@ struct dupe_extents {
 };
 
 struct extent_dedupe_info;
-struct extent	{
+struct extent {
 	struct dupe_extents	*e_parent;
 
 	uint64_t	e_loff;
@@ -51,10 +51,6 @@ struct extent	{
 
 	struct list_head	e_list; /* For de_extents */
 	struct rb_node		e_node; /* For de_extents_root */
-
-	/* Each file keeps a tree of its own dupes. This makes it
-	 * easier to remove overlapping duplicates. */
-	struct interval_tree_node e_itnode;
 
 #define	E_MAY_DELETE	0x01
 	int			e_flags;
@@ -82,7 +78,6 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 int insert_one_result(struct results_tree *res, unsigned char *digest,
 		      struct filerec *file, uint64_t startoff, uint64_t len,
 		      uint64_t poff, int flags);
-void remove_overlapping_extents(struct results_tree *res, struct filerec *file);
 
 void init_results_tree(struct results_tree *res);
 void free_results_tree(struct results_tree *res);

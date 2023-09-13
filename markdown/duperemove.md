@@ -187,22 +187,6 @@ result the semantics of the `partial` argument may change.
     ~ Defaults to `off`. Allow dedupe of extents within the same
 file.
 
-    **[no]fiemap**
-    ~ Defaults to `on`. Duperemove uses the `fiemap` ioctl during
-the dedupe stage to optimize out already deduped extents as well as to
-provide an estimate of the space saved after dedupe operations are
-complete.
-
-        Unfortunately, some versions of Btrfs exhibit extremely poor
-performance in fiemap as the number of references on a file extent
-goes up. If you are experiencing the dedupe phase slowing down
-or 'locking up' this option may give you a significant amount of
-performance back.
-
-        `Note:` This does not turn off all usage of fiemap, to disable
-fiemap during the file scan stage, you will also want to use the
-`--lookup-extents=no` option.
-
     **[no]rescan_files**
     ~ Defaults to `on`. Duperemove will check for files that were found
 and deduplicated in a previous run, based on the hashfile. Deduplicated
@@ -212,10 +196,6 @@ increase performance when running `duperemove` against a specific directory
 or file which you know is the only part of a larger, unchanged dataset.
 Duperemove will still dedupe that specific target against any shared extent
 found in the existing files.
-
-**\--lookup-extents**={yes|no}
-  ~ Defaults to `yes`. Allows duperemove to skip checksumming some blocks by
-checking their extent state.
 
 **\--read-hashes**=`hashfile`
   ~ **This option is primarily for testing**. See the `--hashfile` option if you want to use hashfiles.

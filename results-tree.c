@@ -20,9 +20,6 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
-#ifdef	ITDEBUG
-#include <inttypes.h>
-#endif
 #include <linux/fiemap.h>
 
 #include "kernel.h"
@@ -37,8 +34,6 @@
 #include "debug.h"
 #include "memstats.h"
 
-extern int v2_hashfile;
-
 declare_alloc_tracking(dupe_extents);
 declare_alloc_tracking(extent);
 
@@ -50,15 +45,6 @@ static inline uint64_t extent_end(struct extent *extent)
 static inline uint64_t extent_score(struct extent *extent)
 {
 	return extent->e_parent->de_score;
-}
-
-/* Check if e1 is fully contained within e2 */
-static int extent_contained(struct extent *e1, struct extent *e2)
-{
-	if (e1->e_loff >= e2->e_loff &&
-	    extent_end(e1) <= extent_end(e2))
-		return 1;
-	return 0;
 }
 
 static struct extent *alloc_extent(struct filerec *file, uint64_t loff)
@@ -242,20 +228,6 @@ static struct dupe_extents *find_alloc_dext(struct results_tree *res,
 	return dext;
 }
 
-static void insert_extent_into_filerec(struct extent *extent,
-				       struct filerec *file)
-{
-	if (extent) {
-		g_mutex_lock(&file->tree_mutex);
-		extent->e_itnode.start = extent->e_loff;
-		extent->e_itnode.last = extent_end(extent);
-		interval_tree_insert(&extent->e_itnode, &file->extent_tree);
-#ifdef	ITDEBUG
-		file->num_extents++;
-#endif
-		g_mutex_unlock(&file->tree_mutex);
-	}
-}
 /*
  * This does not do all the work of insert_result(), just enough for
  * the dedupe phase of block-dedupe to work properly.
@@ -293,9 +265,6 @@ int insert_one_result(struct results_tree *res, unsigned char *digest,
 	g_mutex_lock(&res->tree_mutex);
 	res->num_extents++;
 	g_mutex_unlock(&res->tree_mutex);
-
-	if (!v2_hashfile)
-		insert_extent_into_filerec(extent, file);
 
 	return 0;
 }
@@ -337,10 +306,6 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 		res->num_extents++;
 	g_mutex_unlock(&res->tree_mutex);
 
-	if (v2_hashfile) {
-		insert_extent_into_filerec(e0, recs[0]);
-		insert_extent_into_filerec(e1, recs[1]);
-	}
 	return 0;
 }
 
@@ -357,10 +322,6 @@ again:
 
 	list_del_init(&extent->e_list);
 	rb_erase(&extent->e_node, &p->de_extents_root);
-	interval_tree_remove(&extent->e_itnode, &extent->e_file->extent_tree);
-#ifdef	ITDEBUG
-	extent->e_file->num_extents--;
-#endif
 	free_extent(extent);
 	res->num_extents--;
 
@@ -381,25 +342,6 @@ again:
 	}
 	return result;
 }
-
-#ifdef	ITDEBUG
-static void print_all_extents(struct filerec *file)
-{
-	struct extent *extent;
-	struct interval_tree_node *node;
-
-	node = interval_tree_iter_first(&file->extent_tree, 0, -1ULL);
-	while (node) {
-		extent = container_of(node, struct extent, e_itnode);
-
-		printf("file: %s, start: %"PRIu64", end: %"PRIu64" ep: %p\n",
-		       file->filename, extent->e_loff, extent_end(extent),
-		       extent);
-
-		node = interval_tree_iter_next(node, 0, -1ULL);
-	}
-}
-#endif	/* ITDEBUG */
 
 static inline int check_tag_extent(struct extent *extent)
 {
@@ -422,109 +364,6 @@ static inline int check_tag_extent(struct extent *extent)
 		return 1;
 
 	return 0;
-}
-
-/*
- * Remove an extent, IFF:
- *    - it is completely inside of another extent
- *    - removing it wouldn't cause dedupe of another file to shrink
- */
-static uint64_t __remove_overlaps(struct results_tree *res, struct filerec *file,
-			      struct extent *extent_in)
-{
-	struct extent *extent;
-	struct interval_tree_node *node;
-	uint64_t best_end = extent_end(extent_in);
-	uint64_t start, end;
-	int ret;
-	int removed;
-
-restart:
-	start = extent_in->e_loff;
-	end = extent_end(extent_in);
-	node = &extent_in->e_itnode;
-
-	while ((node = interval_tree_iter_next(node, start, end)) != NULL) {
-		extent = container_of(node, struct extent, e_itnode);
-
-#ifdef	ITDEBUG
-		printf("  extent_in: (%"PRIu64", %"PRIu64", %u)  extent: "
-		       "(%"PRIu64", %"PRIu64", %u)  best_end: %"PRIu64"\n",
-		       extent_in->e_loff, extent_end(extent_in),
-		       extent_in->e_parent->de_num_dupes, extent->e_loff,
-		       extent_end(extent), extent->e_parent->de_num_dupes,
-		       best_end);
-#endif	/* ITDEBUG */
-		abort_on(extent == extent_in);
-
-		if (extent_end(extent) > best_end)
-			best_end = extent_end(extent);
-		if (extent_end(extent_in) > best_end)
-			best_end = extent_end(extent_in);
-
-		removed = 0;
-
-		if (extent_contained(extent, extent_in)) {
-			ret = check_tag_extent(extent);
-			if (ret) {
-#ifdef	ITDEBUG
-				printf("  remove extent\n");
-#endif
-				remove_extent(res, extent);
-				removed = 1;
-			}
-		} else if (extent_contained(extent_in, extent)) {
-			ret = check_tag_extent(extent_in);
-			if (ret) {
-#ifdef	ITDEBUG
-				printf("  remove extent_in\n");
-#endif
-				remove_extent(res, extent_in);
-				removed = 1;
-			}
-		}
-
-		if (removed) {
-			/* We can't trust extent or extent_in, start over */
-			node = interval_tree_iter_first(&file->extent_tree,
-							start, end);
-			if (!node)
-				break;
-			extent_in = container_of(node, struct extent, e_itnode);
-			goto restart;
-		} else {
-			node = &extent->e_itnode;
-		}
-	}
-
-	return best_end + 1;
-}
-
-/*
- * Remove extents which are completely enveloped within other
- * extents. Favor maximum dedupe.
- */
-void remove_overlapping_extents(struct results_tree *res, struct filerec *file)
-{
-	struct extent *extent;
-	struct interval_tree_node *node;
-	uint64_t start = 0, end = -1ULL;
-
-	while (1) {
-		node = interval_tree_iter_first(&file->extent_tree, start, end);
-		if (!node)
-			break;
-		extent = container_of(node, struct extent, e_itnode);
-#ifdef	ITDEBUG
-		printf("check file %s, extents: %d, (%"PRIu64", %"PRIu64") "
-		       "ep: %p, search start: %"PRIu64", search end: "
-		       "%"PRIu64"\n", file->filename, file->num_extents,
-		       extent->e_loff, extent->e_itnode.last, extent, start,
-		       end);
-#endif	/* ITDEBUG */
-
-		start = __remove_overlaps(res, file, extent);
-	}
 }
 
 void init_results_tree(struct results_tree *res)

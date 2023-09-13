@@ -21,7 +21,7 @@
 #include <glib.h>
 #include "rbtree.h"
 #include "list.h"
-#include "interval_tree.h"
+#include "results-tree.h"
 
 extern struct list_head filerec_list;
 extern unsigned long long num_filerecs;
@@ -46,7 +46,8 @@ struct filerec {
 
 	struct list_head	rec_list;	/* all filerecs */
 
-	struct list_head	tmp_list;
+	/* Used to mark filerec that were scanned in the last batch */
+	bool			scanned;
 
 	/* protects comparisons and extent_tree trees */
 	GMutex			tree_mutex;
@@ -55,9 +56,6 @@ struct filerec {
 
 	/* interval tree of dup-extents belonging to this file */
 	struct rb_root		extent_tree;
-#ifdef	ITDEBUG
-	uint64_t		num_extents;
-#endif
 	/* mtime in nanoseconds */
 	uint64_t		mtime;
 	unsigned int		dedupe_seq;
@@ -162,4 +160,5 @@ static inline void nano_to_timespec(uint64_t nanosecs, struct timespec *t)
 	t->tv_nsec = nanosecs % NANOSECONDS;
 }
 
+int fiemap_scan_extent(struct extent *extent);
 #endif /* __FILEREC__ */

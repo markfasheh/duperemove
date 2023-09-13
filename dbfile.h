@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <sqlite3.h>
+#include <stdbool.h>
 #include "util.h"
 
 struct filerec;
@@ -13,11 +14,8 @@ struct results_tree;
 struct dbfile_config;
 
 #define DB_FILE_MAJOR	3
-#define DB_FILE_MINOR	0
-#define BLOCK_DEDUPE_DBFILE_VER	2
+#define DB_FILE_MINOR	3
 
-int dbfile_create(char *filename, int *dbfile_is_new, int requested_version,
-		  struct dbfile_config *cfg);
 int dbfile_open(char *filename, struct dbfile_config *cfg);
 void dbfile_close(void);
 
@@ -26,26 +24,27 @@ void dbfile_close_handle(struct sqlite3 *db);
 
 struct dbfile_config {
 	unsigned int	blocksize;
-	uint64_t	num_hashes;
-	uint64_t	num_files;
 	dev_t		onefs_dev;
 	uint64_t	onefs_fsid;
 	int		major;
 	int		minor;
 	char		hash_type[8];
 	unsigned int	dedupe_seq;
-#define EXTENT_HASH_SRC_DIGEST	0
-#define EXTENT_HASH_SRC_DATA	1
-	unsigned int	extent_hash_src;
 };
 int dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg);
 int dbfile_sync_config(struct dbfile_config *cfg);
 
+struct dbfile_stats {
+	uint64_t	num_b_hashes;
+	uint64_t	num_e_hashes;
+	uint64_t	num_files;
+};
+
+int dbfile_get_stats(sqlite3 *db, struct dbfile_stats *stats);
+
 struct hash_tree;
 struct hash_file_header;
 struct rb_root;
-
-int create_indexes(sqlite3 *db, struct dbfile_config *cfg);
 
 /*
  * Load hashes into hash_tree only if they have a duplicate in the db.
@@ -66,8 +65,11 @@ int dbfile_load_nondupe_file_extents(sqlite3 *db, struct filerec *file,
 int dbfile_load_one_file_extent(sqlite3 *db, struct filerec *file,
 				uint64_t loff, struct file_extent *extent);
 
+int dbfile_load_one_filerec(sqlite3 *db, uint64_t ino, uint64_t subvol,
+				struct filerec **file);
+
 /* Scan files based on db contents. Removes any orphaned file records. */
-int dbfile_scan_files(struct dbfile_config *cfg);
+int dbfile_scan_files();
 
 /* Write any filerecs marked as needing update to the db */
 int dbfile_sync_files(sqlite3 *db);
@@ -78,14 +80,14 @@ int dbfile_sync_files(sqlite3 *db);
  */
 sqlite3 *dbfile_get_handle(void);
 int dbfile_store_file_info(sqlite3 *db, struct filerec *file);
-int dbfile_store_block_hashes(sqlite3 *db, struct dbfile_config *cfg,
-			      struct filerec *file, uint64_t nb_hash,
-			      struct block_csum *hashes);
-int dbfile_store_extent_hashes(sqlite3 *db, struct dbfile_config *cfg,
-			       struct filerec *file, uint64_t nb_hash,
-			       struct extent_csum *hashes);
+int dbfile_store_block_hashes(sqlite3 *db, struct filerec *file,
+				uint64_t nb_hash, struct block_csum *hashes);
+int dbfile_store_extent_hashes(sqlite3 *db, struct filerec *file,
+				uint64_t nb_hash, struct extent_csum *hashes);
 int dbfile_begin_trans(sqlite3 *db);
 int dbfile_commit_trans(sqlite3 *db);
+int dbfile_update_extent_poff(sqlite3 *db, uint64_t ino, uint64_t subvol,
+				uint64_t loff, uint64_t poff);
 
 /*
  * This is used for printing so we can get away with chars from sqlite
@@ -94,13 +96,20 @@ int dbfile_commit_trans(sqlite3 *db);
 typedef void (*iter_files_func)(char *filename, char *ino, char *subvol);
 int dbfile_iter_files(sqlite3 *db, iter_files_func func);
 
-int dbfile_remove_file(sqlite3 *db, struct dbfile_config *cfg,
-		       const char *filename);
+int dbfile_remove_file(sqlite3 *db, const char *filename);
 
 void dbfile_list_files(sqlite3 *db, int (*callback)(void*, int, char**, char**));
 
+int dbfile_describe_file(sqlite3 *db, uint64_t inum, uint64_t subvolid,
+				uint64_t *mtime, uint64_t *size);
+
 static inline void sqlite3_stmt_cleanup(void *p)
 {
-        sqlite3_finalize(*(sqlite3_stmt**) p);
+	sqlite3_finalize(*(sqlite3_stmt**) p);
+}
+
+static inline void sqlite3_close_cleanup(void *p)
+{
+	sqlite3_close(*(sqlite3**) p);
 }
 #endif	/* __DBFILE_H__ */

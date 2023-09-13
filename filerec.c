@@ -34,6 +34,7 @@
 
 #include <glib.h>
 
+#include "util.h"
 #include "kernel.h"
 #include "rbtree.h"
 #include "list.h"
@@ -345,7 +346,6 @@ static struct filerec *filerec_alloc_insert(const char *filename,
 
 	file->fd = -1;
 	file->block_tree = RB_ROOT;
-	INIT_LIST_HEAD(&file->tmp_list);
 	rb_init_node(&file->inum_node);
 	rb_init_node(&file->name_node);
 	file->inum = inum;
@@ -366,10 +366,8 @@ static struct filerec *filerec_alloc_insert(const char *filename,
 struct filerec *filerec_new(const char *filename, uint64_t inum,
 			    uint64_t subvolid, uint64_t size, uint64_t mtime)
 {
-	struct filerec *file = filerec_find(inum, subvolid);
-	if (!file)
-		file = filerec_alloc_insert(filename, inum, subvolid, size,
-					    mtime);
+	struct filerec *file;
+	file = filerec_alloc_insert(filename, inum, subvolid, size, mtime);
 	return file;
 }
 
@@ -384,7 +382,6 @@ void filerec_free(struct filerec *file)
 		 */
 //		abort_on(!RB_EMPTY_ROOT(&file->block_tree));
 		list_del(&file->rec_list);
-		list_del(&file->tmp_list);
 
 		if (!RB_EMPTY_NODE(&file->inum_node))
 			rb_erase(&file->inum_node, &filerec_by_inum);
@@ -542,6 +539,29 @@ static int do_fiemap(struct fiemap *fiemap, struct filerec *file,
 		}
 	}
 	return 0;
+}
+
+int fiemap_scan_extent(struct extent *extent)
+{
+	int ret = 0;
+	unsigned int flags;
+	uint64_t loff, len;
+	_cleanup_(freep) struct fiemap_ctxt *ctxt = alloc_fiemap_ctxt();
+
+	flags = loff = len = 0;
+
+	ret = filerec_open(extent->e_file, 0);
+	if (ret)
+		return ret;
+
+	while (!(flags & FIEMAP_EXTENT_LAST) && loff + len < extent->e_file->size) {
+		ret = fiemap_iter_next_extent(ctxt, extent->e_file, &(extent->e_poff), &loff, &len, &flags);
+		if (ret)
+			break;
+	}
+
+	filerec_close(extent->e_file);
+	return ret;
 }
 
 int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, struct filerec *file,

@@ -25,6 +25,8 @@
 /* exported for hashstats.c */
 sqlite3 *gdb = NULL;
 
+GMutex db_mutex; /* locks db writes */
+
 extern bool rescan_files;
 
 #if (SQLITE_VERSION_NUMBER < 3007015)
@@ -46,77 +48,122 @@ sqlite3 *dbfile_get_handle(void)
 	return gdb;
 }
 
-static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
-			       uint64_t *num_hashes, uint64_t *num_files,
-			       dev_t *onefs_dev, uint64_t *onefs_fsid,
-			       int *major, int *minor, char *db_hash_type,
-			       unsigned int *db_dedupe_seq,
-			       unsigned int *extent_hash_src);
-
 static void dbfile_config_defaults(struct dbfile_config *cfg)
 {
 	memset(cfg, 0, sizeof(*cfg));
 	cfg->blocksize = blocksize;
 	memcpy(cfg->hash_type, HASH_TYPE, 8);
+
+	cfg->major = DB_FILE_MAJOR;
+	cfg->minor = DB_FILE_MINOR;
+
+	cfg->blocksize = blocksize;
 }
 
-#if 0
-static int debug_print_cb(void *priv, int argc, char **argv, char **column)
+static int dbfile_get_dbpath(sqlite3 *db, char *path)
 {
-	int i;
+	int ret;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
+	const char *buf;
 
-	printf("(");
-	for(i = 0; i < argc; i++)
-		printf("%s:%s, ", column[i], argv[i]);
-	printf(")\n");
+#define GET_DBPATH "select file from pragma_database_list where name = 'main' limit 1;"
+	ret = sqlite3_prepare_v2(db, GET_DBPATH, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing statement");
+		return ret;
+	}
+
+	ret = sqlite3_step(stmt);
+	if (ret != SQLITE_ROW) {
+		perror_sqlite(ret, "fetching database's backend path");
+		return ret;
+	}
+
+	buf = (char *)sqlite3_column_text(stmt, 0);
+	if (strnlen(buf, PATH_MAX) != 0) {
+		strncpy(path, buf, PATH_MAX);
+	} else {
+		strcpy(path, "(null)");
+	}
+
 	return 0;
 }
-#endif
 
-static int create_tables(sqlite3 *db, int requested_version)
+static int dbfile_check(struct dbfile_config *cfg)
+{
+	char path[PATH_MAX + 1];
+
+	if (cfg->major != DB_FILE_MAJOR || cfg->minor != DB_FILE_MINOR) {
+		fprintf(stderr,
+			"Hash db version mismatch (mine: %d.%d, file: %d.%d)\n",
+			DB_FILE_MAJOR, DB_FILE_MINOR, cfg->major, cfg->minor);
+		return EIO;
+	}
+
+	dbfile_get_dbpath(gdb, path);
+
+	if (strncasecmp(cfg->hash_type, HASH_TYPE, 8)) {
+		fprintf(stderr,
+			"Error: Hashfile %s uses \"%.*s\" for checksums "
+			"but we are using %.*s.\nYou are probably "
+			"using a hashfile generated from an old version, "
+			"which cannot be read anymore.\n", path, 8,
+			cfg->hash_type, 8, HASH_TYPE);
+		return EINVAL;
+	}
+
+	if (cfg->blocksize != blocksize) {
+		vprintf("Using blocksize %uK from hashfile (%uK "
+			"blocksize requested).\n", cfg->blocksize/1024,
+			blocksize/1024);
+		blocksize = cfg->blocksize;
+	}
+
+	return 0;
+}
+
+static int create_tables(sqlite3 *db)
 {
 	int ret;
 
 #define CREATE_TABLE_CONFIG	\
-"CREATE TABLE config(keyname TEXT PRIMARY KEY NOT NULL, keyval BLOB);"
+"CREATE TABLE IF NOT EXISTS config(keyname TEXT PRIMARY KEY NOT NULL, keyval BLOB, "\
+"UNIQUE(keyname));"
 	ret = sqlite3_exec(db, CREATE_TABLE_CONFIG, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
 #define	CREATE_TABLE_FILES	\
-"CREATE TABLE files(filename TEXT PRIMARY KEY NOT NULL, ino INTEGER, "\
-"subvol INTEGER, size INTEGER, blocks INTEGER, mtime INTEGER, dedupe_seq INTEGER);"
+"CREATE TABLE IF NOT EXISTS files(filename TEXT PRIMARY KEY NOT NULL, ino INTEGER, "\
+"subvol INTEGER, size INTEGER, blocks INTEGER, mtime INTEGER, dedupe_seq INTEGER, "\
+"UNIQUE(ino, subvol));"
 	ret = sqlite3_exec(db, CREATE_TABLE_FILES, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
-	switch (requested_version) {
-	case DB_FILE_MAJOR:
 #define	CREATE_TABLE_EXTENTS						\
-"CREATE TABLE extents(digest BLOB KEY NOT NULL, ino INTEGER, subvol INTEGER, loff INTEGER, poff INTEGER, len INTEGER, flags INTEGER);"
-		ret = sqlite3_exec(db, CREATE_TABLE_EXTENTS, NULL, NULL, NULL);
-		if (ret)
-			goto out;
-		/* Fall through */
-	case BLOCK_DEDUPE_DBFILE_VER:
+"CREATE TABLE IF NOT EXISTS extents(digest BLOB KEY NOT NULL, ino INTEGER, "\
+"subvol INTEGER, loff INTEGER, poff INTEGER, len INTEGER, flags INTEGER, "\
+"UNIQUE(ino, subvol, loff, len) "\
+"FOREIGN KEY(ino, subvol) REFERENCES files(ino, subvol) ON DELETE CASCADE);"
+	ret = sqlite3_exec(db, CREATE_TABLE_EXTENTS, NULL, NULL, NULL);
+	if (ret)
+		goto out;
+
 #define	CREATE_TABLE_HASHES					\
-"CREATE TABLE hashes(digest BLOB KEY NOT NULL, ino INTEGER, subvol INTEGER, loff INTEGER, flags INTEGER);"
-		ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, NULL);
-		break;
-	default:
-		ret = -EINVAL;
-		break;
-	}
+"CREATE TABLE IF NOT EXISTS hashes(digest BLOB KEY NOT NULL, ino INTEGER, "\
+"subvol INTEGER, loff INTEGER, flags INTEGER, UNIQUE(ino, subvol, loff) "\
+"FOREIGN KEY(ino, subvol) REFERENCES files(ino, subvol) ON DELETE CASCADE);"
+	ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, NULL);
 
 out:
 	return ret;
 }
 
-int create_indexes(sqlite3 *db, struct dbfile_config *cfg)
+static int create_indexes(sqlite3 *db)
 {
 	int ret;
 
-	/* The following indexes are version independent */
 #define	CREATE_HASHES_DIGEST_INDEX				\
 "create index if not exists idx_digest on hashes(digest);"
 	ret = sqlite3_exec(db, CREATE_HASHES_DIGEST_INDEX, NULL, NULL, NULL);
@@ -129,15 +176,6 @@ int create_indexes(sqlite3 *db, struct dbfile_config *cfg)
 	if (ret)
 		goto out;
 
-	/* Only for hashfile v2 */
-	if (cfg->major == BLOCK_DEDUPE_DBFILE_VER) {
-#define	CREATE_FILES_INOSUB_INDEX_OLD				\
-"create index if not exists idx_inosub on files(ino, subvol);"
-		ret = sqlite3_exec(db, CREATE_FILES_INOSUB_INDEX_OLD, NULL, NULL, NULL);
-		goto out;
-	}
-
-	/* Only for hashfile v3 */
 #define	CREATE_EXTENTS_DIGEST_INDEX					\
 "create index if not exists idx_extent_digest on extents(digest);"
 	ret = sqlite3_exec(db, CREATE_EXTENTS_DIGEST_INDEX, NULL, NULL, NULL);
@@ -178,115 +216,71 @@ static int dbfile_set_modes(sqlite3 *db)
 		return ret;
 	}
 
-	return ret;
-}
-#define MEMDB_FILENAME	"file::memory:?cache=shared"
-
-int dbfile_create(char *filename, int *dbfile_is_new, int requested_version,
-		  struct dbfile_config *cfg)
-{
-	int ret, inmem = 0, newfile = 0;
-	sqlite3 *db = NULL;
-	int vmajor, vminor;
-
-	if (!filename) {
-		inmem = 1;
-		/*
-		 * Set this so main() doesn't try to get config, etc
-		 * from a memory file.
-		 */
-		newfile = 1;
-		filename = MEMDB_FILENAME;
-	} else {
-		ret = access(filename, R_OK|W_OK);
-		if (ret == -1 && errno == ENOENT)
-			newfile = 1;
-	}
-
-reopen:
-#define OPEN_FLAGS	(SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE|SQLITE_OPEN_NOMUTEX|SQLITE_OPEN_URI)
-	ret = sqlite3_open_v2(filename, &db, OPEN_FLAGS, NULL);
+	ret = sqlite3_exec(db, "PRAGMA foreign_keys = ON", NULL, NULL, NULL);
 	if (ret) {
-		perror_sqlite_open(db, filename);
+		perror_sqlite(ret, "enabling foreign keys");
 		return ret;
 	}
 
-	if (newfile || inmem) {
-		ret = create_tables(db, requested_version);
-		if (ret) {
-			perror_sqlite(ret, "creating tables");
-			sqlite3_close(db);
-			return ret;
-		}
-		/* Config is not written yet, but we can load some defaults. */
-		dbfile_config_defaults(cfg);
-		cfg->major = requested_version;
-		cfg->minor = requested_version == DB_FILE_MAJOR ? DB_FILE_MINOR : 0;
-		if (!inmem) {
-			ret = chmod(filename, S_IRUSR|S_IWUSR);
-			if (ret) {
-				perror("setting db file permissions");
-				sqlite3_close(db);
-				return ret;
-			}
+	return ret;
+}
 
-		}
-	} else {
-		/* Get only version numbers initially */
-		ret = __dbfile_get_config(db, NULL, NULL, NULL, NULL, NULL,
-					  &vmajor, &vminor, NULL, NULL, NULL);
-		if (ret && ret != SQLITE_CORRUPT) {
-			perror_sqlite(ret, "reading initial db config");
-			sqlite3_close(db);
-			return ret;
-		}
+#define MEMDB_FILENAME	"file::memory:?cache=shared"
+#define OPEN_FLAGS	(SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE|SQLITE_OPEN_NOMUTEX|SQLITE_OPEN_URI)
 
-		if (ret || vmajor <= 1) {
-			/*
-			 * Behavior for v1 dbfiles was to delete
-			 * them on every run. They also didn't store
-			 * mtime so any attempt to 'upgrade' would
-			 * include rescanning all files anyway.
-			 */
-			sqlite3_close(db);
-			ret = unlink(filename);
-			if (ret && errno != ENOENT) {
-				ret = errno;
-				fprintf(stderr, "Error %d while unlinking old "
-					"or damaged db file \"%s\": %s", ret,
-					filename, strerror(ret));
-				return ret;
-			}
-			newfile = 1;
-			goto reopen;
-		}
+int dbfile_open(char *filename, struct dbfile_config *cfg)
+{
+	int ret;
+	sqlite3 *db = NULL;
 
-		if (vmajor != BLOCK_DEDUPE_DBFILE_VER &&
-		    vmajor != DB_FILE_MAJOR) {
-			fprintf(stderr, "Error: Hashfile \"%s\" has unknown "
-				"version, %d.%d (I understand %d.%d)\n",
-				filename, vmajor, vminor, DB_FILE_MAJOR,
-				DB_FILE_MINOR);
-			sqlite3_close(db);
-			return -EIO;
-		}
+	db = dbfile_open_handle(filename);
 
-		ret = dbfile_get_config(db, cfg);
-		if (ret) {
-			perror_sqlite(ret, "loading dbfile config");
-			return ret;
-		}
-	}
-
-	ret = dbfile_set_modes(db);
+	ret = create_tables(db);
 	if (ret) {
-		perror_sqlite(ret, "setting journal modes");
+		perror_sqlite(ret, "creating tables");
 		sqlite3_close(db);
 		return ret;
 	}
 
-	*dbfile_is_new = newfile;
+	ret = create_indexes(db);
+	if (ret) {
+		perror_sqlite(ret, "creating indexes");
+		sqlite3_close(db);
+		return ret;
+	}
+
+	if (filename) {
+		ret = chmod(filename, S_IRUSR|S_IWUSR);
+		if (ret) {
+			perror("setting db file permissions");
+			sqlite3_close(db);
+			return ret;
+		}
+	}
+
+	ret = dbfile_get_config(db, cfg);
+	if (ret) {
+		perror_sqlite(ret, "reading initial db config");
+		sqlite3_close(db);
+		return ret;
+	}
+
 	gdb = db;
+
+	ret = dbfile_check(cfg);
+	if (ret)
+		return ret;
+
+	/* May store the default config, if fields were missing
+	 * or if the database did not exist
+	 */
+	ret = dbfile_sync_config(cfg);
+	if (ret) {
+		perror_sqlite(ret, "sync db config");
+		sqlite3_close(db);
+		return ret;
+	}
+
 	return 0;
 }
 
@@ -307,7 +301,6 @@ struct sqlite3 *dbfile_open_handle(char *filename)
 
 	ret = dbfile_set_modes(db);
 	if (ret) {
-		perror_sqlite(ret, "setting journal modes");
 		sqlite3_close(db);
 		return NULL;
 	}
@@ -318,37 +311,6 @@ struct sqlite3 *dbfile_open_handle(char *filename)
 void dbfile_close_handle(struct sqlite3 *db)
 {
 	sqlite3_close(db);
-}
-
-int dbfile_open(char *filename, struct dbfile_config *cfg)
-{
-	int ret;
-	sqlite3 *db;
-
-	ret = sqlite3_open_v2(filename, &db, OPEN_FLAGS, NULL);
-	if (ret) {
-		perror_sqlite_open(db, filename);
-		sqlite3_close(db);
-		return ret;
-	}
-
-	ret = dbfile_set_modes(db);
-	if (ret) {
-		perror_sqlite(ret, "setting journal modes");
-		sqlite3_close(db);
-		return ret;
-	}
-
-	dbfile_config_defaults(cfg);
-	ret = dbfile_get_config(db, cfg);
-	if (ret) {
-		perror_sqlite(ret, "loading config");
-		sqlite3_close(db);
-		return ret;
-	}
-
-	gdb = db;
-	return 0;
 }
 
 void dbfile_close(void)
@@ -365,6 +327,57 @@ int dbfile_begin_trans(sqlite3 *db)
 	ret = sqlite3_exec(db, "begin transaction", NULL, NULL, NULL);
 	if (ret)
 		perror_sqlite(ret, "starting transaction");
+	return ret;
+}
+
+int dbfile_update_extent_poff(sqlite3 *db, uint64_t ino, uint64_t subvol,
+				uint64_t loff, uint64_t poff)
+{
+	int ret;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
+
+	g_mutex_lock(&db_mutex);
+
+#define	UPDATE_EXTENT_POFF						\
+"update extents set poff = ?1 where ino = ?2 and subvol = ?3 and loff = ?4;"
+	ret = sqlite3_prepare_v2(db, UPDATE_EXTENT_POFF, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing extent update statement");
+		g_mutex_unlock(&db_mutex);
+		return ret;
+	}
+
+	ret = sqlite3_bind_int64(stmt, 1, poff);
+	if (ret)
+		goto bind_error;
+
+	ret = sqlite3_bind_int64(stmt, 2, ino);
+	if (ret)
+		goto bind_error;
+
+	ret = sqlite3_bind_int64(stmt, 3, subvol);
+	if (ret)
+		goto bind_error;
+
+	ret = sqlite3_bind_int64(stmt, 4, loff);
+	if (ret)
+		goto bind_error;
+
+	ret = sqlite3_step(stmt);
+	if (ret != SQLITE_DONE) {
+		perror_sqlite(ret, "executing statement");
+		return ret;
+	}
+
+	sqlite3_reset(stmt);
+
+	ret = 0;
+bind_error:
+	if (ret)
+		perror_sqlite(ret, "binding values");
+
+	g_mutex_unlock(&db_mutex);
+
 	return ret;
 }
 
@@ -441,8 +454,8 @@ out:
 
 int __dbfile_sync_config(sqlite3 *db, struct dbfile_config *cfg)
 {
-	int ret;
-	sqlite3_stmt *stmt = NULL;
+	int ret = 0;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
 	unsigned int onefs_major, onefs_minor;
 
 	ret = sqlite3_prepare_v2(db,
@@ -454,10 +467,6 @@ int __dbfile_sync_config(sqlite3 *db, struct dbfile_config *cfg)
 	}
 
 	ret = sync_config_text(stmt, "hash_type", cfg->hash_type, 8);
-	if (ret)
-		goto out;
-
-	ret = sync_config_int(stmt, "extent_hash_src", cfg->extent_hash_src);
 	if (ret)
 		goto out;
 
@@ -495,10 +504,7 @@ int __dbfile_sync_config(sqlite3 *db, struct dbfile_config *cfg)
 	if (ret)
 		goto out;
 
-	ret = 0;
 out:
-	sqlite3_finalize(stmt);
-
 	if (ret) {
 		perror_sqlite(ret, "binding");
 	}
@@ -520,7 +526,7 @@ int dbfile_sync_config(struct dbfile_config *cfg)
 	return ret;
 }
 
-static int __dbfile_count_rows(sqlite3_stmt *stmt, uint64_t *num)
+static int __dbfile_count_rows_stmt(sqlite3_stmt *stmt, uint64_t *num)
 {
 	int ret;
 
@@ -537,98 +543,43 @@ static int __dbfile_count_rows(sqlite3_stmt *stmt, uint64_t *num)
 	return 0;
 }
 
-static int dbfile_count_rows_old(sqlite3 *db, uint64_t *num_hashes,
-				 uint64_t *num_files)
+static int __dbfile_count_rows(sqlite3 *db, char *query, uint64_t *num)
 {
-	int ret = 0;
-	sqlite3_stmt *stmt = NULL;
+	int ret;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt;
 
-	if (num_hashes) {
-#define COUNT_HASHES_OLD "select COUNT(*) from hashes;"
-		ret = sqlite3_prepare_v2(db, COUNT_HASHES_OLD, -1, &stmt, NULL);
-		if (ret)
-			goto out;
+	ret = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
+	if (ret)
+		return ret;
 
-		ret = __dbfile_count_rows(stmt, num_hashes);
-		if (ret)
-			goto out;
-
-		sqlite3_finalize(stmt);
-		stmt = NULL;
-	}
-
-	if (num_files) {
-#define COUNT_FILES_OLD "select COUNT(*) from files;"
-		ret = sqlite3_prepare_v2(db, COUNT_FILES_OLD, -1, &stmt, NULL);
-		if (ret)
-			goto out;
-
-		ret = __dbfile_count_rows(stmt, num_files);
-		if (ret)
-			goto out;
-
-		sqlite3_finalize(stmt);
-		stmt = NULL;
-	}
-out:
-	if (stmt)
-		sqlite3_finalize(stmt);
-
-	return ret;
+	return __dbfile_count_rows_stmt(stmt, num);
 }
 
-static int dbfile_count_rows_new(sqlite3 *db, uint64_t *num_hashes,
-				 uint64_t *num_files)
+int dbfile_get_stats(sqlite3 *db, struct dbfile_stats *stats)
 {
 	int ret = 0;
-	sqlite3_stmt *stmt = NULL;
 
-	if (num_hashes) {
-#define COUNT_HASHES "select COUNT(*) from extents;"
-		ret = sqlite3_prepare_v2(db, COUNT_HASHES, -1, &stmt, NULL);
-		if (ret)
-			goto out;
+#define COUNT_B_HASHES "select COUNT(*) from hashes;"
+	ret = __dbfile_count_rows(db, COUNT_B_HASHES, &(stats->num_b_hashes));
+	if (ret)
+		return ret;
 
-		ret = __dbfile_count_rows(stmt, num_hashes);
-		if (ret)
-			goto out;
+#define COUNT_E_HASHES "select COUNT(*) from extents;"
+	ret = __dbfile_count_rows(db, COUNT_E_HASHES, &(stats->num_e_hashes));
+	if (ret)
+		return ret;
 
-		sqlite3_finalize(stmt);
-		stmt = NULL;
-	}
-
-	if (num_files) {
 #define COUNT_FILES "select COUNT(*) from files;"
-		ret = sqlite3_prepare_v2(db, COUNT_FILES, -1, &stmt, NULL);
-		if (ret)
-			goto out;
-
-		ret = __dbfile_count_rows(stmt, num_files);
-		if (ret)
-			goto out;
-
-		sqlite3_finalize(stmt);
-		stmt = NULL;
-	}
-out:
-	if (stmt)
-		sqlite3_finalize(stmt);
+	ret = __dbfile_count_rows(db, COUNT_FILES, &(stats->num_files));
+	if (ret)
+		return ret;
 
 	return ret;
-}
-
-static int dbfile_count_rows(sqlite3 *db, unsigned int ver,
-			     uint64_t *num_hashes, uint64_t *num_files)
-{
-	if (ver == BLOCK_DEDUPE_DBFILE_VER)
-		return dbfile_count_rows_old(db, num_hashes, num_files);
-	else
-		return dbfile_count_rows_new(db, num_hashes, num_files);
 }
 
 static int get_config_int(sqlite3_stmt *stmt, const char *name, int *val)
 {
-	int ret, found = 0;
+	int ret;
 
 	if (!val)
 		return 0;
@@ -641,15 +592,12 @@ static int get_config_int(sqlite3_stmt *stmt, const char *name, int *val)
 
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
 		*val = sqlite3_column_int(stmt, 0);
-		found++;
 	}
+
 	if (ret != SQLITE_DONE) {
 		perror_sqlite(ret, "retrieving row from config table (step)");
 		return ret;
 	}
-
-	if (!found)
-		return SQLITE_CORRUPT;
 
 	sqlite3_reset(stmt);
 
@@ -658,7 +606,7 @@ static int get_config_int(sqlite3_stmt *stmt, const char *name, int *val)
 
 static int get_config_int64(sqlite3_stmt *stmt, const char *name, uint64_t *val)
 {
-	int ret, found = 0;;
+	int ret;
 
 	if (!val)
 		return 0;
@@ -671,25 +619,20 @@ static int get_config_int64(sqlite3_stmt *stmt, const char *name, uint64_t *val)
 
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
 		*val = sqlite3_column_int64(stmt, 0);
-		found++;
 	}
 	if (ret != SQLITE_DONE) {
 		perror_sqlite(ret, "retrieving row from config table (step)");
 		return ret;
 	}
 
-	if (!found)
-		return SQLITE_CORRUPT;
-
 	sqlite3_reset(stmt);
 
 	return 0;
 }
 
-static int get_config_text(sqlite3_stmt *stmt, const char *name,
-			   const unsigned char *val, unsigned int len)
+static int get_config_hashtype(sqlite3_stmt *stmt, const char *name, char *val)
 {
-	int ret, found = 0;
+	int ret;
 	const unsigned char *local;
 
 	if (!val)
@@ -703,8 +646,7 @@ static int get_config_text(sqlite3_stmt *stmt, const char *name,
 
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
 		local = sqlite3_column_text(stmt, 0);
-		strncpy((char *)val, (char *)local, len);
-		found++;
+		memcpy(val, local, 8);
 	}
 
 	if (ret != SQLITE_DONE) {
@@ -712,25 +654,19 @@ static int get_config_text(sqlite3_stmt *stmt, const char *name,
 		return ret;
 	}
 
-	if (!found)
-		return SQLITE_CORRUPT;
-
 	sqlite3_reset(stmt);
 
 	return 0;
 }
 
 static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
-			       uint64_t *num_hashes, uint64_t *num_files,
 			       dev_t *onefs_dev, uint64_t *onefs_fsid,
-			       int *ret_ver_major, int *ver_minor,
-			       char *db_hash_type, unsigned int *db_dedupe_seq,
-			       unsigned int *extent_hash_src)
+			       int *ver_major, int *ver_minor,
+			       char *db_hash_type, unsigned int *db_dedupe_seq)
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
-	unsigned int onefs_major, onefs_minor;
-	int ver_major; /* We always query this */
+	unsigned int onefs_major = 0, onefs_minor = 0;
 
 #define SELECT_CONFIG "select keyval from config where keyname=?1;"
 	ret = sqlite3_prepare_v2(db, SELECT_CONFIG, -1, &stmt, NULL);
@@ -743,16 +679,13 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 	if (ret)
 		goto out;
 
-	ret = get_config_text(stmt, "hash_type",
-			      (const unsigned char *)db_hash_type, 8);
+	ret = get_config_hashtype(stmt, "hash_type", db_hash_type);
 	if (ret)
 		goto out;
 
-	ret = get_config_int(stmt, "version_major", &ver_major);
+	ret = get_config_int(stmt, "version_major", ver_major);
 	if (ret)
 		goto out;
-	if (ret_ver_major)
-		*ret_ver_major = ver_major;
 
 	ret = get_config_int(stmt, "version_minor", ver_minor);
 	if (ret)
@@ -778,21 +711,8 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 	if (ret)
 		goto out;
 
-	if (ver_major > BLOCK_DEDUPE_DBFILE_VER) {
-		ret = get_config_int(stmt, "extent_hash_src",
-				     (int *)extent_hash_src);
-		if (ret)
-			goto out;
-	} else 	if (extent_hash_src) {
-		*extent_hash_src = 0;
-	}
-
 	sqlite3_finalize(stmt);
 	stmt = NULL;
-
-	ret = dbfile_count_rows(db, ver_major, num_hashes, num_files);
-	if (ret)
-		goto out;
 
 out:
 	if (stmt)
@@ -804,35 +724,14 @@ int dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg)
 {
 	int ret;
 
-	ret = __dbfile_get_config(db, &cfg->blocksize, &cfg->num_hashes,
-				  &cfg->num_files, &cfg->onefs_dev,
+	dbfile_config_defaults(cfg);
+
+	ret = __dbfile_get_config(db, &cfg->blocksize, &cfg->onefs_dev,
 				  &cfg->onefs_fsid, &cfg->major,
 				  &cfg->minor, cfg->hash_type,
-				  &cfg->dedupe_seq, &cfg->extent_hash_src);
+				  &cfg->dedupe_seq);
 
 	return ret;
-}
-
-static int dbfile_check_version(sqlite3 *db)
-{
-	int ret;
-	int ver_major, ver_minor;
-
-	ret = __dbfile_get_config(db, NULL, NULL, NULL, NULL, NULL, &ver_major,
-				  &ver_minor, NULL, NULL, NULL);
-	if (ret)
-		return ret;
-
-	if (ver_major > DB_FILE_MAJOR) {
-		fprintf(stderr,
-			"Hash db version mismatch (mine: %d.%d, file: %d.%d)\n",
-			DB_FILE_MAJOR, DB_FILE_MINOR, ver_major, ver_minor);
-		return EIO;
-	}
-
-	/* XXX: Check hash type here! */
-
-	return 0;
 }
 
 static int __dbfile_store_file_info(sqlite3_stmt *stmt, struct filerec *file)
@@ -935,16 +834,11 @@ int dbfile_sync_files(sqlite3 *db)
 	return ret;
 }
 
-static int __dbfile_remove_file_hashes(sqlite3_stmt *hashes_stmt,
-				       sqlite3_stmt *extents_stmt, uint64_t ino,
+static int __dbfile_remove_file_hashes(sqlite3_stmt *stmt, uint64_t ino,
 				       uint64_t subvol)
 {
 	int ret;
-	sqlite3_stmt *stmt = hashes_stmt;
-	bool done = false;
-	const char *errstr = "executing hashes statement";
 
-again:
 	ret = sqlite3_bind_int64(stmt, 1, ino);
 	if (ret) {
 		perror_sqlite(ret, "binding inode");
@@ -959,70 +853,53 @@ again:
 
 	ret = sqlite3_step(stmt);
 	if (ret != SQLITE_DONE) {
-		perror_sqlite(ret, errstr);
+		perror_sqlite(ret, "removing hashes statement");
 		goto out;
 	}
-	if (!done && extents_stmt) {
-		stmt = extents_stmt;
-		errstr = "executing extents statement";
-		done = true;
-		goto again;
-	}
+
 	ret = 0;
 out:
 	return ret;
 }
 
-static int remove_file_hashes_prep(sqlite3 *db, struct dbfile_config *cfg,
-				   sqlite3_stmt **hashes_stmt,
-				   sqlite3_stmt **extents_stmt)
+static int dbfile_remove_block_hashes(sqlite3 *db, struct filerec *file)
 {
-	int ret;
+	int ret = 0;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
 
-	*hashes_stmt = *extents_stmt = NULL;
-
-#define	REMOVE_FILE_HASHES					\
+#define	REMOVE_BLOCK_HASHES					\
 	"delete from hashes where ino = ?1 and subvol = ?2;"
-	ret = sqlite3_prepare_v2(db, REMOVE_FILE_HASHES, -1,
-				 hashes_stmt, NULL);
+	ret = sqlite3_prepare_v2(db, REMOVE_BLOCK_HASHES, -1,
+				 &stmt, NULL);
 	if (ret) {
-		perror_sqlite(ret, "preparing hash insert statement");
-		return ret;
-	}
-	if (cfg->major > BLOCK_DEDUPE_DBFILE_VER) {
-#define	REMOVE_EXTENT_HASHES					\
-	"delete from extents where ino = ?1 and subvol = ?2;"
-		ret = sqlite3_prepare_v2(db, REMOVE_EXTENT_HASHES, -1,
-					 extents_stmt, NULL);
-		if (ret)
-			perror_sqlite(ret, "preparing hash insert statement");
-		return ret;
-	}
-	return 0;
-}
-
-static int dbfile_remove_file_hashes(sqlite3 *db, struct dbfile_config *cfg,
-				     struct filerec *file)
-{
-	int ret;
-	sqlite3_stmt *hashes_stmt = NULL;
-	sqlite3_stmt *extents_stmt = NULL;
-
-	ret = remove_file_hashes_prep(db, cfg, &hashes_stmt, &extents_stmt);
-	if (ret) {
-		perror_sqlite(ret, "preparing file hash removal statement");
+		perror_sqlite(ret, "preparing block hashes delete statement");
 		return ret;
 	}
 
-	ret = __dbfile_remove_file_hashes(hashes_stmt, extents_stmt, file->inum,
-					  file->subvolid);
-
+	ret = __dbfile_remove_file_hashes(stmt, file->inum, file->subvolid);
 	return ret;
 }
 
-int dbfile_store_block_hashes(sqlite3 *db, struct dbfile_config *cfg,
-			      struct filerec *file, uint64_t nb_hash,
-			      struct block_csum *hashes)
+static int dbfile_remove_extent_hashes(sqlite3 *db, struct filerec *file)
+{
+	int ret = 0;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
+
+#define	REMOVE_EXTENT_HASHES					\
+	"delete from extents where ino = ?1 and subvol = ?2;"
+	ret = sqlite3_prepare_v2(db, REMOVE_EXTENT_HASHES, -1,
+				 &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing extent hashes delete statement");
+		return ret;
+	}
+
+	ret = __dbfile_remove_file_hashes(stmt, file->inum, file->subvolid);
+	return ret;
+}
+
+int dbfile_store_block_hashes(sqlite3 *db, struct filerec *file,
+				uint64_t nb_hash, struct block_csum *hashes)
 {
 	int ret;
 	uint64_t i;
@@ -1032,7 +909,7 @@ int dbfile_store_block_hashes(sqlite3 *db, struct dbfile_config *cfg,
 	unsigned char *digest;
 
 	if (file->flags & FILEREC_IN_DB) {
-		ret = dbfile_remove_file_hashes(db, cfg, file);
+		ret = dbfile_remove_block_hashes(db, file);
 		if (ret)
 			return ret;
 	}
@@ -1090,9 +967,8 @@ out_error:
 	return ret;
 }
 
-int dbfile_store_extent_hashes(sqlite3 *db, struct dbfile_config *cfg,
-			       struct filerec *file, uint64_t nb_hash,
-			       struct extent_csum *hashes)
+int dbfile_store_extent_hashes(sqlite3 *db, struct filerec *file,
+				uint64_t nb_hash, struct extent_csum *hashes)
 {
 	int ret;
 	uint64_t i;
@@ -1102,7 +978,7 @@ int dbfile_store_extent_hashes(sqlite3 *db, struct dbfile_config *cfg,
 	unsigned char *digest;
 
 	if (file->flags & FILEREC_IN_DB) {
-		ret = dbfile_remove_file_hashes(db, cfg, file);
+		ret = dbfile_remove_extent_hashes(db, file);
 		if (ret)
 			return ret;
 	}
@@ -1267,13 +1143,10 @@ out:
 	return ret;
 }
 
-static int dbfile_del_orphans(struct sqlite3 *db, struct dbfile_config *cfg,
-			      struct list_head *orphans)
+static int dbfile_del_orphans(struct sqlite3 *db, struct list_head *orphans)
 {
 	int ret;
 	sqlite3_stmt *files_stmt = NULL;
-	sqlite3_stmt *hashes_stmt = NULL;
-	sqlite3_stmt *extents_stmt = NULL;
 	struct orphan_file *o, *tmp;
 
 #define	DELETE_FILE	"delete from files where filename = ?1;"
@@ -1283,20 +1156,9 @@ static int dbfile_del_orphans(struct sqlite3 *db, struct dbfile_config *cfg,
 		goto out;
 	}
 
-	ret = remove_file_hashes_prep(db, cfg, &hashes_stmt, &extents_stmt);
-	if (ret) {
-		perror_sqlite(ret, "preparing hashes statement");
-		goto out;
-	}
-
 	list_for_each_entry_safe(o, tmp, orphans, list) {
 		dprintf("Remove file \"%s\" from the db\n",
 			o->filename);
-
-		ret = __dbfile_remove_file_hashes(hashes_stmt, extents_stmt,
-						  o->ino, o->subvol);
-		if (ret)
-			goto out;
 
 		ret = sqlite3_bind_text(files_stmt, 1, o->filename, -1,
 					SQLITE_TRANSIENT);
@@ -1311,8 +1173,6 @@ static int dbfile_del_orphans(struct sqlite3 *db, struct dbfile_config *cfg,
 			goto out;
 		}
 
-		sqlite3_reset(hashes_stmt);
-		sqlite3_reset(extents_stmt);
 		sqlite3_reset(files_stmt);
 
 		list_del(&o->list);
@@ -1323,10 +1183,6 @@ static int dbfile_del_orphans(struct sqlite3 *db, struct dbfile_config *cfg,
 out:
 	if (files_stmt)
 		sqlite3_finalize(files_stmt);
-	if (hashes_stmt)
-		sqlite3_finalize(hashes_stmt);
-	if (extents_stmt)
-		sqlite3_finalize(extents_stmt);
 
 	return ret;
 }
@@ -1345,7 +1201,7 @@ out:
  * inserting stuff during the csum stage. This keeps us from getting
  * into a situation where we've inserted duplicate file records.
  */
-int dbfile_scan_files(struct dbfile_config *cfg)
+int dbfile_scan_files()
 {
 	int ret;
 	sqlite3 *db;
@@ -1359,8 +1215,7 @@ int dbfile_scan_files(struct dbfile_config *cfg)
 	if (ret)
 		goto out;
 
-	if (rescan_files)
-		ret = dbfile_del_orphans(db, cfg, &orphans);
+	ret = dbfile_del_orphans(db, &orphans);
 
 out:
 	if (!list_empty(&orphans))
@@ -1369,11 +1224,11 @@ out:
 	return ret;
 }
 
-static int dbfile_load_one_filerec(sqlite3 *db, uint64_t ino, uint64_t subvol,
+int dbfile_load_one_filerec(sqlite3 *db, uint64_t ino, uint64_t subvol,
 				   struct filerec **file)
 {
 	int ret;
-	sqlite3_stmt *stmt = NULL;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
 	const unsigned char *filename;
 	uint64_t size;
 	uint64_t mtime;
@@ -1393,20 +1248,24 @@ static int dbfile_load_one_filerec(sqlite3 *db, uint64_t ino, uint64_t subvol,
 	ret = sqlite3_bind_int64(stmt, 1, ino);
 	if (ret) {
 		perror_sqlite(ret, "binding ino");
-		goto out;
+		return ret;
 	}
 	ret = sqlite3_bind_int64(stmt, 2, subvol);
 	if (ret) {
 		perror_sqlite(ret, "binding subvol");
-		goto out;
+		return ret;
 	}
 
 	ret = sqlite3_step(stmt);
+	if (ret == SQLITE_DONE) {
+		dprintf("dbfile_load_one_filerec: no file found in hashdb: ino = %lu, subvol = %lu\n", ino, subvol);
+		return 0;
+	}
+
 	if (ret != SQLITE_ROW) {
 		perror_sqlite(ret, "executing statement");
-		goto out;
+		return ret;
 	}
-	ret = 0;
 
 	filename = sqlite3_column_text(stmt, 0);
 	size = sqlite3_column_int64(stmt, 1);
@@ -1418,9 +1277,7 @@ static int dbfile_load_one_filerec(sqlite3 *db, uint64_t ino, uint64_t subvol,
 		ret = ENOMEM;
 	(*file)->dedupe_seq = seq;
 
-out:
-	sqlite3_finalize(stmt);
-	return ret;
+	return 0;
 }
 
 int dbfile_load_block_hashes(struct hash_tree *hash_tree)
@@ -1436,10 +1293,6 @@ int dbfile_load_block_hashes(struct hash_tree *hash_tree)
 	db = dbfile_get_handle();
 	if (!db)
 		return ENOENT;
-
-	ret = dbfile_check_version(db);
-	if (ret)
-		return ret;
 
 #define GET_DUPLICATE_HASHES \
 	"SELECT hashes.digest, ino, subvol, loff, flags FROM hashes " \
@@ -1507,10 +1360,6 @@ int dbfile_load_extent_hashes(struct results_tree *res)
 	db = dbfile_get_handle();
 	if (!db)
 		return ENOENT;
-
-	ret = dbfile_check_version(db);
-	if (ret)
-		return ret;
 
 	/*
 	 * We need to select on both digest and len, otherwise we
@@ -1622,7 +1471,7 @@ int dbfile_load_nondupe_file_extents(sqlite3 *db, struct filerec *file,
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
-	uint64_t count, i;
+	uint64_t count = 0, i;
 	struct file_extent *extents = NULL;
 
 #define NONDUPE_JOIN							\
@@ -1631,42 +1480,6 @@ int dbfile_load_nondupe_file_extents(sqlite3 *db, struct filerec *file,
 	"nondupe_extents.digest where extents.ino = ?1 and extents.subvol = ?2;"
 #define GET_NONDUPE_EXTENTS						\
 	"select extents.loff, len, poff, flags " NONDUPE_JOIN
-#define GET_NONDUPE_EXTENTS_COUNT					\
-	"select COUNT(*) " NONDUPE_JOIN
-
-	ret = sqlite3_prepare_v2(db, GET_NONDUPE_EXTENTS_COUNT, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing get file extents statement");
-		goto out;
-	}
-
-	ret = sqlite3_bind_int64(stmt, 1, file->inum);
-	if (ret)
-		goto out;
-
-	ret = sqlite3_bind_int64(stmt, 2, file->subvolid);
-	if (ret)
-		goto out;
-
-	ret = __dbfile_count_rows(stmt, &count);
-	if (ret)
-		goto out;
-
-	sqlite3_finalize(stmt);
-	stmt = NULL;
-
-	if (count > UINT32_MAX) {
-		fprintf(stderr, "File \"%s\" has %"PRIu64" extents.\n",
-			file->filename, count);
-		count = UINT32_MAX;
-	}
-	*num_extents = count;
-
-	extents = calloc(count, sizeof(struct file_extent));
-	if (!extents) {
-		ret = ENOMEM;
-		goto out;
-	}
 
 	ret = sqlite3_prepare_v2(db, GET_NONDUPE_EXTENTS, -1, &stmt, NULL);
 	if (ret) {
@@ -1683,7 +1496,15 @@ int dbfile_load_nondupe_file_extents(sqlite3 *db, struct filerec *file,
 		goto out;
 
 	i = 0;
-	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW && i < count) {
+	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
+		count++;
+
+		extents = realloc(extents, count * sizeof(struct file_extent));
+		if (!extents) {
+			ret = ENOMEM;
+			goto out;
+		}
+
 		extents[i].loff = sqlite3_column_int64(stmt, 0);
 		extents[i].len = sqlite3_column_int64(stmt, 1);
 		extents[i].poff = sqlite3_column_int64(stmt, 2);
@@ -1691,6 +1512,8 @@ int dbfile_load_nondupe_file_extents(sqlite3 *db, struct filerec *file,
 
 		++i;
 	}
+
+	*num_extents = count;
 	if (ret != SQLITE_DONE) {
 		perror_sqlite(ret, "stepping nondupe extents statement");
 		goto out;
@@ -1728,8 +1551,7 @@ int dbfile_iter_files(sqlite3 *db, iter_files_func func)
 	return 0;
 }
 
-int dbfile_remove_file(sqlite3 *db, struct dbfile_config *cfg,
-		       const char *filename)
+int dbfile_remove_file(sqlite3 *db, const char *filename)
 {
 	int ret;
 	sqlite3_stmt *stmt = NULL;
@@ -1770,7 +1592,7 @@ int dbfile_remove_file(sqlite3 *db, struct dbfile_config *cfg,
 	}
 	list_add(&o->list, &orphans);
 
-	ret = dbfile_del_orphans(db, cfg, &orphans);
+	ret = dbfile_del_orphans(db, &orphans);
 
 out:
 	free_orphan_list(&orphans);
@@ -1796,4 +1618,48 @@ void dbfile_list_files(sqlite3 *db, int (*callback)(void*, int, char**, char**))
 		return;
 	}
 	return;
+}
+
+/* Check if the data in the hashfile is in synced with the disk.
+ * Returns false only if they match.
+ * Returns true if not, or if there is not data found, or on error.
+ */
+int dbfile_describe_file(sqlite3 *db, uint64_t inum, uint64_t subvolid,
+				uint64_t *mtime, uint64_t *size)
+{
+	int ret;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
+
+#define SELECT_FILE_CHANGES "select mtime, size from files where ino = ?1 and subvol = ?2;"
+	ret = sqlite3_prepare_v2(db, SELECT_FILE_CHANGES, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing statement");
+		return ret;
+	}
+
+	ret = sqlite3_bind_int64(stmt, 1, inum);
+	if (ret) {
+		perror_sqlite(ret, "binding values");
+		return ret;
+	}
+
+	ret = sqlite3_bind_int64(stmt, 2, subvolid);
+	if (ret) {
+		perror_sqlite(ret, "binding values");
+		return ret;
+	}
+
+	ret = sqlite3_step(stmt);
+	if (ret == SQLITE_DONE)
+		return 0;
+
+	if (ret != SQLITE_ROW) {
+		perror_sqlite(ret, "fetching database's backend path");
+		return ret;
+	}
+
+	*mtime = sqlite3_column_int64(stmt, 0);
+	*size = sqlite3_column_int64(stmt, 1);
+
+	return 0;
 }

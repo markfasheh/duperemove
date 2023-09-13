@@ -75,7 +75,6 @@ struct thread_params {
 	struct dbfile_config	*dbfile_cfg; /* global dbfile config */
 };
 
-extern int v2_hashfile;
 extern struct dbfile_config dbfile_cfg;
 extern bool rescan_files;
 LIST_HEAD(exclude_list);
@@ -98,16 +97,6 @@ static void clear_filerec_scan_flags(struct filerec *file)
 		files_to_scan--;
 	}
 	file->flags &= ~FILEREC_UPDATE_DB;
-}
-
-void fs_set_onefs(dev_t dev, uint64_t fsid)
-{
-	if (dev || fsid) {
-		if (dev)
-			one_fs_dev = dev;
-		else if (fsid)
-			one_fs_btrfs = fsid;
-	}
 }
 
 dev_t fs_onefs_dev(void)
@@ -228,11 +217,11 @@ static int __add_file(const char *name, struct stat *st,
 	struct statfs fs;
 
 	if (S_ISDIR(st->st_mode))
-		goto out;
+		return 0;
 
 	if (!S_ISREG(st->st_mode)) {
 		vprintf("Skipping non-regular file %s\n", name);
-		goto out;
+		return 0;
 	}
 
 	ret = access(name, R_OK);
@@ -260,7 +249,7 @@ static int __add_file(const char *name, struct stat *st,
 	}
 
 	if (is_excluded(name))
-		goto out;
+		return 0;
 
 	if (run_dedupe == 1 &&
 	    ((fs.f_type != BTRFS_SUPER_MAGIC &&
@@ -296,8 +285,12 @@ static int __add_file(const char *name, struct stat *st,
 	close(fd);
 
 	walked_size += st->st_size;
-	file = filerec_new(name, st->st_ino, subvolid, st->st_size,
-			   timespec_to_nano(&st->st_mtim));
+
+	file = filerec_find(st->st_ino, subvolid);
+	if (!file)
+		file = filerec_new(name, st->st_ino, subvolid, st->st_size,
+				   timespec_to_nano(&st->st_mtim));
+
 	if (file == NULL) {
 		fprintf(stderr, "Out of memory while allocating file record "
 			"for: %s\n", name);
@@ -305,8 +298,11 @@ static int __add_file(const char *name, struct stat *st,
 	}
 	if (ret_file)
 		*ret_file = file;
-out:
+
 	return 0;
+
+out:
+	return 1;
 }
 
 static bool will_cross_mountpoint(dev_t dev, uint64_t btrfs_fsid)
@@ -337,6 +333,7 @@ int add_file(const char *name)
 	char *pathtmp;
 	struct filerec *file = NULL;
 	char abspath[PATH_MAX];
+	uint64_t mtime = 0, size = 0;
 
 	if (len > (path_max - pathp)) {
 		fprintf(stderr, "Path max exceeded: %s %s\n", path, name);
@@ -410,6 +407,7 @@ int add_file(const char *name)
 	 * get a duplicate filename at this stage. However we can
 	 * still check to be safe as the result will otherwise be an
 	 * abort in the insert routine.
+	 * On the other hand, this check enforces hardlinks detection.
 	 */
 	if (filerec_find_by_name(abspath)) {
 		vprintf("Filename \"%s\" was seen twice! Skipping.\n", abspath);
@@ -420,14 +418,24 @@ int add_file(const char *name)
 	if (ret)
 		return ret;
 
+	/* File has been excluded by _add_file() */
+	if (!file)
+		goto out;
+
 	/*
-	 * We run the file scan before the database. Mark each file as
-	 * needing a db update plus rescan. Later, when we run the DB
-	 * we will conditionally clear these flags on already-seen
-	 * inodes.
+	 * Check the database to see if that file need rescan or not.
 	 */
-	if (file)
+	ret = dbfile_describe_file(dbfile_get_handle(), file->inum, file->subvolid, &mtime, &size);
+	if (ret) {
+		vprintf("dbfile_describe_file failed\n");
+		goto out;
+	}
+
+	if (mtime != file->mtime || size != file->size)
 		set_filerec_scan_flags(file);
+
+	if (mtime != 0 || size != 0)
+		file->flags |= FILEREC_IN_DB;
 
 out:
 	pathp = pathtmp;
@@ -472,37 +480,35 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 
 	if (!file) {
 		file = filerec_find_by_name(filename);
-		if (rescan_files) {
-			if (file) {
-				/*
-				 * We have a file by this name but a different
-				 * inode number. Delete the record and allow
-				 * scan to put the correct one in.
-				 */
-				file->dedupe_seq = seq;
-				print_file_changed(filename, inum, subvolid, file);
-				set_filerec_scan_flags(file);
-				*delete = 1;
-				return 0;
-			}
-			/* Go to disk and look up by filename */
-			ret = lstat(filename, &st);
-			if (ret == -1 && errno == ENOENT) {
-				vprintf("File path %s no longer exists. Skipping.\n",
-					filename);
-				*delete = 1;
-				return 0;
-			} else if (ret == -1) {
-				fprintf(stderr,	"Error %d: %s while stating file %s.\n",
-					errno, strerror(errno), filename);
-				*delete = 1;
-				return 0;
-			}
-
-			ret = __add_file(filename, &st, &file);
-			if (ret)
-				return ret;
+		if (file) {
+			/*
+			 * We have a file by this name but a different
+			 * inode number. Delete the record and allow
+			 * scan to put the correct one in.
+			 */
+			file->dedupe_seq = seq;
+			print_file_changed(filename, inum, subvolid, file);
+			set_filerec_scan_flags(file);
+			*delete = 1;
+			return 0;
 		}
+		/* Go to disk and look up by filename */
+		ret = lstat(filename, &st);
+		if (ret == -1 && errno == ENOENT) {
+			vprintf("File path %s no longer exists. Skipping.\n",
+				filename);
+			*delete = 1;
+			return 0;
+		} else if (ret == -1) {
+			fprintf(stderr,	"Error %d: %s while stating file %s.\n",
+				errno, strerror(errno), filename);
+			*delete = 1;
+			return 0;
+		}
+
+		ret = __add_file(filename, &st, &file);
+		if (ret)
+			return ret;
 
 		if (!file) {
 			/*
@@ -521,10 +527,10 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 	file->dedupe_seq = seq;
 
 	clear_filerec_scan_flags(file);
-	if (mtime != file->mtime)
+	if (mtime != file->mtime || size != file->size) {
 		set_filerec_scan_flags(file);
-	else if (size != file->size) /* size change alone means no alloc */
 		file->flags |= FILEREC_UPDATE_DB;
+	}
 
 	if (file->inum != inum || file->subvolid != subvolid ||
 	    strcmp(filename, file->filename)) {
@@ -566,8 +572,14 @@ static void run_pool(GThreadPool *pool, struct filerec *file,
 
 	qprintf("Using %u threads for file hashing phase\n", io_threads);
 
+	/* Reset the scanned filerecs */
+	list_for_each_entry(file, &filerec_list, rec_list) {
+		file->scanned = false;
+	}
+
 	list_for_each_entry_safe(file, tmp, &filerec_list, rec_list) {
 		if (file->flags & FILEREC_NEEDS_SCAN) {
+			file->scanned = true;
 			g_thread_pool_push(pool, file, &err);
 			if (err != NULL) {
 				fprintf(stderr,
@@ -665,10 +677,7 @@ static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
 					break;
 			}
 
-			if (!v2_hashfile &&
-			    dbfile_cfg.extent_hash_src == EXTENT_HASH_SRC_DIGEST)
-				add_to_running_checksum(csum, DIGEST_LEN,
-							data->block_digest);
+			add_to_running_checksum(csum, DIGEST_LEN, data->block_digest);
 		}
 
 		start += cmp_len;
@@ -676,11 +685,6 @@ static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
 		if (cmp_len > blocksize)
 			cmp_len = blocksize;
 	}
-
-	if (!v2_hashfile &&
-	    dbfile_cfg.extent_hash_src == EXTENT_HASH_SRC_DATA)
-		add_to_running_checksum(csum, extlen,
-					(unsigned char *)data->buf);
 
 	assert(start == extlen);
 
@@ -748,13 +752,11 @@ static void csum_whole_file_init(struct filerec *file,
 		(double)cur_scan_files / (double)files_to_scan * 100,
 		file->filename);
 
-	if (do_lookup_extents) {
-		*fc = alloc_fiemap_ctxt();
-		if (*fc == NULL) /* This should be non-fatal */
-			fprintf(stderr,
-				"Low memory allocating fiemap context for \"%s\"\n",
-				file->filename);
-	}
+	*fc = alloc_fiemap_ctxt();
+	if (*fc == NULL) /* This should be non-fatal */
+		fprintf(stderr,
+			"Low memory allocating fiemap context for \"%s\"\n",
+			file->filename);
 }
 
 /*
@@ -778,77 +780,6 @@ static int fiemap_helper(struct fiemap_ctxt *fc, struct filerec *file,
 		return 1;
 	}
 	return 0;
-}
-
-static int csum_by_block(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
-			 struct block_csum **ret_block_hashes, uint64_t *ret_nb_hash)
-{
-	int ret;
-	uint64_t loff, poff, fieloff, bytes_read, fielen;
-	unsigned int fieflags, read_size = blocksize;
-	struct filerec *file = ctxt->file;
-	struct block_csum *block_hashes;
-	uint64_t size = file->size;
-
-
-	block_hashes = malloc(sizeof(struct block_csum));
-	if (block_hashes == NULL)
-		return ENOMEM;
-
-	ctxt->block_hashes = block_hashes;
-        loff = fieloff = fielen = 0;
-	fieflags = 0;
-	while (loff < size) {
-		if (fc && loff >= (fieloff + fielen)) {
-			ret = fiemap_helper(fc, file, &poff, &fieloff, &fielen,
-					    &fieflags);
-			if (ret < 0)
-				return ret;
-			/*
-			 * Cap loop to the size of the last _real_ extent.
-			 * Applies to truncated files
-			 */
-			if (fieflags & FIEMAP_EXTENT_LAST)
-				size = fieloff + fielen;
-
-			if (ret == 1) {
-				loff = fieloff + fielen;
-				continue;
-			}
-			loff = fieloff;
-
-		}
-
-//		printf("loff %"PRIu64"\n", loff);
-		read_size = MAX(fielen, blocksize);
-		ret = csum_extent(ctxt, loff, read_size, fieflags, &bytes_read);
-		if (ret == 0) /* EOF */
-			break;
-
-		if (ret < 0) /* Err */
-			return ret;
-
-		if (bytes_read < blocksize && bytes_read + loff != file->size) {
-			/*
-			 * Don't want to store the len of each
-			 * block, so hash-tree makes the
-			 * assumption that a partial block is
-			 * the last one.
-			 */
-			return -1;
-		}
-		loff += bytes_read;
-		if (bytes_read < blocksize) {
-			/* Partial read, don't get any more blocks */
-			break;
-		}
-	}
-	ret = 0;
-	ctxt->blocks_recorded = ctxt->nr_block_hashes;
-	*ret_nb_hash = ctxt->nr_block_hashes;
-	*ret_block_hashes = ctxt->block_hashes;
-
-	return ret;
 }
 
 static int get_file_extent_count(struct filerec *file, uint32_t *count)
@@ -994,13 +925,8 @@ static void csum_whole_file(struct filerec *file,
 	if (ret)
 		goto err_noclose;
 
-	if (v2_hashfile) {
-		errfunc = "csum_by_block";
-		ret = csum_by_block(&csum_ctxt, fc, &block_hashes, &nb_hash);
-	} else {
-		errfunc = "csum_by_extent";
-		ret = csum_by_extent(&csum_ctxt, fc, &extent_hashes, &nb_hash);
-	}
+	errfunc = "csum_by_extent";
+	ret = csum_by_extent(&csum_ctxt, fc, &extent_hashes, &nb_hash);
 	if (ret)
 		goto err;
 
@@ -1020,30 +946,20 @@ static void csum_whole_file(struct filerec *file,
 		goto err;
 	}
 
-	if (v2_hashfile) {
-		ret = dbfile_store_block_hashes(db, params->dbfile_cfg, file,
-						nb_hash, block_hashes);
+	if (do_block_hash) {
+		ret = dbfile_store_block_hashes(db, file,
+						csum_ctxt.nr_block_hashes,
+						csum_ctxt.block_hashes);
 		if (ret) {
 			g_mutex_unlock(&io_mutex);
 			goto err;
 		}
-	} else {
-		if (do_block_hash) {
-			ret = dbfile_store_block_hashes(db, params->dbfile_cfg, file,
-							csum_ctxt.nr_block_hashes,
-							csum_ctxt.block_hashes);
-			if (ret) {
-				g_mutex_unlock(&io_mutex);
-				goto err;
-			}
-		}
+	}
 
-		ret = dbfile_store_extent_hashes(db, params->dbfile_cfg, file,
-						 nb_hash, extent_hashes);
-		if (ret) {
-			g_mutex_unlock(&io_mutex);
-			goto err;
-		}
+	ret = dbfile_store_extent_hashes(db, file, nb_hash, extent_hashes);
+	if (ret) {
+		g_mutex_unlock(&io_mutex);
+		goto err;
 	}
 
 	ret = dbfile_commit_trans(db);
