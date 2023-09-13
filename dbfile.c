@@ -1254,8 +1254,7 @@ int dbfile_scan_files()
 	if (ret)
 		goto out;
 
-	if (rescan_files)
-		ret = dbfile_del_orphans(db, &orphans);
+	ret = dbfile_del_orphans(db, &orphans);
 
 out:
 	if (!list_empty(&orphans))
@@ -1658,4 +1657,48 @@ void dbfile_list_files(sqlite3 *db, int (*callback)(void*, int, char**, char**))
 		return;
 	}
 	return;
+}
+
+/* Check if the data in the hashfile is in synced with the disk.
+ * Returns false only if they match.
+ * Returns true if not, or if there is not data found, or on error.
+ */
+int dbfile_describe_file(sqlite3 *db, uint64_t inum, uint64_t subvolid,
+				uint64_t *mtime, uint64_t *size)
+{
+	int ret;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
+
+#define SELECT_FILE_CHANGES "select mtime, size from files where ino = ?1 and subvol = ?2;"
+	ret = sqlite3_prepare_v2(db, SELECT_FILE_CHANGES, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing statement");
+		return ret;
+	}
+
+	ret = sqlite3_bind_int64(stmt, 1, inum);
+	if (ret) {
+		perror_sqlite(ret, "binding values");
+		return ret;
+	}
+
+	ret = sqlite3_bind_int64(stmt, 2, subvolid);
+	if (ret) {
+		perror_sqlite(ret, "binding values");
+		return ret;
+	}
+
+	ret = sqlite3_step(stmt);
+	if (ret == SQLITE_DONE)
+		return 0;
+
+	if (ret != SQLITE_ROW) {
+		perror_sqlite(ret, "fetching database's backend path");
+		return ret;
+	}
+
+	*mtime = sqlite3_column_int64(stmt, 0);
+	*size = sqlite3_column_int64(stmt, 1);
+
+	return 0;
 }

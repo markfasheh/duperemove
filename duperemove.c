@@ -643,11 +643,12 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 	if (ret)
 		goto out;
 
-	qprintf("Adding files from database for hashing.\n");
-
-	ret = dbfile_scan_files();
-	if (ret)
-		goto out;
+	if (rescan_files) {
+		qprintf("Adding files from database for hashing.\n");
+		ret = dbfile_scan_files();
+		if (ret)
+			goto out;
+	}
 
 	if (list_empty(&filerec_list)) {
 		fprintf(stderr, "No dedupe candidates found.\n");

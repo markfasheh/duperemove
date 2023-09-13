@@ -100,6 +100,9 @@ int dbfile_remove_file(sqlite3 *db, const char *filename);
 
 void dbfile_list_files(sqlite3 *db, int (*callback)(void*, int, char**, char**));
 
+int dbfile_describe_file(sqlite3 *db, uint64_t inum, uint64_t subvolid,
+				uint64_t *mtime, uint64_t *size);
+
 static inline void sqlite3_stmt_cleanup(void *p)
 {
 	sqlite3_finalize(*(sqlite3_stmt**) p);

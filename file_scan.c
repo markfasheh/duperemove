@@ -286,20 +286,7 @@ static int __add_file(const char *name, struct stat *st,
 
 	walked_size += st->st_size;
 
-	/* Search for existing files: first in the hashfile,
-	 * then in our filerecs (files not yet committed to the hashfile).
-	 * If nothing is found, we create a new filerec.
-	 */
 	file = filerec_find(st->st_ino, subvolid);
-
-	if (!file) {
-		ret = dbfile_load_one_filerec(dbfile_get_handle(), st->st_ino, subvolid, &file);
-		if (ret) {
-			fprintf(stderr, "Error during file lookup in hashfile (ino = %lu, subvol = %lu)", st->st_ino, subvolid);
-			return 1;
-		}
-	}
-
 	if (!file)
 		file = filerec_new(name, st->st_ino, subvolid, st->st_size,
 				   timespec_to_nano(&st->st_mtim));
@@ -346,6 +333,7 @@ int add_file(const char *name)
 	char *pathtmp;
 	struct filerec *file = NULL;
 	char abspath[PATH_MAX];
+	uint64_t mtime = 0, size = 0;
 
 	if (len > (path_max - pathp)) {
 		fprintf(stderr, "Path max exceeded: %s %s\n", path, name);
@@ -419,6 +407,7 @@ int add_file(const char *name)
 	 * get a duplicate filename at this stage. However we can
 	 * still check to be safe as the result will otherwise be an
 	 * abort in the insert routine.
+	 * On the other hand, this check enforces hardlinks detection.
 	 */
 	if (filerec_find_by_name(abspath)) {
 		vprintf("Filename \"%s\" was seen twice! Skipping.\n", abspath);
@@ -429,14 +418,24 @@ int add_file(const char *name)
 	if (ret)
 		return ret;
 
+	/* File has been excluded by _add_file() */
+	if (!file)
+		goto out;
+
 	/*
-	 * We run the file scan before the database. Mark each file as
-	 * needing a db update plus rescan. Later, when we run the DB
-	 * we will conditionally clear these flags on already-seen
-	 * inodes.
+	 * Check the database to see if that file need rescan or not.
 	 */
-	if (file)
+	ret = dbfile_describe_file(dbfile_get_handle(), file->inum, file->subvolid, &mtime, &size);
+	if (ret) {
+		vprintf("dbfile_describe_file failed\n");
+		goto out;
+	}
+
+	if (mtime != file->mtime || size != file->size)
 		set_filerec_scan_flags(file);
+
+	if (mtime != 0 || size != 0)
+		file->flags |= FILEREC_IN_DB;
 
 out:
 	pathp = pathtmp;
@@ -481,37 +480,35 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 
 	if (!file) {
 		file = filerec_find_by_name(filename);
-		if (rescan_files) {
-			if (file) {
-				/*
-				 * We have a file by this name but a different
-				 * inode number. Delete the record and allow
-				 * scan to put the correct one in.
-				 */
-				file->dedupe_seq = seq;
-				print_file_changed(filename, inum, subvolid, file);
-				set_filerec_scan_flags(file);
-				*delete = 1;
-				return 0;
-			}
-			/* Go to disk and look up by filename */
-			ret = lstat(filename, &st);
-			if (ret == -1 && errno == ENOENT) {
-				vprintf("File path %s no longer exists. Skipping.\n",
-					filename);
-				*delete = 1;
-				return 0;
-			} else if (ret == -1) {
-				fprintf(stderr,	"Error %d: %s while stating file %s.\n",
-					errno, strerror(errno), filename);
-				*delete = 1;
-				return 0;
-			}
-
-			ret = __add_file(filename, &st, &file);
-			if (ret)
-				return ret;
+		if (file) {
+			/*
+			 * We have a file by this name but a different
+			 * inode number. Delete the record and allow
+			 * scan to put the correct one in.
+			 */
+			file->dedupe_seq = seq;
+			print_file_changed(filename, inum, subvolid, file);
+			set_filerec_scan_flags(file);
+			*delete = 1;
+			return 0;
 		}
+		/* Go to disk and look up by filename */
+		ret = lstat(filename, &st);
+		if (ret == -1 && errno == ENOENT) {
+			vprintf("File path %s no longer exists. Skipping.\n",
+				filename);
+			*delete = 1;
+			return 0;
+		} else if (ret == -1) {
+			fprintf(stderr,	"Error %d: %s while stating file %s.\n",
+				errno, strerror(errno), filename);
+			*delete = 1;
+			return 0;
+		}
+
+		ret = __add_file(filename, &st, &file);
+		if (ret)
+			return ret;
 
 		if (!file) {
 			/*
