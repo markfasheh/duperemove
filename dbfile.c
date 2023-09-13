@@ -834,16 +834,11 @@ int dbfile_sync_files(sqlite3 *db)
 	return ret;
 }
 
-static int __dbfile_remove_file_hashes(sqlite3_stmt *hashes_stmt,
-				       sqlite3_stmt *extents_stmt, uint64_t ino,
+static int __dbfile_remove_file_hashes(sqlite3_stmt *stmt, uint64_t ino,
 				       uint64_t subvol)
 {
 	int ret;
-	sqlite3_stmt *stmt = hashes_stmt;
-	bool done = false;
-	const char *errstr = "executing hashes statement";
 
-again:
 	ret = sqlite3_bind_int64(stmt, 1, ino);
 	if (ret) {
 		perror_sqlite(ret, "binding inode");
@@ -858,47 +853,48 @@ again:
 
 	ret = sqlite3_step(stmt);
 	if (ret != SQLITE_DONE) {
-		perror_sqlite(ret, errstr);
+		perror_sqlite(ret, "removing hashes statement");
 		goto out;
 	}
-	if (!done && extents_stmt) {
-		stmt = extents_stmt;
-		errstr = "executing extents statement";
-		done = true;
-		goto again;
-	}
+
 	ret = 0;
 out:
 	return ret;
 }
 
-static int dbfile_remove_file_hashes(sqlite3 *db, struct filerec *file)
+static int dbfile_remove_block_hashes(sqlite3 *db, struct filerec *file)
 {
-	int ret;
-	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *hashes_stmt = NULL;
-	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *extents_stmt = NULL;
+	int ret = 0;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
 
-#define	REMOVE_FILE_HASHES					\
+#define	REMOVE_BLOCK_HASHES					\
 	"delete from hashes where ino = ?1 and subvol = ?2;"
-	ret = sqlite3_prepare_v2(db, REMOVE_FILE_HASHES, -1,
-				 &hashes_stmt, NULL);
+	ret = sqlite3_prepare_v2(db, REMOVE_BLOCK_HASHES, -1,
+				 &stmt, NULL);
 	if (ret) {
-		perror_sqlite(ret, "preparing hash insert statement");
+		perror_sqlite(ret, "preparing block hashes delete statement");
 		return ret;
 	}
+
+	ret = __dbfile_remove_file_hashes(stmt, file->inum, file->subvolid);
+	return ret;
+}
+
+static int dbfile_remove_extent_hashes(sqlite3 *db, struct filerec *file)
+{
+	int ret = 0;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
 
 #define	REMOVE_EXTENT_HASHES					\
 	"delete from extents where ino = ?1 and subvol = ?2;"
 	ret = sqlite3_prepare_v2(db, REMOVE_EXTENT_HASHES, -1,
-				 &extents_stmt, NULL);
+				 &stmt, NULL);
 	if (ret) {
-		perror_sqlite(ret, "preparing hash insert statement");
+		perror_sqlite(ret, "preparing extent hashes delete statement");
 		return ret;
 	}
 
-	ret = __dbfile_remove_file_hashes(hashes_stmt, extents_stmt, file->inum,
-					  file->subvolid);
-
+	ret = __dbfile_remove_file_hashes(stmt, file->inum, file->subvolid);
 	return ret;
 }
 
@@ -913,7 +909,7 @@ int dbfile_store_block_hashes(sqlite3 *db, struct filerec *file,
 	unsigned char *digest;
 
 	if (file->flags & FILEREC_IN_DB) {
-		ret = dbfile_remove_file_hashes(db, file);
+		ret = dbfile_remove_block_hashes(db, file);
 		if (ret)
 			return ret;
 	}
@@ -982,7 +978,7 @@ int dbfile_store_extent_hashes(sqlite3 *db, struct filerec *file,
 	unsigned char *digest;
 
 	if (file->flags & FILEREC_IN_DB) {
-		ret = dbfile_remove_file_hashes(db, file);
+		ret = dbfile_remove_extent_hashes(db, file);
 		if (ret)
 			return ret;
 	}
