@@ -527,10 +527,10 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 	file->dedupe_seq = seq;
 
 	clear_filerec_scan_flags(file);
-	if (mtime != file->mtime)
+	if (mtime != file->mtime || size != file->size) {
 		set_filerec_scan_flags(file);
-	else if (size != file->size) /* size change alone means no alloc */
 		file->flags |= FILEREC_UPDATE_DB;
+	}
 
 	if (file->inum != inum || file->subvolid != subvolid ||
 	    strcmp(filename, file->filename)) {
