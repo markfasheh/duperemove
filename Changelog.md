@@ -7,6 +7,7 @@ PENDING
  * Hashfile are now updated after deduplication, to reflect the new physical offsets. This avoid (re)deduplicating extents in some cases.
  * Partial mode has been enhanced to support batching. The overall performance of this mode (which was previously known as "block-based mode") has been improved.
  * All files are now open in readonly mode.
+ * Hashfile version has been increased to reflect the new database behaviors. Previous hashfiles are not compatible.
 
 Version 0.12
 ---
