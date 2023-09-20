@@ -14,7 +14,7 @@ struct results_tree;
 struct dbfile_config;
 
 #define DB_FILE_MAJOR	3
-#define DB_FILE_MINOR	3
+#define DB_FILE_MINOR	4
 
 int dbfile_open(char *filename, struct dbfile_config *cfg);
 void dbfile_close(void);
@@ -84,6 +84,8 @@ int dbfile_store_block_hashes(sqlite3 *db, struct filerec *file,
 				uint64_t nb_hash, struct block_csum *hashes);
 int dbfile_store_extent_hashes(sqlite3 *db, struct filerec *file,
 				uint64_t nb_hash, struct extent_csum *hashes);
+int dbfile_store_file_digest(sqlite3 *db, struct filerec *file,
+				unsigned char *digest);
 int dbfile_begin_trans(sqlite3 *db);
 int dbfile_commit_trans(sqlite3 *db);
 int dbfile_update_extent_poff(sqlite3 *db, uint64_t ino, uint64_t subvol,

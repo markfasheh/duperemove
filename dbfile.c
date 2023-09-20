@@ -135,7 +135,7 @@ static int create_tables(sqlite3 *db)
 #define	CREATE_TABLE_FILES	\
 "CREATE TABLE IF NOT EXISTS files(filename TEXT PRIMARY KEY NOT NULL, ino INTEGER, "\
 "subvol INTEGER, size INTEGER, blocks INTEGER, mtime INTEGER, dedupe_seq INTEGER, "\
-"UNIQUE(ino, subvol));"
+"digest BLOB, UNIQUE(ino, subvol));"
 	ret = sqlite3_exec(db, CREATE_TABLE_FILES, NULL, NULL, NULL);
 	if (ret)
 		goto out;
@@ -966,6 +966,48 @@ bind_error:
 out_error:
 
 	sqlite3_finalize(stmt);
+	return ret;
+}
+
+int dbfile_store_file_digest(sqlite3 *db, struct filerec *file,
+				unsigned char *digest)
+{
+	int ret;
+	 _cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
+
+	dprintf("db: write file hash for file %s\n", file->filename);
+#define	UPDATE_FILE_DIGEST						\
+"UPDATE files SET digest = ?1 where ino = ?2 and subvol = ?3;"
+	ret = sqlite3_prepare_v2(db, UPDATE_FILE_DIGEST, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing file digest insert statement");
+		goto out_error;
+	}
+
+	ret = sqlite3_bind_blob(stmt, 1, digest, DIGEST_LEN,
+				SQLITE_STATIC);
+	if (ret)
+		goto bind_error;
+
+	ret = sqlite3_bind_int64(stmt, 2, file->inum);
+	if (ret)
+		goto bind_error;
+
+	ret = sqlite3_bind_int64(stmt, 3, file->subvolid);
+	if (ret)
+		goto bind_error;
+
+	ret = sqlite3_step(stmt);
+	if (ret != SQLITE_DONE) {
+		perror_sqlite(ret, "executing statement");
+		goto out_error;
+	}
+
+	ret = 0;
+bind_error:
+	if (ret)
+		perror_sqlite(ret, "binding values");
+out_error:
 	return ret;
 }
 

@@ -649,10 +649,13 @@ struct csum_ctxt {
 	struct block_csum *block_hashes;
 	uint64_t nr_block_hashes;
 	unsigned char block_digest[DIGEST_LEN];
+
+	unsigned char file_digest[DIGEST_LEN];
 };
 
 static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
-		       const uint64_t extoff, const ssize_t extlen, int flags)
+		       const uint64_t extoff, const ssize_t extlen, int flags,
+		       struct running_checksum *file_csum)
 {
 	int ret = 0;
 	int start = 0;
@@ -678,6 +681,7 @@ static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
 			}
 
 			add_to_running_checksum(csum, DIGEST_LEN, data->block_digest);
+			add_to_running_checksum(file_csum, DIGEST_LEN, data->block_digest);
 		}
 
 		start += cmp_len;
@@ -694,7 +698,8 @@ static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
 
 static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 		       uint64_t extent_len, int extent_flags,
-		       uint64_t *ret_total_bytes_read)
+		       uint64_t *ret_total_bytes_read,
+		       struct running_checksum *file_csum)
 {
 	int ret = 0;
 	int flags;
@@ -725,7 +730,7 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 		total_bytes_read += bytes_read;
 		flags = xlate_extent_flags(extent_flags, bytes_read);
 
-		ret = csum_blocks(data, csum, extent_off, bytes_read, flags);
+		ret = csum_blocks(data, csum, extent_off, bytes_read, flags, file_csum);
 		if (ret)
 			break;
 
@@ -812,6 +817,7 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 	struct filerec *file = ctxt->file;
 	uint64_t nb_hash = 0;
 	struct block_csum *block_hashes;
+	struct running_checksum *file_csum;
 //	int nb_block_hash = 0;
 
 	ret = get_file_extent_count(file, &extents_count);
@@ -837,6 +843,10 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 
 	ctxt->block_hashes = block_hashes;
 
+	file_csum = start_running_checksum();
+	if (!file_csum)
+		return 1;
+
 	flags = 0;
 	while (!(flags & FIEMAP_EXTENT_LAST)) {
 		ret = fiemap_helper(fc, file, &poff, &loff, &len, &flags);
@@ -850,7 +860,7 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			continue;
 		}
 
-		ret = csum_extent(ctxt, loff, len, flags, &bytes_read);
+		ret = csum_extent(ctxt, loff, len, flags, &bytes_read, file_csum);
 		if (ret == 0) /* EOF */
 			break;
 
@@ -887,6 +897,8 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			break;
 		}
 	}
+
+	finish_running_checksum(file_csum, ctxt->file_digest);
 
 	ret = 0;
 	*ret_nb_hash = nb_hash;
@@ -955,6 +967,12 @@ static void csum_whole_file(struct filerec *file,
 	}
 
 	ret = dbfile_store_extent_hashes(db, file, nb_hash, extent_hashes);
+	if (ret) {
+		g_mutex_unlock(&io_mutex);
+		goto err;
+	}
+
+	ret = dbfile_store_file_digest(db, file, csum_ctxt.file_digest);
 	if (ret) {
 		g_mutex_unlock(&io_mutex);
 		goto err;
