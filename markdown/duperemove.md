@@ -179,7 +179,7 @@ limit the negative effects of this option.
 result the semantics of the `partial` argument may change.
 
     **[no]same**
-    ~ Defaults to `off`. Allow dedupe of extents within the same
+    ~ Defaults to `on`. Allow dedupe of extents within the same
 file.
 
     **[no]rescan_files**
