@@ -86,7 +86,6 @@ static void print_extent_search_status(unsigned long long processed)
 			printf(" ");
 	}
 	printf("]");
-	fflush(stdout);
 }
 
 /*
@@ -104,7 +103,6 @@ static void clear_extent_search_status(unsigned long long processed,
 		       "\"%s\"\n", processed, err, strerror(err));
 	else
 		printf("\nSearch completed with no errors.             \n");
-	fflush(stdout);
 }
 
 static void update_extent_search_status(unsigned long long processed)

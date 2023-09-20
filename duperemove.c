@@ -270,10 +270,6 @@ static int add_files_from_stdin(int fdupes)
 				path);
 			return 1;
 		}
-
-		/* Give the user a chance to see some output from add_file(). */
-		if (!fdupes)
-			fflush(stdout);
 	}
 
 	if (path != NULL)
@@ -624,13 +620,6 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 		goto out;
 	}
 
-	/*
-	 * File scan from above can cause quite a bit of output, flush
-	 * here in case of logfile.
-	 */
-	if (stdout_is_tty)
-		fflush(stdout);
-
 	ret = dbfile_sync_files(dbfile_get_handle());
 	if (ret)
 		goto out;
@@ -641,6 +630,9 @@ out:
 int main(int argc, char **argv)
 {
 	int ret, filelist_idx = 0;
+
+	char stdbuf[BUFSIZ];
+	setvbuf(stdout, stdbuf, _IOLBF, BUFSIZ);
 
 	init_filerec();
 
