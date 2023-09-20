@@ -99,11 +99,13 @@ typedef void (*iter_files_func)(char *filename, char *ino, char *subvol);
 int dbfile_iter_files(sqlite3 *db, iter_files_func func);
 
 int dbfile_remove_file(sqlite3 *db, const char *filename);
+int dbfile_remove_extent_hashes(sqlite3 *db, struct filerec *file);
 
 void dbfile_list_files(sqlite3 *db, int (*callback)(void*, int, char**, char**));
 
 int dbfile_describe_file(sqlite3 *db, uint64_t inum, uint64_t subvolid,
 				uint64_t *mtime, uint64_t *size);
+int dbfile_load_same_files(struct results_tree *res);
 
 static inline void sqlite3_stmt_cleanup(void *p)
 {

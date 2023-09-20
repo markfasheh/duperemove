@@ -48,17 +48,25 @@ static struct results_tree *results_tree;
 static volatile unsigned long long total_dedupe_passes;
 static volatile unsigned long long curr_dedupe_pass;
 static unsigned int leading_spaces;
+static bool whole_file_dedup;
+GMutex db_mutex; /* locks db writes */
 
-void print_dupes_table(struct results_tree *res)
+void print_dupes_table(struct results_tree *res, bool whole_file)
 {
 	struct rb_root *root = &res->root;
 	struct rb_node *node = rb_first(root);
 	struct dupe_extents *dext;
 	struct extent *extent;
+	char *kind;
+
+	if (whole_file)
+		kind = "files";
+	else
+		kind = "extents";
 
 	printf("Simple read and compare of file data found %u instances of "
-	       "extents that might benefit from deduplication.\n",
-	       res->num_dupes);
+	       "%s that might benefit from deduplication.\n",
+	       res->num_dupes, kind);
 
 	if (quiet || res->num_dupes == 0)
 		return;
@@ -69,8 +77,8 @@ void print_dupes_table(struct results_tree *res)
 
 		dext = rb_entry(node, struct dupe_extents, de_node);
 
-		printf("Showing %u identical extents of length %s with id ",
-		       dext->de_num_dupes, pretty_size(dext->de_len));
+		printf("Showing %u identical %s of length %s with id ",
+		       dext->de_num_dupes, kind, pretty_size(dext->de_len));
 		debug_print_digest_short(stdout, dext->de_hash);
 		printf("\n");
 		printf("Start\t\tFilename\n");
@@ -512,11 +520,30 @@ static int extent_dedupe_worker(struct dupe_extents *dext,
 		return ret;
 	}
 
-	/* Rescan physical offset and update the hashfile accordingly */
+	g_mutex_lock(&db_mutex);
 	list_for_each_entry(extent, &dext->de_extents, e_list) {
-		fiemap_scan_extent(extent);
-		dbfile_update_extent_poff(db, extent->e_file->inum, extent->e_file->subvolid, extent->e_loff, extent->e_poff);
+		if (whole_file_dedup) {
+			/* If we are deduping a whole file, then the extents may be remapped
+			 * by Linux. Let's drop them from the hashfile: even if some other file
+			 * share one on those extents, keeping the whole file deduplicated is
+			 * a better move.
+			 * TODO: do not delete the extents but rescan every files to fetch
+			 * the new extents mapping as well as their new hashes
+			 */
+			dbfile_remove_extent_hashes(db, extent->e_file);
+
+			/* Update those files' dedupe_seq. This will mark them as deduped
+			 * and prevent further processing (extent or block-based dedupe)
+			 */
+			extent->e_file->dedupe_seq++;
+			dbfile_store_file_info(db, extent->e_file);
+		} else {
+			/* Rescan physical offset and update the hashfile accordingly */
+			fiemap_scan_extent(extent);
+			dbfile_update_extent_poff(db, extent->e_file->inum, extent->e_file->subvolid, extent->e_loff, extent->e_poff);
+		}
 	}
+	g_mutex_unlock(&db_mutex);
 
 	if (!list_empty(&dext->de_extents)) {
 		g_mutex_lock(&mutex);
@@ -575,7 +602,7 @@ static int push_extents(struct results_tree *res)
 	return 0;
 }
 
-void dedupe_results(struct results_tree *res)
+void dedupe_results(struct results_tree *res, bool whole_file)
 {
 	int ret;
 	struct dedupe_counts counts = { 0ULL, };
@@ -588,7 +615,9 @@ void dedupe_results(struct results_tree *res)
 	curr_dedupe_pass = 0;
 	results_tree = res;
 
-	print_dupes_table(res);
+	whole_file_dedup = whole_file;
+
+	print_dupes_table(res, whole_file);
 
 	if (RB_EMPTY_ROOT(&res->root)) {
 		printf("Nothing to dedupe.\n");

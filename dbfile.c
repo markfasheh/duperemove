@@ -24,8 +24,6 @@
 
 static sqlite3 *gdb = NULL;
 
-GMutex db_mutex; /* locks db writes */
-
 extern bool rescan_files;
 
 #if (SQLITE_VERSION_NUMBER < 3007015)
@@ -338,14 +336,11 @@ int dbfile_update_extent_poff(sqlite3 *db, uint64_t ino, uint64_t subvol,
 	int ret;
 	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
 
-	g_mutex_lock(&db_mutex);
-
 #define	UPDATE_EXTENT_POFF						\
 "update extents set poff = ?1 where ino = ?2 and subvol = ?3 and loff = ?4;"
 	ret = sqlite3_prepare_v2(db, UPDATE_EXTENT_POFF, -1, &stmt, NULL);
 	if (ret) {
 		perror_sqlite(ret, "preparing extent update statement");
-		g_mutex_unlock(&db_mutex);
 		return ret;
 	}
 
@@ -377,8 +372,6 @@ int dbfile_update_extent_poff(sqlite3 *db, uint64_t ino, uint64_t subvol,
 bind_error:
 	if (ret)
 		perror_sqlite(ret, "binding values");
-
-	g_mutex_unlock(&db_mutex);
 
 	return ret;
 }
@@ -882,7 +875,7 @@ static int dbfile_remove_block_hashes(sqlite3 *db, struct filerec *file)
 	return ret;
 }
 
-static int dbfile_remove_extent_hashes(sqlite3 *db, struct filerec *file)
+int dbfile_remove_extent_hashes(sqlite3 *db, struct filerec *file)
 {
 	int ret = 0;
 	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
@@ -1584,4 +1577,66 @@ int dbfile_describe_file(sqlite3 *db, uint64_t inum, uint64_t subvolid,
 	*size = sqlite3_column_int64(stmt, 1);
 
 	return 0;
+}
+
+int dbfile_load_same_files(struct results_tree *res)
+{
+	int ret;
+	sqlite3 *db;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
+	uint64_t subvol, ino, len;
+	unsigned char *digest;
+	struct filerec *file;
+
+	db = dbfile_get_handle();
+	if (!db)
+		return ENOENT;
+
+#define GET_DUPLICATE_FILES					      \
+	"SELECT ino, subvol, files.size, files.digest FROM files "\
+	"JOIN (SELECT digest, size FROM files WHERE digest IN " \
+	"(SELECT distinct digest FROM files WHERE ino IN " \
+	"(SELECT ino FROM files WHERE dedupe_seq > " \
+	"(SELECT keyval FROM config WHERE keyname = 'dedupe_sequence'))) " \
+	"GROUP BY digest, size HAVING count(*) > 1) " \
+	"AS duplicate_files ON files.size != 0 AND " \
+	"files.digest = duplicate_files.digest AND " \
+	"files.size = duplicate_files.size;"
+
+	ret = sqlite3_prepare_v2(db, GET_DUPLICATE_FILES, -1, &stmt, NULL);
+	if (ret) {
+		perror_sqlite(ret, "preparing statement");
+		return ret;
+	}
+
+	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
+		ino = sqlite3_column_int64(stmt, 0);
+		subvol = sqlite3_column_int64(stmt, 1);
+		len = sqlite3_column_int64(stmt, 2);
+		digest = (unsigned char *)sqlite3_column_blob(stmt, 3);
+
+		file = filerec_find(ino, subvol);
+		if (!file) {
+			ret = dbfile_load_one_filerec(db, ino, subvol, &file);
+			if (ret) {
+				fprintf(stderr, "Error loading filerec (%"
+					PRIu64",%"PRIu64") from db\n",
+					ino, subvol);
+				goto out;
+			}
+		}
+
+		ret = insert_one_result(res, digest, file, 0, len, 0, 0);
+		if (ret)
+			return ENOMEM;
+	}
+	if (ret != SQLITE_DONE) {
+		perror_sqlite(ret, "looking up hash");
+		goto out;
+	}
+	sqlite3_reset(stmt);
+
+	ret = 0;
+out:
+	return ret;
 }

@@ -8,6 +8,7 @@ PENDING
  * Partial mode has been enhanced to support batching. The overall performance of this mode (which was previously known as "block-based mode") has been improved.
  * All files are now open in readonly mode.
  * Hashfile version has been increased to reflect the new database behaviors. Previous hashfiles are not compatible.
+ * Always compute a hash for the entire file. This let us deduplicate same files easily, regardless of their extents mappings.
 
 Version 0.12
 ---

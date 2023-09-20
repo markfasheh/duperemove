@@ -526,6 +526,20 @@ void process_duplicates()
 	init_results_tree(&res);
 	init_hash_tree(&dups_tree);
 
+	qprintf("Loading only identical files from hashfile.\n");
+	ret = dbfile_load_same_files(&res);
+	if (ret)
+		goto out;
+
+	if (run_dedupe)
+		dedupe_results(&res, true);
+	else
+		print_dupes_table(&res, true);
+
+	/* Reset the results_tree before loading extents or blocks */
+	free_results_tree(&res);
+	init_results_tree(&res);
+
 	qprintf("Loading only duplicated hashes from hashfile.\n");
 
 	ret = dbfile_load_extent_hashes(&res);
@@ -544,7 +558,7 @@ void process_duplicates()
 	}
 
 	if (run_dedupe) {
-		dedupe_results(&res);
+		dedupe_results(&res, false);
 
 		/*
 		 * Bump dedupe_seq, this effectively marks the files
@@ -561,7 +575,7 @@ void process_duplicates()
 		if (ret)
 			goto out;
 	} else {
-		print_dupes_table(&res);
+		print_dupes_table(&res, false);
 	}
 
 out:
