@@ -908,7 +908,6 @@ static void csum_whole_file(struct filerec *file,
 	struct sqlite3 *db = NULL;
 	struct extent_csum *extent_hashes = NULL;
 	struct block_csum *block_hashes = NULL;
-	const char *errfunc = "(unknown)";
 
 	memset(&csum_ctxt, 0, sizeof(csum_ctxt));
 	csum_ctxt.buf = calloc(1, READ_BUF_LEN);
@@ -925,7 +924,6 @@ static void csum_whole_file(struct filerec *file,
 	if (ret)
 		goto err_noclose;
 
-	errfunc = "csum_by_extent";
 	ret = csum_by_extent(&csum_ctxt, fc, &extent_hashes, &nb_hash);
 	if (ret)
 		goto err;
@@ -1007,9 +1005,8 @@ err_noclose:
 
 	fprintf(
 		stderr,
-		"Skipping file due to error %d from function %s (%s), %s\n",
+		"Skipping file due to error %d from function csum_by_extent (%s), %s\n",
 		ret,
-		errfunc,
 		strerror(ret),
 		file->filename);
 
