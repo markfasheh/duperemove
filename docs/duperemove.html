@@ -362,6 +362,13 @@ know is the only part of a larger, unchanged dataset. Duperemove will
 still dedupe that specific target against any shared extent found in the
 existing files.
 </dd>
+<dt><strong>[no]only_whole_files</strong></dt>
+<dd>
+Defaults to <code>off</code>. Duperemove will only work on full file.
+Both extent-based and block-based deduplication will be disabled. The
+hashfile will be smaller, some operations will be faster, but the
+deduplication efficiency will indeed be reduced.
+</dd>
 </dl>
 </dd>
 <dt><strong>--read-hashes</strong>=<code>hashfile</code></dt>

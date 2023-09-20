@@ -77,6 +77,7 @@ struct thread_params {
 
 extern struct dbfile_config dbfile_cfg;
 extern bool rescan_files;
+extern bool only_whole_files;
 LIST_HEAD(exclude_list);
 
 extern bool do_block_hash;
@@ -956,20 +957,22 @@ static void csum_whole_file(struct filerec *file,
 		goto err;
 	}
 
-	if (do_block_hash) {
-		ret = dbfile_store_block_hashes(db, file,
-						csum_ctxt.nr_block_hashes,
-						csum_ctxt.block_hashes);
+	if (!only_whole_files) {
+		if (do_block_hash) {
+			ret = dbfile_store_block_hashes(db, file,
+							csum_ctxt.nr_block_hashes,
+							csum_ctxt.block_hashes);
+			if (ret) {
+				g_mutex_unlock(&io_mutex);
+				goto err;
+			}
+		}
+
+		ret = dbfile_store_extent_hashes(db, file, nb_hash, extent_hashes);
 		if (ret) {
 			g_mutex_unlock(&io_mutex);
 			goto err;
 		}
-	}
-
-	ret = dbfile_store_extent_hashes(db, file, nb_hash, extent_hashes);
-	if (ret) {
-		g_mutex_unlock(&io_mutex);
-		goto err;
 	}
 
 	ret = dbfile_store_file_digest(db, file, csum_ctxt.file_digest);

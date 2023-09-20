@@ -192,6 +192,12 @@ or file which you know is the only part of a larger, unchanged dataset.
 Duperemove will still dedupe that specific target against any shared extent
 found in the existing files.
 
+    **[no]only_whole_files**
+    ~ Defaults to `off`. Duperemove will only work on full file. Both
+extent-based and block-based deduplication will be disabled. The hashfile will
+be smaller, some operations will be faster, but the deduplication efficiency
+will indeed be reduced.
+
 **\--read-hashes**=`hashfile`
   ~ **This option is primarily for testing**. See the `--hashfile` option if you want to use hashfiles.
 

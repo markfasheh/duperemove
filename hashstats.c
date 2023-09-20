@@ -39,6 +39,7 @@ static char *serialize_fname = NULL;
 int run_dedupe = 0;
 int skip_zeroes = 0;
 bool do_block_hash = false;
+bool only_whole_files = false;
 int recurse_dirs = 0;
 unsigned int io_threads = 0;
 

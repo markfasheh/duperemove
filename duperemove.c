@@ -75,6 +75,7 @@ char *serialize_fname = NULL;
 unsigned int io_threads;
 unsigned int cpu_threads;
 bool rescan_files = true;
+bool only_whole_files = false;
 
 int stdout_is_tty = 0;
 bool do_block_hash = false;
@@ -200,6 +201,8 @@ static int parse_dedupe_opts(const char *opts)
 			do_block_hash = !invert;
 		} else if (strcmp(token, "rescan_files") == 0) {
 			rescan_files = !invert;
+		} else if (strcmp(token, "only_whole_files") == 0) {
+			only_whole_files = !invert;
 		} else {
 			print_usage = 1;
 			break;
@@ -428,6 +431,12 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 
 	numfiles = argc - optind;
 
+	if (only_whole_files && do_block_hash) {
+		fprintf(stderr, "Error: using both only_whole_files and partial "
+			"options have no meaning\n");
+		return 1;
+	}
+
 	/* Filter out option combinations that don't make sense. */
 	if ((write_hashes + read_hashes + update_hashes) > 1) {
 		fprintf(stderr, "Error: Specify only one hashfile option.\n");
@@ -534,28 +543,34 @@ void process_duplicates()
 
 	/* Reset the results_tree before loading extents or blocks */
 	free_results_tree(&res);
-	init_results_tree(&res);
 
-	qprintf("Loading only duplicated hashes from hashfile.\n");
+	if (!only_whole_files) {
+		init_results_tree(&res);
 
-	ret = dbfile_load_extent_hashes(&res);
-	if (ret)
-		goto out;
+		qprintf("Loading only duplicated hashes from hashfile.\n");
 
-	printf("Found %llu identical extents.\n", res.num_extents);
-	if (do_block_hash) {
-		ret = dbfile_load_block_hashes(&dups_tree);
+		ret = dbfile_load_extent_hashes(&res);
 		if (ret)
 			goto out;
 
-		ret = find_additional_dedupe(&res);
-		if (ret)
-			goto out;
+		printf("Found %llu identical extents.\n", res.num_extents);
+		if (do_block_hash) {
+			ret = dbfile_load_block_hashes(&dups_tree);
+			if (ret)
+				goto out;
+
+			ret = find_additional_dedupe(&res);
+			if (ret)
+				goto out;
+		}
+
+		if (run_dedupe)
+			dedupe_results(&res, false);
+		else
+			print_dupes_table(&res, false);
 	}
 
 	if (run_dedupe) {
-		dedupe_results(&res, false);
-
 		/*
 		 * Bump dedupe_seq, this effectively marks the files
 		 * in our hashfile as having been through dedupe.
@@ -570,10 +585,7 @@ void process_duplicates()
 		ret = dbfile_sync_config(&dbfile_cfg);
 		if (ret)
 			goto out;
-	} else {
-		print_dupes_table(&res, false);
 	}
-
 out:
 	free_results_tree(&res);
 	free_hash_tree(&dups_tree);
