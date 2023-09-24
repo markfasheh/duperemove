@@ -624,10 +624,10 @@ void dedupe_results(struct results_tree *res, bool whole_file)
 		return;
 	}
 
-	qprintf("Using %u threads for dedupe phase\n", io_threads);
+	qprintf("Using %u threads for dedupe phase\n", options.io_threads);
 
 	dedupe_pool = g_thread_pool_new((GFunc) dedupe_worker, &counts,
-					io_threads, TRUE, &err);
+					options.io_threads, TRUE, &err);
 	if (err) {
 		fprintf(stderr, "Unable to create dedupe thread pool: %s\n",
 			err->message);

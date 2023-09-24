@@ -1,6 +1,8 @@
 #ifndef	__FIND_DUPES_H__
 #define	__FIND_DUPES_H__
 
+#include "opt.h"
+
 /* from duperemove.c */
 extern int stdout_is_tty;
 extern unsigned int blocksize;

@@ -45,22 +45,14 @@
 #include "find_dupes.h"
 #include "run_dedupe.h"
 
+#include "opt.h"
+
 #define MIN_BLOCKSIZE	(4U*1024)
 /* max blocksize is somewhat arbitrary. */
 #define MAX_BLOCKSIZE	(1024U*1024)
 #define DEFAULT_BLOCKSIZE	(128U*1024)
 unsigned int blocksize = DEFAULT_BLOCKSIZE;
 
-int run_dedupe = 0;
-int recurse_dirs = 0;
-int dedupe_same_file = 1;
-int skip_zeroes = 0;
-
-unsigned int batch_size = 0;
-
-static int version_only = 0;
-static int help_option = 0;
-static int fdupes_mode = 0;
 static int stdin_filelist = 0;
 static unsigned int list_only_opt = 0;
 static unsigned int rm_only_opt = 0;
@@ -71,14 +63,8 @@ static enum {
 	H_WRITE,
 	H_UPDATE,
 } use_hashfile = H_UPDATE;
-char *serialize_fname = NULL;
-unsigned int io_threads;
-unsigned int cpu_threads;
-bool rescan_files = true;
-bool only_whole_files = false;
 
 int stdout_is_tty = 0;
-bool do_block_hash = false;
 
 static void print_file(char *filename, char *ino, char *subvol)
 {
@@ -128,9 +114,9 @@ static void rm_db_files_from_stdin(sqlite3 *db)
 static int rm_db_files(int numfiles, char **files)
 {
 	int i, ret;
-	_cleanup_(sqlite3_close_cleanup) sqlite3 *db = dbfile_open_handle(serialize_fname);
+	_cleanup_(sqlite3_close_cleanup) sqlite3 *db = dbfile_open_handle(options.hashfile);
 	if (!db) {
-		fprintf(stderr, "Error: Could not open \"%s\"\n", serialize_fname);
+		fprintf(stderr, "Error: Could not open \"%s\"\n", options.hashfile);
 		return -1;
 	}
 
@@ -171,15 +157,16 @@ static void print_version()
 }
 
 /* adapted from ocfs2-tools */
-static int parse_dedupe_opts(const char *opts)
+static int parse_dedupe_opts(const char *raw_opts)
 {
-	char *options, *token, *next, *p, *arg;
-	int print_usage = 0;
+	_cleanup_(freep) char *opts;
+	char *token, *next, *p, *arg;
+	int print_usage = false;
 	int invert, ret = 0;
 
-	options = strdup(opts);
+	opts = strdup(raw_opts);
 
-	for (token = options; token && *token; token = next) {
+	for (token = opts; token && *token; token = next) {
 		p = strchr(token, ',');
 		next = NULL;
 		invert = 0;
@@ -196,15 +183,15 @@ static int parse_dedupe_opts(const char *opts)
 		}
 
 		if (strcmp(token, "same") == 0) {
-			dedupe_same_file = !invert;
+			options.dedupe_same_file = !invert;
 		} else if (strcmp(token, "partial") == 0) {
-			do_block_hash = !invert;
+			options.do_block_hash = !invert;
 		} else if (strcmp(token, "rescan_files") == 0) {
-			rescan_files = !invert;
+			options.rescan_files = !invert;
 		} else if (strcmp(token, "only_whole_files") == 0) {
-			only_whole_files = !invert;
+			options.only_whole_files = !invert;
 		} else {
-			print_usage = 1;
+			print_usage = true;
 			break;
 		}
 	}
@@ -219,7 +206,6 @@ static int parse_dedupe_opts(const char *opts)
 		ret = EINVAL;
 	}
 
-	free(options);
 	return ret;
 }
 
@@ -299,6 +285,11 @@ static int add_files_from_cmdline(int numfiles, char **files)
 	return 0;
 }
 
+static void help()
+{
+	execlp("man", "man", "8", "duperemove", NULL);
+}
+
 /*
  * Ok this is doing more than just parsing options.
  */
@@ -329,8 +320,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 	};
 
 	if (argc < 2) {
-		help_option = 1;
-		return 0;
+		help(); /* Never returns */
 	}
 
 	while ((c = getopt_long(argc, argv, "b:vdDrh?LRqB:", long_ops, NULL))
@@ -347,14 +337,14 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			break;
 		case 'd':
 		case 'D':
-			run_dedupe += 1;
+			options.run_dedupe += 1;
 			break;
 		case 'r':
-			recurse_dirs = 1;
+			options.recurse_dirs = true;
 			break;
 		case VERSION_OPTION:
-			version_only = 1;
-			break;
+			print_version();
+			exit(0);
 		case DEBUG_OPTION:
 			debug = 1;
 			/* Fall through */
@@ -366,37 +356,37 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			break;
 		case WRITE_HASHES_OPTION:
 			write_hashes = 1;
-			serialize_fname = strdup(optarg);
+			options.hashfile = strdup(optarg);
 			break;
 		case READ_HASHES_OPTION:
 			read_hashes = 1;
-			serialize_fname = strdup(optarg);
+			options.hashfile = strdup(optarg);
 			break;
 		case HASHFILE_OPTION:
 			update_hashes = 1;
-			serialize_fname = strdup(optarg);
+			options.hashfile = strdup(optarg);
 			break;
 		case IO_THREADS_OPTION:
-			io_threads = strtoul(optarg, NULL, 10);
-			if (!io_threads){
+			options.io_threads = strtoul(optarg, NULL, 10);
+			if (!options.io_threads){
 				fprintf(stderr, "Error: --io-threads must be "
 					"an integer, %s found\n", optarg);
 				return EINVAL;
 			}
 			break;
 		case CPU_THREADS_OPTION:
-			cpu_threads = strtoul(optarg, NULL, 10);
-			if (!cpu_threads){
+			options.cpu_threads = strtoul(optarg, NULL, 10);
+			if (!options.cpu_threads){
 				fprintf(stderr, "Error: --cpu-threads must be "
 					"an integer, %s found\n", optarg);
 				return EINVAL;
 			}
 			break;
 		case SKIP_ZEROES_OPTION:
-			skip_zeroes = 1;
+			options.skip_zeroes = true;
 			break;
 		case FDUPES_OPTION:
-			fdupes_mode = 1;
+			options.fdupes_mode = 1;
 			break;
 		case DEDUPE_OPTS_OPTION:
 			if (parse_dedupe_opts(optarg))
@@ -417,21 +407,20 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			break;
 		case BATCH_SIZE_OPTION:
 		case 'B':
-			batch_size = parse_size(optarg);
+			options.batch_size = parse_size(optarg);
 			break;
 		case HELP_OPTION:
-			help_option = 1;
+			help();
 			break;
 		case '?':
 		default:
-			version_only = 0;
 			return 1;
 		}
 	}
 
 	numfiles = argc - optind;
 
-	if (only_whole_files && do_block_hash) {
+	if (options.only_whole_files && options.do_block_hash) {
 		fprintf(stderr, "Error: using both only_whole_files and partial "
 			"options have no meaning\n");
 		return 1;
@@ -460,7 +449,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		goto out_nofiles;
 	}
 
-	if (fdupes_mode) {
+	if (options.fdupes_mode) {
 		if (read_hashes || write_hashes || update_hashes) {
 			fprintf(stderr,
 				"Error: cannot mix hashfile option with "
@@ -488,7 +477,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 	}
 
 	if (list_only_opt || rm_only_opt) {
-		if (!serialize_fname || use_hashfile == H_WRITE) {
+		if (!options.hashfile || use_hashfile == H_WRITE) {
 			fprintf(stderr,	"Error: --hashfile= option is required "
 				"with '-L' or -R.\n");
 			return 1;
@@ -501,21 +490,20 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		}
 	}
 
-	if (!(version_only || fdupes_mode || list_only_opt)
+	if (!(options.fdupes_mode || list_only_opt)
 			&& numfiles == 0) {
 		fprintf(stderr, "Error: a file list argument is required.\n");
 		return 1;
 	}
 
 out_nofiles:
-
 	return 0;
 }
 
 static void print_header(void)
 {
 	vprintf("Using %uK blocks\n", blocksize / 1024);
-	vprintf("Using %s hashing\n", do_block_hash ? "block+extent" : "extent");
+	vprintf("Using %s hashing\n", options.do_block_hash ? "block+extent" : "extent");
 #ifdef	DEBUG_BUILD
 	printf("Debug build, performance may be impacted.\n");
 #endif
@@ -536,7 +524,7 @@ void process_duplicates()
 	if (ret)
 		goto out;
 
-	if (run_dedupe)
+	if (options.run_dedupe)
 		dedupe_results(&res, true);
 	else
 		print_dupes_table(&res, true);
@@ -544,7 +532,7 @@ void process_duplicates()
 	/* Reset the results_tree before loading extents or blocks */
 	free_results_tree(&res);
 
-	if (!only_whole_files) {
+	if (!options.only_whole_files) {
 		init_results_tree(&res);
 
 		qprintf("Loading only duplicated hashes from hashfile.\n");
@@ -554,7 +542,7 @@ void process_duplicates()
 			goto out;
 
 		printf("Found %llu identical extents.\n", res.num_extents);
-		if (do_block_hash) {
+		if (options.do_block_hash) {
 			ret = dbfile_load_block_hashes(&dups_tree);
 			if (ret)
 				goto out;
@@ -564,13 +552,13 @@ void process_duplicates()
 				goto out;
 		}
 
-		if (run_dedupe)
+		if (options.run_dedupe)
 			dedupe_results(&res, false);
 		else
 			print_dupes_table(&res, false);
 	}
 
-	if (run_dedupe) {
+	if (options.run_dedupe) {
 		/*
 		 * Bump dedupe_seq, this effectively marks the files
 		 * in our hashfile as having been through dedupe.
@@ -613,7 +601,7 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 	if (ret)
 		goto out;
 
-	if (rescan_files) {
+	if (options.rescan_files) {
 		qprintf("Adding files from database for hashing.\n");
 		ret = dbfile_scan_files();
 		if (ret)
@@ -626,7 +614,7 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 		goto out;
 	}
 
-	ret = populate_tree(&dbfile_cfg, batch_size, &process_duplicates);
+	ret = populate_tree(&dbfile_cfg, &process_duplicates);
 	if (ret) {
 		fprintf(stderr,	"Error while populating extent tree!\n");
 		goto out;
@@ -649,20 +637,11 @@ int main(int argc, char **argv)
 	init_filerec();
 
 	/* Set the default CPU limits before parsing the user options */
-	get_num_cpus(&cpu_threads, &io_threads);
+	get_num_cpus(&(options.cpu_threads), &(options.io_threads));
 
 	ret = parse_options(argc, argv, &filelist_idx);
 	if (ret) {
 		exit(1);
-	}
-
-	if (version_only) {
-		print_version();
-		exit(0);
-	}
-
-	if (help_option) {
-		execlp("man", "man", "8", "duperemove", NULL);
 	}
 
 	/* Allow larger than unusal amount of open files. On linux
@@ -674,18 +653,18 @@ int main(int argc, char **argv)
 	 */
 	increase_limits();
 
-	if (fdupes_mode)
+	if (options.fdupes_mode)
 		return add_files_from_stdin(1);
 
 	if (isatty(STDOUT_FILENO))
 		stdout_is_tty = 1;
 
 	if (list_only_opt)
-		return list_db_files(serialize_fname);
+		return list_db_files(options.hashfile);
 	else if (rm_only_opt)
 		return rm_db_files(argc - filelist_idx, &argv[filelist_idx]);
 
-	ret = dbfile_open(serialize_fname, &dbfile_cfg);
+	ret = dbfile_open(options.hashfile, &dbfile_cfg);
 	if (ret)
 		goto out;
 
@@ -696,7 +675,7 @@ int main(int argc, char **argv)
 	switch (use_hashfile) {
 	case H_UPDATE:
 	case H_WRITE:
-		if (serialize_fname && !IS_RELEASE)
+		if (options.hashfile && !IS_RELEASE)
 			printf("Warning: The hash file format in Duperemove "
 			       "master branch is under development and may "
 			       "change.\nIf the changes are not backwards "
@@ -712,7 +691,7 @@ int main(int argc, char **argv)
 			 * stage. Exit the program now.
 			 */
 			qprintf("Hashfile \"%s\" written, exiting.\n",
-				serialize_fname);
+				options.hashfile);
 			goto out;
 		}
 		break;

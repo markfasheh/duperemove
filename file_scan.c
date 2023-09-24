@@ -49,6 +49,7 @@
 #include "file_scan.h"
 #include "dbfile.h"
 #include "util.h"
+#include "opt.h"
 
 /* This is not in linux/magic.h */
 #ifndef	XFS_SB_MAGIC
@@ -76,11 +77,7 @@ struct thread_params {
 };
 
 extern struct dbfile_config dbfile_cfg;
-extern bool rescan_files;
-extern bool only_whole_files;
 LIST_HEAD(exclude_list);
-
-extern bool do_block_hash;
 
 static void set_filerec_scan_flags(struct filerec *file)
 {
@@ -189,7 +186,7 @@ static int walk_dir(const char *name)
 
 			type = get_dirent_type(entry, dirfd(dirp));
 			if (type == DT_REG ||
-			    (recurse_dirs && type == DT_DIR)) {
+			    (options.recurse_dirs && type == DT_DIR)) {
 				if (add_file(entry->d_name)) {
 					ret = 1;
 					goto out;
@@ -252,7 +249,7 @@ static int __add_file(const char *name, struct stat *st,
 	if (is_excluded(name))
 		return 0;
 
-	if (run_dedupe == 1 &&
+	if (options.run_dedupe == 1 &&
 	    ((fs.f_type != BTRFS_SUPER_MAGIC &&
 	      fs.f_type != XFS_SB_MAGIC))) {
 		close(fd);
@@ -551,7 +548,7 @@ static GThreadPool *setup_pool(void *arg, void *function)
 	GError *err = NULL;
 	GThreadPool *pool;
 
-	pool = g_thread_pool_new((GFunc) function, arg, io_threads, FALSE,
+	pool = g_thread_pool_new((GFunc) function, arg, options.io_threads, FALSE,
 				 &err);
 	if (err != NULL) {
 		fprintf(stderr, "Unable to create thread pool: %s\n",
@@ -563,15 +560,14 @@ static GThreadPool *setup_pool(void *arg, void *function)
 	return pool;
 }
 
-static void run_pool(GThreadPool *pool, struct filerec *file,
-		unsigned int batch_size)
+static void run_pool(GThreadPool *pool, struct filerec *file)
 {
 	GError *err = NULL;
 	struct filerec *tmp;
 
 	unsigned int counter = 0;
 
-	qprintf("Using %u threads for file hashing phase\n", io_threads);
+	qprintf("Using %u threads for file hashing phase\n", options.io_threads);
 
 	/* Reset the scanned filerecs */
 	list_for_each_entry(file, &filerec_list, rec_list) {
@@ -591,9 +587,9 @@ static void run_pool(GThreadPool *pool, struct filerec *file,
 			}
 
 			/* If batch_size is 0 then batching is disabled */
-			if ( batch_size != 0 ) {
+			if ( options.batch_size != 0 ) {
 				counter += 1;
-				if (counter > batch_size) {
+				if (counter > options.batch_size) {
 					break;
 				}
 			}
@@ -668,10 +664,10 @@ static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
 	while (start < extlen) {
 		char *buf = data->buf + start;
 
-		if (!(skip_zeroes && is_block_zeroed(buf, cmp_len))) {
+		if (!(options.skip_zeroes && is_block_zeroed(buf, cmp_len))) {
 			checksum_block(buf, cmp_len, data->block_digest);
 
-			if (do_block_hash) {
+			if (options.do_block_hash) {
 				ret = add_block_hash(&data->block_hashes,
 						     &data->nr_block_hashes,
 						     extoff + start,
@@ -780,7 +776,7 @@ static int fiemap_helper(struct fiemap_ctxt *fc, struct filerec *file,
 	if (ret)
 		return ret;
 
-	if ((skip_zeroes && *flags & FIEMAP_EXTENT_UNWRITTEN) ||
+	if ((options.skip_zeroes && *flags & FIEMAP_EXTENT_UNWRITTEN) ||
 	    (*flags & FIEMAP_SKIP_FLAGS)) {
 		/* Unwritten or other extent we don't want to read */
 		return 1;
@@ -957,8 +953,8 @@ static void csum_whole_file(struct filerec *file,
 		goto err;
 	}
 
-	if (!only_whole_files) {
-		if (do_block_hash) {
+	if (!options.only_whole_files) {
+		if (options.do_block_hash) {
 			ret = dbfile_store_block_hashes(db, file,
 							csum_ctxt.nr_block_hashes,
 							csum_ctxt.block_hashes);
@@ -1043,8 +1039,7 @@ err_noclose:
 	return;
 }
 
-int populate_tree(struct dbfile_config *cfg, unsigned int batch_size,
-		void (*callback)(void))
+int populate_tree(struct dbfile_config *cfg, void (*callback)(void))
 {
 	GThreadPool *pool;
 	struct thread_params params;
@@ -1066,7 +1061,7 @@ int populate_tree(struct dbfile_config *cfg, unsigned int batch_size,
 				goto out;
 			}
 
-			run_pool(pool, file, batch_size);
+			run_pool(pool, file);
 			callback();
 		}
 

@@ -38,11 +38,6 @@
 
 #include "find_dupes.h"
 
-extern int dedupe_same_file;
-extern unsigned int cpu_threads;
-
-extern char *serialize_fname;
-
 /*
  * Extent search status globals. This could be an atomic but GCond
  * requires a mutex so we might as well use it...
@@ -367,7 +362,7 @@ static int search_extent(struct filerec *file, struct file_extent *extent,
 			continue;
 
 		found_file = found_block->b_file;
-		if (!dedupe_same_file && file == found_file)
+		if (!options.dedupe_same_file && file == found_file)
 			continue;
 
 		/*
@@ -411,10 +406,10 @@ int search_file_extents(struct filerec *file, struct results_tree *dupe_extents)
 	struct file_extent *extent;
 	unsigned int num_extents, i;
 
-	db = dbfile_open_handle(serialize_fname);
+	db = dbfile_open_handle(options.hashfile);
 	if (!db) {
 		fprintf(stderr, "ERROR: Couldn't open db file %s\n",
-			serialize_fname == NULL ? "(null)" : serialize_fname);
+			options.hashfile == NULL ? "(null)" : options.hashfile);
 		return ENOMEM;
 	}
 	/*
@@ -481,10 +476,10 @@ int find_additional_dedupe(struct results_tree *dupe_extents)
 
 	qprintf("Using %u threads to search within extents for "
 		"additional dedupe. This process will take some time, during "
-		"which Duperemove can safely be ctrl-c'd.\n", cpu_threads);
+		"which Duperemove can safely be ctrl-c'd.\n", options.cpu_threads);
 
 	pool = g_thread_pool_new((GFunc) find_dupes_thread, NULL,
-				 cpu_threads, TRUE, &err);
+				 options.cpu_threads, TRUE, &err);
 	if (err) {
 		fprintf(stderr,
 			"Unable to create find file dupes thread pool: %s\n",

@@ -3,13 +3,6 @@
 
 #include "list.h"
 
-/* from duperemove.c */
-extern int run_dedupe;
-extern int one_file_system;
-extern int recurse_dirs;
-extern unsigned int blocksize;
-extern unsigned int io_threads;
-extern int skip_zeroes;
 /*
  * Returns nonzero on fatal errors only
  */
@@ -32,8 +25,7 @@ dev_t fs_onefs_dev(void);
 uint64_t fs_onefs_id(void);
 
 struct dbfile_config;
-int populate_tree(struct dbfile_config *cfg, unsigned int batch_size,
-		void (*callback)(void));
+int populate_tree(struct dbfile_config *cfg, void (*callback)(void));
 
 /* For dbfile.c */
 struct block_csum {

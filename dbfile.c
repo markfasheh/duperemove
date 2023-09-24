@@ -21,10 +21,9 @@
 #include "debug.h"
 
 #include "dbfile.h"
+#include "opt.h"
 
 static sqlite3 *gdb = NULL;
-
-extern bool rescan_files;
 
 #if (SQLITE_VERSION_NUMBER < 3007015)
 #define	perror_sqlite(_err, _why)					\
