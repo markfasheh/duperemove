@@ -64,8 +64,6 @@ static enum {
 	H_UPDATE,
 } use_hashfile = H_UPDATE;
 
-int stdout_is_tty = 0;
-
 static void print_file(char *filename, char *ino, char *subvol)
 {
 	if (verbose)
@@ -655,9 +653,6 @@ int main(int argc, char **argv)
 
 	if (options.fdupes_mode)
 		return add_files_from_stdin(1);
-
-	if (isatty(STDOUT_FILENO))
-		stdout_is_tty = 1;
 
 	if (list_only_opt)
 		return list_db_files(options.hashfile);

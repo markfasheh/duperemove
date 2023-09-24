@@ -22,6 +22,7 @@
 #include <errno.h>
 #include <string.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #include <inttypes.h>
 #include <glib.h>
@@ -60,9 +61,6 @@ static void print_extent_search_status(unsigned long long processed)
 	int width = 40;
 	float progress;
 
-	if (!stdout_is_tty || verbose || debug || quiet)
-		return;
-
 	progress = (float) processed / search_total;
 	pos = width * progress;
 
@@ -90,9 +88,6 @@ static void print_extent_search_status(unsigned long long processed)
 static void clear_extent_search_status(unsigned long long processed,
 				       int err)
 {
-	if (!stdout_is_tty || verbose || debug || quiet)
-		return;
-
 	if (err)
 		printf("\nSearch exited (%llu processed) with error %d: "
 		       "\"%s\"\n", processed, err, strerror(err));
@@ -113,7 +108,7 @@ static void wait_update_extent_search_status()
 	uint64_t end_time = g_get_monotonic_time () + 1 * G_TIME_SPAN_SECOND;
 	unsigned long long tmp, last = 0;
 
-	if (!stdout_is_tty || verbose || debug)
+	if (!isatty(STDOUT_FILENO) || verbose || debug)
 		return;
 
 	/* Get the bar started */
