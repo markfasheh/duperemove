@@ -56,9 +56,6 @@
 #define	XFS_SB_MAGIC		0x58465342	/* 'XFSB' */
 #endif
 
-static char path[PATH_MAX] = { 0, };
-static char *pathp = path;
-static char *path_max = &path[PATH_MAX - 1];
 static dev_t one_fs_dev;
 static uint64_t one_fs_btrfs;
 
@@ -107,7 +104,7 @@ uint64_t fs_onefs_id(void)
 	return one_fs_btrfs;
 }
 
-static int get_dirent_type(struct dirent *entry, int fd)
+static int get_dirent_type(struct dirent *entry, int fd, const char *path)
 {
 	int ret;
 	struct stat st;
@@ -162,17 +159,18 @@ static int is_excluded(const char *name)
 	return 0;
 }
 
-static int walk_dir(const char *name)
+
+static int walk_dir(char *path)
 {
 	int ret = 0;
-	int type;
 	struct dirent *entry;
 	DIR *dirp;
+	char child[PATH_MAX + 256] = { 0, };
 
 	dirp = opendir(path);
 	if (dirp == NULL) {
 		fprintf(stderr, "Error %d: %s while opening directory %s\n",
-			errno, strerror(errno), name);
+			errno, strerror(errno), path);
 		return 0;
 	}
 
@@ -184,10 +182,16 @@ static int walk_dir(const char *name)
 			    || strcmp(entry->d_name, "..") == 0)
 				continue;
 
-			type = get_dirent_type(entry, dirfd(dirp));
-			if (type == DT_REG ||
-			    (options.recurse_dirs && type == DT_DIR)) {
-				if (add_file(entry->d_name)) {
+			entry->d_type = get_dirent_type(entry, dirfd(dirp), path);
+
+			if (entry->d_type == DT_REG ||
+			    (options.recurse_dirs && entry->d_type == DT_DIR)) {
+
+				/* This should never happen */
+				abort_on(strlen(path) + strlen(entry->d_name) > PATH_MAX);
+
+				sprintf(child, "%s/%s", path, entry->d_name);
+				if (add_file(child)) {
 					ret = 1;
 					goto out;
 				}
@@ -324,26 +328,13 @@ static bool will_cross_mountpoint(dev_t dev, uint64_t btrfs_fsid)
 /*
  * Returns nonzero on fatal errors only
  */
-int add_file(const char *name)
+int add_file(const char *path)
 {
-	int ret, len = strlen(name);
+	int ret;
 	struct stat st;
-	char *pathtmp;
 	struct filerec *file = NULL;
 	char abspath[PATH_MAX];
 	uint64_t mtime = 0, size = 0;
-
-	if (len > (path_max - pathp)) {
-		fprintf(stderr, "Path max exceeded: %s %s\n", path, name);
-		return 0;
-	}
-
-	pathtmp = pathp;
-	if (pathp == path)
-		ret = sprintf(pathp, "%s", name);
-	else
-		ret = sprintf(pathp, "/%s", name);
-	pathp += ret;
 
 	/*
 	 * Sanitize the file name and get absolute path. This avoids:
@@ -395,7 +386,7 @@ int add_file(const char *name)
 			goto out;
 		}
 
-		if (walk_dir(name))
+		if (walk_dir(abspath))
 			return 1;
 		goto out;
 	}
@@ -436,7 +427,6 @@ int add_file(const char *name)
 		file->flags |= FILEREC_IN_DB;
 
 out:
-	pathp = pathtmp;
 	return 0;
 }
 

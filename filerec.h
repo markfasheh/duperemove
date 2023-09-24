@@ -27,7 +27,6 @@ extern struct list_head filerec_list;
 extern unsigned long long num_filerecs;
 extern unsigned int dedupe_seq; /* This is incremented on every dedupe pass */
 
-
 struct filerec {
 	int		fd;			/* file descriptor */
 	unsigned int	fd_refs;			/* fd refcount */
