@@ -134,17 +134,6 @@ static int rm_db_files(int numfiles, char **files)
 	return 0;
 }
 
-extern struct list_head exclude_list;
-
-static void add_exclude_pattern(const char *pattern)
-{
-	struct exclude_file *exclude = malloc(sizeof(*exclude));
-	if (exclude) {
-		exclude->pattern = strdup(pattern);
-		list_add_tail(&exclude->list, &exclude_list);
-	}
-}
-
 static void print_version()
 {
 	char *s = NULL;
@@ -227,7 +216,7 @@ enum {
 static int add_files_from_stdin(int fdupes)
 {
 	int ret = 0;
-	char *path = NULL;
+	_cleanup_(freep) char *path = NULL;
 	size_t pathlen = 0;
 	ssize_t readlen;
 
@@ -258,9 +247,6 @@ static int add_files_from_stdin(int fdupes)
 			return 1;
 		}
 	}
-
-	if (path != NULL)
-		free(path);
 
 	return 0;
 }
@@ -401,7 +387,8 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			quiet = 1;
 			break;
 		case EXCLUDE_OPTION:
-			add_exclude_pattern(optarg);
+			if (add_exclude_pattern(optarg))
+				fprintf(stderr, "Error: cannot exclude %s\n", optarg);
 			break;
 		case BATCH_SIZE_OPTION:
 		case 'B':

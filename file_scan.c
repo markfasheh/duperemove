@@ -1076,3 +1076,14 @@ out:
 	g_mutex_clear(&params.mutex);
 	return ret;
 }
+
+int add_exclude_pattern(const char *pattern)
+{
+	struct exclude_file *exclude = malloc(sizeof(*exclude));
+	if (!exclude)
+		return 1;
+
+	exclude->pattern = strdup(pattern);
+	list_add_tail(&exclude->list, &exclude_list);
+	return 0;
+}

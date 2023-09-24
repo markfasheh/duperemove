@@ -1,7 +1,10 @@
 #ifndef	__FILE_SCAN_H__
 #define	__FILE_SCAN_H__
 
+#include <sys/types.h>
+
 #include "list.h"
+#include "csum.h"
 
 /*
  * Returns nonzero on fatal errors only
@@ -46,5 +49,7 @@ struct exclude_file {
 	char *pattern;
 	struct list_head list;
 };
+
+int add_exclude_pattern(const char *pattern);
 
 #endif	/* __FILE_SCAN_H__ */
