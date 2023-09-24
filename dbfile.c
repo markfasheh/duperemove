@@ -267,8 +267,20 @@ int dbfile_open(char *filename, struct dbfile_config *cfg)
 	gdb = db;
 
 	ret = dbfile_check(cfg);
-	if (ret)
-		return ret;
+	if (ret) {
+		fprintf(stderr, "Recreating hashfile ..\n");
+		sqlite3_close(db);
+		ret = unlink(filename);
+		if ( ret && errno != ENOENT) {
+			ret = errno;
+			fprintf(stderr, "Error %d while unlinking old "
+				"db file \"%s\" : %s\n", ret, filename,
+				strerror(ret));
+			return ret;
+		}
+
+		return dbfile_open(filename, cfg);
+	}
 
 	/* May store the default config, if fields were missing
 	 * or if the database did not exist

@@ -10,6 +10,7 @@ PENDING
  * Hashfile version has been increased to reflect the new database behaviors. Previous hashfiles are not compatible.
  * Always compute a hash for the entire file. This let us deduplicate same files easily, regardless of their extents mappings.
  * Deduplicating only parts of a file can be disabled using the only\_whole\_files dedupe option.
+ * Hashfiles with unsupported features or hash algorithm are now recreated transparently. Migration of the old content is not implemented.
 
 Version 0.12
 ---

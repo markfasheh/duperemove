@@ -643,13 +643,6 @@ int main(int argc, char **argv)
 
 	print_header();
 
-	if (options.hashfile && !IS_RELEASE && use_hashfile != H_READ)
-		printf("Warning: The hash file format in Duperemove "
-		       "master branch is under development and may "
-		       "change.\nIf the changes are not backwards "
-		       "compatible, you will have to re-create your "
-		       "hash file.\n");
-
 	if (use_hashfile == H_WRITE) {
 		ret = create_scan_list(argc, argv, filelist_idx);
 		if (ret)
