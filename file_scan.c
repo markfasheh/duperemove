@@ -164,49 +164,49 @@ static int walk_dir(char *path)
 {
 	int ret = 0;
 	struct dirent *entry;
-	DIR *dirp;
+	_cleanup_(closedirectory) DIR *dirp = opendir(path);
+
+	/* Overallocate to peace the compiler. An abort will check the actual values. */
 	char child[PATH_MAX + 256] = { 0, };
 
-	dirp = opendir(path);
 	if (dirp == NULL) {
 		fprintf(stderr, "Error %d: %s while opening directory %s\n",
 			errno, strerror(errno), path);
 		return 0;
 	}
 
-	do {
+	while(true) {
 		errno = 0;
 		entry = readdir(dirp);
-		if (entry) {
-			if (strcmp(entry->d_name, ".") == 0
-			    || strcmp(entry->d_name, "..") == 0)
-				continue;
+		if (!entry) /* End of directory or error */
+			break;
 
-			entry->d_type = get_dirent_type(entry, dirfd(dirp), path);
-
-			if (entry->d_type == DT_REG ||
-			    (options.recurse_dirs && entry->d_type == DT_DIR)) {
-
-				/* This should never happen */
-				abort_on(strlen(path) + strlen(entry->d_name) > PATH_MAX);
-
-				sprintf(child, "%s/%s", path, entry->d_name);
-				if (add_file(child)) {
-					ret = 1;
-					goto out;
-				}
-			}
+		if (errno != 0) {
+			fprintf(stderr, "Error %d: %s while reading directory %s\n",
+				errno, strerror(errno), path);
+			return 0;
 		}
-	} while (entry != NULL);
 
-	if (errno) {
-		fprintf(stderr, "Error %d: %s while reading directory %s\n",
-			errno, strerror(errno), path);
+		if (strcmp(entry->d_name, ".") == 0
+		    || strcmp(entry->d_name, "..") == 0)
+			continue;
+
+		entry->d_type = get_dirent_type(entry, dirfd(dirp), path);
+
+		if (entry->d_type == DT_REG ||
+		    (options.recurse_dirs && entry->d_type == DT_DIR)) {
+
+			/* This should never happen */
+			abort_on(strlen(path) + strlen(entry->d_name) > PATH_MAX);
+
+			sprintf(child, "%s/%s", path, entry->d_name);
+			ret = add_file(child);
+			if (ret)
+				return ret;
+		}
 	}
 
-out:
-	closedir(dirp);
-	return ret;
+	return 0;
 }
 
 static int __add_file(const char *name, struct stat *st,
@@ -364,6 +364,7 @@ int add_file(const char *path)
 		uint64_t btrfs_fsid;
 		dev_t dev = st.st_dev;
 
+		/* Check if the whole directory is excluded */
 		if (is_excluded(abspath))
 			goto out;
 

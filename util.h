@@ -18,6 +18,7 @@
 #ifndef	__UTIL_H__
 #define	__UTIL_H__
 
+#include <dirent.h>
 #include <stdint.h>
 #include <sys/time.h>
 
@@ -61,4 +62,11 @@ static inline void freep(void *p)
 {
 	free(*(void**) p);
 }
+
+static inline void closedirectory(DIR **p)
+{
+	if (*p)
+		closedir(*p);
+}
+
 #endif	/* __UTIL_H__ */
