@@ -1062,7 +1062,8 @@ int populate_tree(struct dbfile_config *cfg, void (*callback)(void))
 			}
 
 			run_pool(pool, file);
-			callback();
+			if (callback)
+				callback();
 		}
 
 		printf("Total files scanned:  %llu\n", params.num_files);
@@ -1070,7 +1071,8 @@ int populate_tree(struct dbfile_config *cfg, void (*callback)(void))
 	} else {
 		// Maybe some files where scanned in a previous run but never
 		// deduped
-		callback();
+		if (callback)
+			callback();
 	}
 out:
 	g_mutex_clear(&params.mutex);

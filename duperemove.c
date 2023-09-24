@@ -280,9 +280,9 @@ static void help()
 static int parse_options(int argc, char **argv, int *filelist_idx)
 {
 	int c, numfiles;
-	int read_hashes = 0;
-	int write_hashes = 0;
-	int update_hashes = 0;
+	bool read_hashes = false;
+	bool write_hashes = false;
+	bool update_hashes = false;
 
 	static struct option long_ops[] = {
 		{ "debug", 0, NULL, DEBUG_OPTION },
@@ -339,15 +339,15 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			human_readable = 1;
 			break;
 		case WRITE_HASHES_OPTION:
-			write_hashes = 1;
+			write_hashes = true;
 			options.hashfile = strdup(optarg);
 			break;
 		case READ_HASHES_OPTION:
-			read_hashes = 1;
+			read_hashes = true;
 			options.hashfile = strdup(optarg);
 			break;
 		case HASHFILE_OPTION:
-			update_hashes = 1;
+			update_hashes = true;
 			options.hashfile = strdup(optarg);
 			break;
 		case IO_THREADS_OPTION:
@@ -564,7 +564,7 @@ out:
 	free_hash_tree(&dups_tree);
 }
 
-static int create_update_hashfile(int argc, char **argv, int filelist_idx)
+static int create_scan_list(int argc, char **argv, int filelist_idx)
 {
 	int ret;
 
@@ -574,7 +574,7 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 		ret = add_files_from_cmdline(argc - filelist_idx,
 					     &argv[filelist_idx]);
 	if (ret)
-		goto out;
+		return ret;
 
 	/*
 	 * Those fields are 0 by default, and are added by
@@ -584,32 +584,21 @@ static int create_update_hashfile(int argc, char **argv, int filelist_idx)
 	dbfile_cfg.onefs_fsid = fs_onefs_id();
 	ret = dbfile_sync_config(&dbfile_cfg);
 	if (ret)
-		goto out;
+		return ret;
 
 	if (options.rescan_files) {
 		qprintf("Adding files from database for hashing.\n");
 		ret = dbfile_scan_files();
 		if (ret)
-			goto out;
+			return ret;
 	}
 
 	if (list_empty(&filerec_list)) {
 		fprintf(stderr, "No dedupe candidates found.\n");
-		ret = EINVAL;
-		goto out;
+		return EINVAL;
 	}
 
-	ret = populate_tree(&dbfile_cfg, &process_duplicates);
-	if (ret) {
-		fprintf(stderr,	"Error while populating extent tree!\n");
-		goto out;
-	}
-
-	ret = dbfile_sync_files(dbfile_get_handle());
-	if (ret)
-		goto out;
-out:
-	return ret;
+	return 0;
 }
 
 int main(int argc, char **argv)
@@ -654,36 +643,50 @@ int main(int argc, char **argv)
 
 	print_header();
 
-	switch (use_hashfile) {
-	case H_UPDATE:
-	case H_WRITE:
-		if (options.hashfile && !IS_RELEASE)
-			printf("Warning: The hash file format in Duperemove "
-			       "master branch is under development and may "
-			       "change.\nIf the changes are not backwards "
-			       "compatible, you will have to re-create your "
-			       "hash file.\n");
-		ret = create_update_hashfile(argc, argv, filelist_idx);
+	if (options.hashfile && !IS_RELEASE && use_hashfile != H_READ)
+		printf("Warning: The hash file format in Duperemove "
+		       "master branch is under development and may "
+		       "change.\nIf the changes are not backwards "
+		       "compatible, you will have to re-create your "
+		       "hash file.\n");
+
+	if (use_hashfile == H_WRITE) {
+		ret = create_scan_list(argc, argv, filelist_idx);
 		if (ret)
 			goto out;
 
-		if (use_hashfile == H_WRITE) {
-			/*
-			 * This option is for isolating the file scan
-			 * stage. Exit the program now.
-			 */
-			qprintf("Hashfile \"%s\" written, exiting.\n",
-				options.hashfile);
+		ret = populate_tree(&dbfile_cfg, NULL);
+		if (ret) {
+			fprintf(stderr,	"Error while populating extent tree!\n");
 			goto out;
 		}
-		break;
-	case H_READ:
-		process_duplicates();
-		break;
-	default:
-		abort_lineno();
-		break;
+
+		ret = dbfile_sync_files(dbfile_get_handle());
+		if (ret)
+			goto out;
+
+		qprintf("Hashfile \"%s\" written, exiting.\n",
+			options.hashfile);
 	}
+
+	if (use_hashfile == H_UPDATE) {
+		ret = create_scan_list(argc, argv, filelist_idx);
+		if (ret)
+			goto out;
+
+		ret = populate_tree(&dbfile_cfg, &process_duplicates);
+		if (ret) {
+			fprintf(stderr,	"Error while populating extent tree!\n");
+			goto out;
+		}
+
+		ret = dbfile_sync_files(dbfile_get_handle());
+		if (ret)
+			goto out;
+	}
+
+	if (use_hashfile == H_READ)
+		process_duplicates();
 
 out:
 	free_all_filerecs();
