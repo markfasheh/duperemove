@@ -218,6 +218,9 @@ static int __add_file(const char *name, struct stat *st,
 	uint64_t subvolid;
 	struct statfs fs;
 
+	if (is_excluded(name))
+		return 0;
+
 	if (S_ISDIR(st->st_mode))
 		return 0;
 
@@ -249,9 +252,6 @@ static int __add_file(const char *name, struct stat *st,
 			"Skipping.\n", ret, strerror(ret), name);
 		goto out;
 	}
-
-	if (is_excluded(name))
-		return 0;
 
 	if (options.run_dedupe == 1 &&
 	    ((fs.f_type != BTRFS_SUPER_MAGIC &&
