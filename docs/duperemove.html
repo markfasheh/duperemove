@@ -257,11 +257,10 @@ This greatly reduces memory usage for large dataset, or when you are
 doing partial extents lookup, but reduces multithreading efficiency.</p>
 <p>Because of that small overhead, its value shall be selected based on
 the average file size and <code>blocksize</code>.</p>
-<p><code>1000</code> is a sane value for extents-only lookups, while you
-can go as low as <code>1</code> if you are running
-<code>duperemove</code> on very large files (like virtual machines
-etc).</p>
-<p>By default, batching is disabled.</p>
+<p>The default is a sane value for extents-only lookups, while you can
+go as low as <code>1</code> if you are running <code>duperemove</code>
+on very large files (like virtual machines etc).</p>
+<p>By default, batching is set to 1024.</p>
 </dd>
 <dt><strong>-h</strong></dt>
 <dd>

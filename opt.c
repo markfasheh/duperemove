@@ -23,6 +23,6 @@ struct options options = {
 	.only_whole_files = false,
 	.do_block_hash = false,
 	.dedupe_same_file = true,
-	.batch_size = 0,
+	.batch_size = 1024,
 	.fdupes_mode = false,
 };

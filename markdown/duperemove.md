@@ -105,11 +105,11 @@ but reduces multithreading efficiency.
     Because of that small overhead, its value shall be selected based
 on the average file size and `blocksize`.
 
-    `1000` is a sane value for
+    The default is a sane value for
 extents-only lookups, while you can go as low as `1` if you are
 running `duperemove` on very large files (like virtual machines etc).
 
-    By default, batching is disabled.
+    By default, batching is set to 1024.
 
 **-h**
   ~ Print numbers in human-readable format.

@@ -129,11 +129,11 @@ doing partial extents lookup, but reduces multithreading efficiency.
 Because of that small overhead, its value shall be selected based on the
 average file size and \f[V]blocksize\f[R].
 .PP
-\f[V]1000\f[R] is a sane value for extents-only lookups, while you can
-go as low as \f[V]1\f[R] if you are running \f[V]duperemove\f[R] on very
+The default is a sane value for extents-only lookups, while you can go
+as low as \f[V]1\f[R] if you are running \f[V]duperemove\f[R] on very
 large files (like virtual machines etc).
 .PP
-By default, batching is disabled.
+By default, batching is set to 1024.
 .RE
 .TP
 \f[B]-h\f[R]
