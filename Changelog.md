@@ -11,6 +11,7 @@ PENDING
  * Always compute a hash for the entire file. This let us deduplicate same files easily, regardless of their extents mappings.
  * Deduplicating only parts of a file can be disabled using the only\_whole\_files dedupe option.
  * Hashfiles with unsupported features or hash algorithm are now recreated transparently. Migration of the old content is not implemented.
+ * Relative exclude patterns are not longer silently ingested. Such patterns are now rebuilt on top of the current working directory.
 
 Version 0.12
 ---

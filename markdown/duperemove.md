@@ -219,11 +219,10 @@ deduped from.
   ~ Deprecated, see `--io-threads` above.
 
 **\--exclude**=`PATTERN`
-  ~ You an exclude certain files and folders from the deduplication process. This
-might be benefical for skipping subvolume snapshot mounts, for instance. You
-need to provide full path for exclusion. For example providing just a file name
-with a wildcard i.e `duperemove --exclude file-*` won't ever match because internally
-duperemove works with absolute paths. Another thing to keep in mind is that
+  ~ You can exclude certain files and folders from the deduplication process. This
+might be benefical for skipping subvolume snapshot mounts, for instance. Unless you
+provide a full path for exclusion, the exclude will be relative to the current working
+directory. Another thing to keep in mind is that
 shells usually expand glob pattern so the passed in pattern ought to also be
 quoted. Taking everything into consideration the correct way to pass an exclusion
 pattern is `duperemove --exclude "/path/to/dir/file*" /path/to/dir`

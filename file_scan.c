@@ -1072,11 +1072,31 @@ out:
 
 int add_exclude_pattern(const char *pattern)
 {
+	char cwd[PATH_MAX] = { 0, };
+
+	/* Overallocate to peace the compiler. */
+	char exp_pattern[PATH_MAX * 2 + 1] = { 0, };
 	struct exclude_file *exclude = malloc(sizeof(*exclude));
+
 	if (!exclude)
 		return 1;
 
-	exclude->pattern = strdup(pattern);
+	if (pattern[0] == '/') {
+		exclude->pattern = strdup(pattern);
+	} else {
+		getcwd(cwd, PATH_MAX);
+
+		if (strlen(cwd) + strlen(pattern) > PATH_MAX) {
+			fprintf(stderr, "Error: cannot prepend cwd to %s\n", pattern);
+			return 1;
+		}
+
+		sprintf(exp_pattern, "%s/%s", cwd, pattern);
+		exclude->pattern = strdup(exp_pattern);
+	}
+
+	printf("Adding exclude pattern: %s\n", exclude->pattern);
+
 	list_add_tail(&exclude->list, &exclude_list);
 	return 0;
 }

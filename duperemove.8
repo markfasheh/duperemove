@@ -271,13 +271,12 @@ Print debug messages, forces \f[V]-v\f[R] if selected.
 Deprecated, see \f[V]--io-threads\f[R] above.
 .TP
 \f[B]--exclude\f[R]=\f[V]PATTERN\f[R]
-You an exclude certain files and folders from the deduplication process.
+You can exclude certain files and folders from the deduplication
+process.
 This might be benefical for skipping subvolume snapshot mounts, for
 instance.
-You need to provide full path for exclusion.
-For example providing just a file name with a wildcard i.e
-\f[V]duperemove --exclude file-*\f[R] won\[cq]t ever match because
-internally duperemove works with absolute paths.
+Unless you provide a full path for exclusion, the exclude will be
+relative to the current working directory.
 Another thing to keep in mind is that shells usually expand glob pattern
 so the passed in pattern ought to also be quoted.
 Taking everything into consideration the correct way to pass an
