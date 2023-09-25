@@ -18,9 +18,11 @@
 #ifndef	__UTIL_H__
 #define	__UTIL_H__
 
+#include <stdlib.h>
 #include <dirent.h>
 #include <stdint.h>
 #include <sys/time.h>
+#include <unistd.h>
 
 /* controlled by user options, turns pretty print on if true. */
 extern int human_readable;
@@ -67,6 +69,12 @@ static inline void closedirectory(DIR **p)
 {
 	if (*p)
 		closedir(*p);
+}
+
+static inline void closefd(int *fd)
+{
+	if (*fd >= 0)
+		close(*fd);
 }
 
 #endif	/* __UTIL_H__ */

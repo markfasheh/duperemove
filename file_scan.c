@@ -213,7 +213,7 @@ static int __add_file(const char *name, struct stat *st,
 		      struct filerec **ret_file)
 {
 	int ret;
-	int fd;
+	_cleanup_(closefd) int fd = 0;
 	struct filerec *file;
 	uint64_t subvolid;
 	struct statfs fs;
@@ -234,29 +234,26 @@ static int __add_file(const char *name, struct stat *st,
 		fprintf(stderr, "Error %d: %s while accessing file %s. "
 			"Skipping.\n",
 			errno, strerror(errno), name);
-		goto out;
+		return 1;
 	}
 
 	fd = open(name, O_RDONLY);
 	if (fd == -1) {
-		ret = errno;
 		fprintf(stderr, "Error %d: %s while opening file \"%s\". "
 			"Skipping.\n", ret, strerror(ret), name);
-		goto out;
+		return 1;
 	}
 
 	ret = fstatfs(fd, &fs);
 	if (ret) {
-		close(fd);
 		fprintf(stderr, "Error %d: %s while doing fs stat on \"%s\". "
 			"Skipping.\n", ret, strerror(ret), name);
-		goto out;
+		return 1;
 	}
 
 	if (options.run_dedupe == 1 &&
 	    ((fs.f_type != BTRFS_SUPER_MAGIC &&
 	      fs.f_type != XFS_SB_MAGIC))) {
-		close(fd);
 		fprintf(stderr,	"\"%s\": Can only dedupe files on btrfs or xfs, "
 			"use -d -d to override\n", name);
 		return ENOSYS;
@@ -270,21 +267,15 @@ static int __add_file(const char *name, struct stat *st,
 		 */
 		ret = lookup_btrfs_subvolid(fd, &subvolid);
 		if (ret) {
-			close(fd);
 			fprintf(stderr,
 				"Error %d: %s while finding subvolid for file "
 				"\"%s\". Skipping.\n", ret, strerror(ret),
 				name);
-			goto out;
+			return 1;
 		}
 	} else {
 		subvolid = st->st_dev;
 	}
-
-//	printf("\"%s\", ino: %llu, subvolid: %"PRIu64"\n", name,
-//	       (unsigned long long)st->st_ino, subvolid);
-
-	close(fd);
 
 	walked_size += st->st_size;
 
@@ -302,9 +293,6 @@ static int __add_file(const char *name, struct stat *st,
 		*ret_file = file;
 
 	return 0;
-
-out:
-	return 1;
 }
 
 static bool will_cross_mountpoint(dev_t dev, uint64_t btrfs_fsid)
