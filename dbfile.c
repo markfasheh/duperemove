@@ -789,7 +789,7 @@ out_error:
 int dbfile_store_file_info(sqlite3 *db, struct filerec *file)
 {
 	int ret;
-	sqlite3_stmt *stmt = NULL;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
 
 #define	WRITE_FILE							\
 "insert or replace into files (ino, subvol, filename, size, blocks, mtime, dedupe_seq) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);"
@@ -800,8 +800,6 @@ int dbfile_store_file_info(sqlite3 *db, struct filerec *file)
 	}
 
 	ret = __dbfile_store_file_info(stmt, file);
-
-	sqlite3_finalize(stmt);
 	return ret;
 }
 
