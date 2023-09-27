@@ -896,111 +896,109 @@ static void csum_whole_file(struct filerec *file,
 	struct sqlite3 *db = NULL;
 	struct extent_csum *extent_hashes = NULL;
 	struct block_csum *block_hashes = NULL;
-	_cleanup_(closefilerec) struct filerec *cleanup = file;
+	{
+		_cleanup_(closefilerec) struct filerec *cleanup = file;
 
-	memset(&csum_ctxt, 0, sizeof(csum_ctxt));
-	csum_ctxt.buf = calloc(1, READ_BUF_LEN);
-	assert(csum_ctxt.buf != NULL);
-	csum_ctxt.file = file;
+		memset(&csum_ctxt, 0, sizeof(csum_ctxt));
+		csum_ctxt.buf = calloc(1, READ_BUF_LEN);
+		assert(csum_ctxt.buf != NULL);
+		csum_ctxt.file = file;
 
-	csum_whole_file_init(file, &fc);
+		csum_whole_file_init(file, &fc);
 
-	db = dbfile_get_handle();
-	if (!db)
-		goto err;
+		db = dbfile_get_handle();
+		if (!db)
+			goto err;
 
-	ret = filerec_open(file);
-	if (ret)
-		goto err;
+		ret = filerec_open(file);
+		if (ret)
+			goto err;
 
-	ret = csum_by_extent(&csum_ctxt, fc, &extent_hashes, &nb_hash);
-	if (ret)
-		goto err;
+		ret = csum_by_extent(&csum_ctxt, fc, &extent_hashes, &nb_hash);
+		if (ret)
+			goto err;
 
-	g_mutex_lock(&io_mutex);
-	file->num_blocks = csum_ctxt.blocks_recorded;
-	/* Make sure that we'll check this file on any future dedupe passes */
-	filerec_clear_deduped(file);
-	ret = dbfile_begin_trans(db);
-	if (ret) {
-		g_mutex_unlock(&io_mutex);
-		goto err;
-	}
+		g_mutex_lock(&io_mutex);
+		file->num_blocks = csum_ctxt.blocks_recorded;
+		/* Make sure that we'll check this file on any future dedupe passes */
+		filerec_clear_deduped(file);
+		ret = dbfile_begin_trans(db);
+		if (ret) {
+			g_mutex_unlock(&io_mutex);
+			goto err;
+		}
 
-	ret = dbfile_store_file_info(db, file);
-	if (ret) {
-		g_mutex_unlock(&io_mutex);
-		goto err;
-	}
+		ret = dbfile_store_file_info(db, file);
+		if (ret) {
+			g_mutex_unlock(&io_mutex);
+			goto err;
+		}
 
-	if (!options.only_whole_files) {
-		if (options.do_block_hash) {
-			ret = dbfile_store_block_hashes(db, file,
-							csum_ctxt.nr_block_hashes,
-							csum_ctxt.block_hashes);
+		if (!options.only_whole_files) {
+			if (options.do_block_hash) {
+				ret = dbfile_store_block_hashes(db, file,
+								csum_ctxt.nr_block_hashes,
+								csum_ctxt.block_hashes);
+				if (ret) {
+					g_mutex_unlock(&io_mutex);
+					goto err;
+				}
+			}
+
+			ret = dbfile_store_extent_hashes(db, file, nb_hash, extent_hashes);
 			if (ret) {
 				g_mutex_unlock(&io_mutex);
 				goto err;
 			}
 		}
 
-		ret = dbfile_store_extent_hashes(db, file, nb_hash, extent_hashes);
+		ret = dbfile_store_file_digest(db, file, csum_ctxt.file_digest);
 		if (ret) {
 			g_mutex_unlock(&io_mutex);
 			goto err;
 		}
-	}
 
-	ret = dbfile_store_file_digest(db, file, csum_ctxt.file_digest);
-	if (ret) {
+		ret = dbfile_commit_trans(db);
 		g_mutex_unlock(&io_mutex);
-		goto err;
-	}
+		if (ret) {
+			goto err;
+		}
 
-	ret = dbfile_commit_trans(db);
-	if (ret) {
-		g_mutex_unlock(&io_mutex);
-		goto err;
-	}
-	g_mutex_unlock(&io_mutex);
+		g_mutex_lock(&params->mutex);
+		params->num_files++;
+		params->num_hashes += nb_hash;
+		g_mutex_unlock(&params->mutex);
 
-	g_mutex_lock(&params->mutex);
-	params->num_files++;
-	params->num_hashes += nb_hash;
-	g_mutex_unlock(&params->mutex);
+		file->flags &= ~(FILEREC_NEEDS_SCAN|FILEREC_UPDATE_DB);
+		/* Set 'IN_DB' flag *after* we call dbfile_store_hashes() */
+		file->flags |= FILEREC_IN_DB;
 
-	file->flags &= ~(FILEREC_NEEDS_SCAN|FILEREC_UPDATE_DB);
-	/* Set 'IN_DB' flag *after* we call dbfile_store_hashes() */
-	file->flags |= FILEREC_IN_DB;
+		free(csum_ctxt.buf);
+		if (csum_ctxt.block_hashes)
+			free(csum_ctxt.block_hashes);
 
-	free(csum_ctxt.buf);
-	if (csum_ctxt.block_hashes)
-		free(csum_ctxt.block_hashes);
-
-	free(extent_hashes);
-	return;
+		free(extent_hashes);
+		return;
 
 err:
+		free(csum_ctxt.buf);
+		if (extent_hashes)
+			free(extent_hashes);
+		if (block_hashes)
+			free(block_hashes);
+		if (csum_ctxt.block_hashes)
+			free(csum_ctxt.block_hashes);
+
+		fprintf(
+			stderr,
+			"Skipping file due to error %d from function csum_by_extent (%s), %s\n",
+			ret,
+			strerror(ret),
+			file->filename);
+	}
+
 	g_mutex_lock(&params->mutex);
 	params->num_files++;
-	g_mutex_unlock(&params->mutex);
-
-	free(csum_ctxt.buf);
-	if (extent_hashes)
-		free(extent_hashes);
-	if (block_hashes)
-		free(block_hashes);
-	if (csum_ctxt.block_hashes)
-		free(csum_ctxt.block_hashes);
-
-	fprintf(
-		stderr,
-		"Skipping file due to error %d from function csum_by_extent (%s), %s\n",
-		ret,
-		strerror(ret),
-		file->filename);
-
-	g_mutex_lock(&params->mutex);
 	/*
 	 * filerec_free will remove from the filerec tree keep it
 	 * under tree_mutex until we have a need for real locking in
