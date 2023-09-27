@@ -229,18 +229,10 @@ static int __add_file(const char *name, struct stat *st,
 		return 0;
 	}
 
-	ret = access(name, R_OK);
-	if (ret) {
-		fprintf(stderr, "Error %d: %s while accessing file %s. "
-			"Skipping.\n",
-			errno, strerror(errno), name);
-		return 1;
-	}
-
 	fd = open(name, O_RDONLY);
 	if (fd == -1) {
 		fprintf(stderr, "Error %d: %s while opening file \"%s\". "
-			"Skipping.\n", ret, strerror(ret), name);
+			"Skipping.\n", errno, strerror(errno), name);
 		return 1;
 	}
 
