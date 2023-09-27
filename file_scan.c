@@ -59,7 +59,6 @@
 static dev_t one_fs_dev;
 static uint64_t one_fs_btrfs;
 
-static uint64_t walked_size;
 static unsigned long long files_to_scan;
 static GMutex io_mutex; /* locks db writes */
 static unsigned int leading_spaces;
@@ -268,8 +267,6 @@ static int __add_file(const char *name, struct stat *st,
 	} else {
 		subvolid = st->st_dev;
 	}
-
-	walked_size += st->st_size;
 
 	file = filerec_find(st->st_ino, subvolid);
 	if (!file)
