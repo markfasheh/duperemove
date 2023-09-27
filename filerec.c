@@ -59,17 +59,6 @@ void init_filerec(void)
 	INIT_LIST_HEAD(&filerec_list);
 }
 
-void debug_print_filerecs(void)
-{
-	struct filerec *file;
-
-	list_for_each_entry(file, &filerec_list, rec_list) {
-		printf("ino: %"PRIu64" subvol: %"PRIu64" blocks: %"PRIu64
-		       " name: %s\n", file->inum, file->subvolid,
-		       file->num_blocks, file->filename);
-	}
-}
-
 struct filerec_token *find_filerec_token_rb(struct rb_root *root,
 					    struct filerec *val)
 {

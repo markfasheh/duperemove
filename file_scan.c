@@ -906,7 +906,6 @@ static void csum_whole_file(struct filerec *file,
 		goto err;
 
 	g_mutex_lock(&io_mutex);
-	file->num_blocks = csum_ctxt.blocks_recorded;
 	/* Make sure that we'll check this file on any future dedupe passes */
 	filerec_clear_deduped(file);
 	ret = dbfile_begin_trans(db);

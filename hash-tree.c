@@ -293,7 +293,6 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 	}
 
 	insert_block_into_filerec(file, e);
-	file->num_blocks++;
 
 	d->dl_num_elem++;
 	if (d->dl_num_elem > 1 && list_empty(&d->dl_size_list))
@@ -313,11 +312,6 @@ int remove_hashed_block(struct hash_tree *tree,
 	struct filerec *file = block->b_file;
 
 	abort_on(blocklist->dl_num_elem == 0);
-
-	if (!RB_EMPTY_NODE(&block->b_file_next)) {
-		abort_on(file->num_blocks == 0);
-		file->num_blocks--;
-	}
 
 	rb_erase(&block->b_file_next, &file->block_tree);
 	list_del(&block->b_list);

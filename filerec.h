@@ -39,7 +39,6 @@ struct filerec {
 	struct rb_node		inum_node;
 	struct rb_node		name_node;	/* by name */
 
-	uint64_t		num_blocks;	/* blocks we've inserted */
 	uint64_t		size;
 	struct rb_root		block_tree;	/* root for hash blocks tree */
 
@@ -82,7 +81,6 @@ struct filerec {
 
 void init_filerec(void);
 void free_all_filerecs(void);
-void debug_print_filerecs(void);
 
 struct filerec *filerec_new(const char *filename, uint64_t inum,
 			    uint64_t subvolid, uint64_t size, uint64_t mtime);

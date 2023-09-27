@@ -760,15 +760,11 @@ static int __dbfile_store_file_info(sqlite3_stmt *stmt, struct filerec *file)
 	if (ret)
 		goto bind_error;
 
-	ret = sqlite3_bind_int64(stmt, 5, file->num_blocks);
+	ret = sqlite3_bind_int64(stmt, 5, file->mtime);
 	if (ret)
 		goto bind_error;
 
-	ret = sqlite3_bind_int64(stmt, 6, file->mtime);
-	if (ret)
-		goto bind_error;
-
-	ret = sqlite3_bind_int(stmt, 7, file->dedupe_seq);
+	ret = sqlite3_bind_int(stmt, 6, file->dedupe_seq);
 	if (ret)
 		goto bind_error;
 
@@ -792,7 +788,7 @@ int dbfile_store_file_info(sqlite3 *db, struct filerec *file)
 	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
 
 #define	WRITE_FILE							\
-"insert or replace into files (ino, subvol, filename, size, blocks, mtime, dedupe_seq) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);"
+"insert or replace into files (ino, subvol, filename, size, mtime, dedupe_seq) VALUES (?1, ?2, ?3, ?4, ?5, ?6);"
 	ret = sqlite3_prepare_v2(db, WRITE_FILE, -1, &stmt, NULL);
 	if (ret) {
 		perror_sqlite(ret, "preparing filerec insert statement");
