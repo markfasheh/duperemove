@@ -891,11 +891,12 @@ static void csum_whole_file(struct filerec *file,
 {
 	int ret = 0;
 	uint64_t nb_hash = 0;
-	struct fiemap_ctxt *fc = NULL;
+	_cleanup_(freep) struct fiemap_ctxt *fc = NULL;
 	struct csum_ctxt csum_ctxt;
 	struct sqlite3 *db = NULL;
 	struct extent_csum *extent_hashes = NULL;
 	struct block_csum *block_hashes = NULL;
+	_cleanup_(closefilerec) struct filerec *cleanup = file;
 
 	memset(&csum_ctxt, 0, sizeof(csum_ctxt));
 	csum_ctxt.buf = calloc(1, READ_BUF_LEN);
@@ -906,11 +907,11 @@ static void csum_whole_file(struct filerec *file,
 
 	db = dbfile_get_handle();
 	if (!db)
-		goto err_noclose;
+		goto err;
 
 	ret = filerec_open(file);
 	if (ret)
-		goto err_noclose;
+		goto err;
 
 	ret = csum_by_extent(&csum_ctxt, fc, &extent_hashes, &nb_hash);
 	if (ret)
@@ -972,10 +973,7 @@ static void csum_whole_file(struct filerec *file,
 	/* Set 'IN_DB' flag *after* we call dbfile_store_hashes() */
 	file->flags |= FILEREC_IN_DB;
 
-	filerec_close(file);
 	free(csum_ctxt.buf);
-	if (fc)
-		free(fc);
 	if (csum_ctxt.block_hashes)
 		free(csum_ctxt.block_hashes);
 
@@ -987,8 +985,6 @@ err:
 	params->num_files++;
 	g_mutex_unlock(&params->mutex);
 
-	filerec_close(file);
-err_noclose:
 	free(csum_ctxt.buf);
 	if (extent_hashes)
 		free(extent_hashes);
@@ -996,8 +992,6 @@ err_noclose:
 		free(block_hashes);
 	if (csum_ctxt.block_hashes)
 		free(csum_ctxt.block_hashes);
-	if (fc)
-		free(fc);
 
 	fprintf(
 		stderr,

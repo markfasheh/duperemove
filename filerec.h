@@ -160,4 +160,10 @@ static inline void nano_to_timespec(uint64_t nanosecs, struct timespec *t)
 }
 
 int fiemap_scan_extent(struct extent *extent);
+
+static inline void closefilerec(struct filerec **file)
+{
+	if(*file && (*file)->fd_refs != 0)
+		filerec_close(*file);
+}
 #endif /* __FILEREC__ */
