@@ -232,7 +232,7 @@ static int __add_file(const char *name, struct stat *st,
 	if (fd == -1) {
 		fprintf(stderr, "Error %d: %s while opening file \"%s\". "
 			"Skipping.\n", errno, strerror(errno), name);
-		return 1;
+		return 0;
 	}
 
 	ret = fstatfs(fd, &fs);
