@@ -983,10 +983,6 @@ static void csum_whole_file(struct filerec *file,
 	return;
 
 err:
-	g_mutex_lock(&params->mutex);
-	params->num_files++;
-	g_mutex_unlock(&params->mutex);
-
 	filerec_close(file);
 err_noclose:
 	free(csum_ctxt.buf);
@@ -1007,6 +1003,7 @@ err_noclose:
 		file->filename);
 
 	g_mutex_lock(&params->mutex);
+	params->num_files++;
 	/*
 	 * filerec_free will remove from the filerec tree keep it
 	 * under tree_mutex until we have a need for real locking in
