@@ -4,7 +4,6 @@
 #include "opt.h"
 
 /* from duperemove.c */
-extern int stdout_is_tty;
 extern unsigned int blocksize;
 
 int find_all_dupes(struct hash_tree *tree, struct results_tree *res);
