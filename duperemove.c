@@ -627,9 +627,6 @@ int main(int argc, char **argv)
 	 */
 	increase_limits();
 
-	if (options.fdupes_mode)
-		return add_files_from_stdin(1);
-
 	if (list_only_opt)
 		return list_db_files(options.hashfile);
 	else if (rm_only_opt)
@@ -638,6 +635,9 @@ int main(int argc, char **argv)
 	ret = dbfile_open(options.hashfile, &dbfile_cfg);
 	if (ret)
 		goto out;
+
+	if (options.fdupes_mode)
+		return add_files_from_stdin(1);
 
 	dedupe_seq = dbfile_cfg.dedupe_seq;
 
