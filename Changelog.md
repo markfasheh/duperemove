@@ -2,16 +2,21 @@ PENDING
 ---
 
 **Notable changes**:
- * Add a new dedupe option: `[no]rescan\_files`. It will increase performance in some use cases.
+
+Version 0.13
+---
+
+**Notable changes**:
+ * Add a new dedupe option: `[no]rescan_files`. It will increase performance in some use cases.
  * New behaviors from v0.12 has been consolidated. Extent-based lookup is always enabled, as is fiemap. The v2 hashfile is no longer supported.
  * Hashfile are now updated after deduplication, to reflect the new physical offsets. This avoid (re)deduplicating extents in some cases.
  * Partial mode has been enhanced to support batching. The overall performance of this mode (which was previously known as "block-based mode") has been improved.
  * All files are now open in readonly mode.
  * Hashfile version has been increased to reflect the new database behaviors. Previous hashfiles are not compatible.
  * Always compute a hash for the entire file. This let us deduplicate same files easily, regardless of their extents mappings.
- * Deduplicating only parts of a file can be disabled using the only\_whole\_files dedupe option.
+ * Deduplicating only parts of a file can be disabled using the `[no]only_whole_files` dedupe option.
  * Hashfiles with unsupported features or hash algorithm are now recreated transparently. Migration of the old content is not implemented.
- * Relative exclude patterns are not longer silently ingested. Such patterns are now rebuilt on top of the current working directory.
+ * Relative exclude patterns are no longer silently ingested. Such patterns are now rebuilt on top of the current working directory.
  * Batching is now set to 1024 by default.
 
 Version 0.12

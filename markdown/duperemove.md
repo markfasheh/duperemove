@@ -2,8 +2,8 @@
 title: Duperemove
 section: 8
 header: System Manager’s Manual
-footer: duperemove 0.12
-date: 07 Aug 2023
+footer: duperemove 0.13
+date: 29 Sept 2023
 ---
 # NAME
 `duperemove` - Find duplicate extents and submit them for deduplication

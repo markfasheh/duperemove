@@ -1,5 +1,3 @@
-This README is for duperemove v0.12.
-
 # Duperemove
 
 Duperemove is a simple tool for finding duplicated extents and
