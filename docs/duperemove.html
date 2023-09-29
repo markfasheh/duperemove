@@ -161,19 +161,22 @@
 <p class="date">29 Sept 2023</p>
 </header>
 <h1 id="name">NAME</h1>
-<p><code>duperemove</code> - Find duplicate extents and submit them for
-deduplication</p>
+<p><code>duperemove</code> - Find duplicate regions in files and submit
+them for deduplication</p>
 <h1 id="synopsis">SYNOPSIS</h1>
 <p><strong>duperemove</strong> <em><a href="#options">options</a></em>
 <em>files…</em></p>
 <h1 id="description">DESCRIPTION</h1>
 <p><code>duperemove</code> is a simple tool for finding duplicated
-extents and submitting them for deduplication. When given a list of
-files it will hash the contents of their extents and compare those
-hashes to each other, finding and categorizing extents that match each
-other. When given the <code>-d</code> option, <code>duperemove</code>
-will submit those extents for deduplication using the Linux kernel
-FIDEDUPERANGE ioctl.</p>
+regions in files and submitting them for deduplication. When given a
+list of files it will hash their contents and compare those hashes to
+each other, finding and categorizing regions that match each other. When
+given the <code>-d</code> option, <code>duperemove</code> will submit
+those regions for deduplication using the Linux kernel FIDEDUPERANGE
+ioctl.</p>
+<p><code>duperemove</code> computes hashes for each files extents as
+well as for the whole file’s content. Optionally, per-block hashes can
+be computed.</p>
 <p><code>duperemove</code> can store the hashes it computes in a
 <code>hashfile</code>. If given an existing hashfile,
 <code>duperemove</code> will only compute hashes for those files which

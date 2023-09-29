@@ -18,21 +18,25 @@
 .hy
 .SH NAME
 .PP
-\f[V]duperemove\f[R] - Find duplicate extents and submit them for
-deduplication
+\f[V]duperemove\f[R] - Find duplicate regions in files and submit them
+for deduplication
 .SH SYNOPSIS
 .PP
 \f[B]duperemove\f[R] \f[I]options\f[R] \f[I]files\&...\f[R]
 .SH DESCRIPTION
 .PP
-\f[V]duperemove\f[R] is a simple tool for finding duplicated extents and
-submitting them for deduplication.
-When given a list of files it will hash the contents of their extents
-and compare those hashes to each other, finding and categorizing extents
-that match each other.
+\f[V]duperemove\f[R] is a simple tool for finding duplicated regions in
+files and submitting them for deduplication.
+When given a list of files it will hash their contents and compare those
+hashes to each other, finding and categorizing regions that match each
+other.
 When given the \f[V]-d\f[R] option, \f[V]duperemove\f[R] will submit
-those extents for deduplication using the Linux kernel FIDEDUPERANGE
+those regions for deduplication using the Linux kernel FIDEDUPERANGE
 ioctl.
+.PP
+\f[V]duperemove\f[R] computes hashes for each files extents as well as
+for the whole file\[cq]s content.
+Optionally, per-block hashes can be computed.
 .PP
 \f[V]duperemove\f[R] can store the hashes it computes in a
 \f[V]hashfile\f[R].

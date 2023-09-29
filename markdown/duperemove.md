@@ -6,18 +6,21 @@ footer: duperemove 0.13
 date: 29 Sept 2023
 ---
 # NAME
-`duperemove` - Find duplicate extents and submit them for deduplication
+`duperemove` - Find duplicate regions in files and submit them for deduplication
 
 # SYNOPSIS
 **duperemove** *[options]* *files...*
 
 # DESCRIPTION
-`duperemove` is a simple tool for finding duplicated extents and
+`duperemove` is a simple tool for finding duplicated regions in files and
 submitting them for deduplication. When given a list of files it will
-hash the contents of their extents and compare those hashes to each
-other, finding and categorizing extents that match each other. When
-given the `-d` option, `duperemove` will submit those extents
+hash their contents and compare those hashes to each
+other, finding and categorizing regions that match each other. When
+given the `-d` option, `duperemove` will submit those regions
 for deduplication using the Linux kernel FIDEDUPERANGE ioctl.
+
+`duperemove` computes hashes for each files extents as well as for
+the whole file's content. Optionally, per-block hashes can be computed.
 
 `duperemove` can store the hashes it computes in a `hashfile`. If
 given an existing hashfile, `duperemove` will only compute hashes
