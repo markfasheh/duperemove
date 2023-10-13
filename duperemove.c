@@ -187,7 +187,7 @@ static int parse_dedupe_opts(const char *raw_opts)
 		fprintf(stderr, "Bad dedupe options specified. Valid dedupe "
 			"options are:\n"
 			"\t[no]same\n"
-			"\t[no]fiemap\n"
+			"\t[no]only_whole_files\n"
 			"\t[no]rescan_files\n"
 			"\t[no]partial\n");
 		ret = EINVAL;
