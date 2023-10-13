@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <sqlite3.h>
 #include <stdbool.h>
+#include <sys/types.h>
 #include "util.h"
 
 struct filerec;
