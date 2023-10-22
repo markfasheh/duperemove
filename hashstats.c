@@ -51,12 +51,13 @@ static void printf_file_block_flags(unsigned int flags)
 	printf(")");
 }
 
-static int print_all_blocks(unsigned char *digest, sqlite3_stmt *find_blocks_stmt)
+static int print_all_blocks(struct dbhandle *db, unsigned char *digest)
 {
 	int ret;
 	uint64_t loff;
 	unsigned int flags;
 	const unsigned char *filename;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *find_blocks_stmt = db->stmts.find_blocks;
 
 	ret = sqlite3_bind_blob(find_blocks_stmt, 1, digest, DIGEST_LEN,
 				SQLITE_STATIC);
@@ -86,59 +87,22 @@ static int print_all_blocks(unsigned char *digest, sqlite3_stmt *find_blocks_stm
 		return ret;
 	}
 
-	sqlite3_reset(find_blocks_stmt);
-
 	return 0;
 }
 
-static void print_by_size(sqlite3 *db)
+static void print_by_size(struct dbhandle *db)
 {
 	int ret;
 	int header_printed = 0;
 	unsigned char *digest;
 	uint64_t count, files_count;
 
-	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *find_blocks_stmt = NULL;
-	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *top_hashes_stmt = NULL;
-	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *files_count_stmt = NULL;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *top_hashes_stmt;
 
-#define	FIND_BLOCKS							\
-"select files.filename, hashes.loff, hashes.flags from files INNER JOIN hashes on hashes.digest = ?1 AND files.subvol=hashes.subvol AND files.ino=hashes.ino;"
-
-	ret = sqlite3_prepare_v2(db, FIND_BLOCKS, -1, &find_blocks_stmt, NULL);
-	if (ret) {
-		fprintf(stderr, "error %d while prepping find blocks stmt: %s\n",
-			ret, sqlite3_errstr(ret));
-		return;
-	}
-
-#define	FIND_TOP_B_HASHES							\
-"select digest, count(digest) from hashes group by digest having (count(digest) > 1) order by (count(digest)) desc;"
-#define	FIND_TOP_E_HASHES							\
-"select digest, count(digest) from extents group by digest having (count(digest) > 1) order by (count(digest)) desc;"
-	if (show_block_hashes) {
-		ret = sqlite3_prepare_v2(db, FIND_TOP_B_HASHES, -1, &top_hashes_stmt,
-					 NULL);
-	} else {
-		ret = sqlite3_prepare_v2(db, FIND_TOP_E_HASHES, -1, &top_hashes_stmt,
-					 NULL);
-	}
-
-	if (ret) {
-		fprintf(stderr, "error %d while prepping hash search stmt: %s\n",
-			ret, sqlite3_errstr(ret));
-		return;
-	}
-
-#define	FIND_FILES_COUNT						\
-"select count (distinct files.filename) from files INNER JOIN hashes on hashes.digest = ?1 AND files.subvol=hashes.subvol AND files.ino=hashes.ino;"
-	ret = sqlite3_prepare_v2(db, FIND_FILES_COUNT, -1, &files_count_stmt,
-				 NULL);
-	if (ret) {
-		fprintf(stderr, "error %d while preparing file count stmt: %s\n",
-			ret, sqlite3_errstr(ret));
-		return;
-	}
+	if (show_block_hashes)
+		top_hashes_stmt = db->stmts.find_top_b_hashes;
+	else
+		top_hashes_stmt = db->stmts.find_top_e_hashes;
 
 	if (print_all_hashes)
 		printf("Print all hashes ");
@@ -151,22 +115,7 @@ static void print_by_size(sqlite3 *db)
 		digest = (unsigned char *)sqlite3_column_blob(top_hashes_stmt, 0);
 		count = sqlite3_column_int64(top_hashes_stmt, 1);
 
-		ret = sqlite3_bind_blob(files_count_stmt, 1, digest, DIGEST_LEN,
-					SQLITE_STATIC);
-		if (ret) {
-			fprintf(stderr, "Error %d binding digest: %s\n", ret,
-				sqlite3_errstr(ret));
-			return;
-		}
-
-		ret = sqlite3_step(files_count_stmt);
-		if (ret != SQLITE_ROW && ret != SQLITE_DONE) {
-			fprintf(stderr, "error %d, file count search: %s\n",
-				ret, sqlite3_errstr(ret));
-			return;
-		}
-
-		files_count = sqlite3_column_int64(files_count_stmt, 0);
+		files_count = count_file_by_digest(db, digest, show_block_hashes);
 
 		if (!header_printed) {
 			printf("Hash, # Blocks, # Files\n");
@@ -176,10 +125,8 @@ static void print_by_size(sqlite3 *db)
 		debug_print_digest(stdout, digest);
 		printf(", %"PRIu64", %"PRIu64"\n", count, files_count);
 
-		sqlite3_reset(files_count_stmt);
-
 		if (print_blocks) {
-			ret = print_all_blocks(digest, find_blocks_stmt);
+			ret = print_all_blocks(db, digest);
 			if (ret)
 				return;
 		}
@@ -303,14 +250,14 @@ int main(int argc, char **argv)
 		return EINVAL;
 	}
 
-	_cleanup_(sqlite3_close_cleanup) struct sqlite3 *db = dbfile_open_handle(serialize_fname);
+	_cleanup_(sqlite3_close_cleanup) struct dbhandle *db = dbfile_open_handle(serialize_fname);
 	if (!db) {
 		fprintf(stderr, "ERROR: Couldn't open db file %s\n",
 			serialize_fname);
 		return ENOMEM;
 	}
 
-	ret = dbfile_get_config(db, &dbfile_cfg);
+	ret = dbfile_get_config(db->db, &dbfile_cfg);
 	if (ret)
 		return ret;
 

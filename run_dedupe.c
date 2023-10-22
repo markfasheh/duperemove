@@ -510,7 +510,7 @@ static int extent_dedupe_worker(struct dupe_extents *dext,
 	unsigned long long passno = __atomic_add_fetch(&curr_dedupe_pass, 1, __ATOMIC_SEQ_CST);
 
 	struct extent *extent;
-	sqlite3 *db = dbfile_get_handle();
+	struct dbhandle *db = dbfile_get_handle();
 
 	ret = dedupe_extent_list(dext, fiemap_bytes, kern_bytes, passno);
 	if (ret) {

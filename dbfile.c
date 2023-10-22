@@ -23,7 +23,9 @@
 #include "dbfile.h"
 #include "opt.h"
 
-static sqlite3 *gdb = NULL;
+static struct dbhandle *gdb = NULL;
+
+static sqlite3 *__dbfile_open_handle(char *filename, bool force_create);
 
 #if (SQLITE_VERSION_NUMBER < 3007015)
 #define	perror_sqlite(_err, _why)					\
@@ -39,7 +41,7 @@ static sqlite3 *gdb = NULL;
 	fprintf(stderr, "Error opening db \"%s\": %s\n", _filename,	\
 		sqlite3_errmsg(_ptr))
 
-sqlite3 *dbfile_get_handle(void)
+struct dbhandle *dbfile_get_handle(void)
 {
 	return gdb;
 }
@@ -85,7 +87,7 @@ static int dbfile_get_dbpath(sqlite3 *db, char *path)
 	return 0;
 }
 
-static int dbfile_check(struct dbfile_config *cfg)
+static int dbfile_check(sqlite3 *db, struct dbfile_config *cfg)
 {
 	char path[PATH_MAX + 1];
 
@@ -96,7 +98,7 @@ static int dbfile_check(struct dbfile_config *cfg)
 		return EIO;
 	}
 
-	dbfile_get_dbpath(gdb, path);
+	dbfile_get_dbpath(db, path);
 
 	if (strncasecmp(cfg->hash_type, HASH_TYPE, 8)) {
 		fprintf(stderr,
@@ -122,34 +124,39 @@ static int create_tables(sqlite3 *db)
 {
 	int ret;
 
-#define CREATE_TABLE_CONFIG	\
-"CREATE TABLE IF NOT EXISTS config(keyname TEXT PRIMARY KEY NOT NULL, keyval BLOB, "\
-"UNIQUE(keyname));"
+#define CREATE_TABLE_CONFIG						\
+"CREATE TABLE IF NOT EXISTS config(keyname TEXT PRIMARY KEY NOT NULL, "	\
+"keyval BLOB, UNIQUE(keyname));"
 	ret = sqlite3_exec(db, CREATE_TABLE_CONFIG, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
-#define	CREATE_TABLE_FILES	\
-"CREATE TABLE IF NOT EXISTS files(filename TEXT PRIMARY KEY NOT NULL, ino INTEGER, "\
-"subvol INTEGER, size INTEGER, blocks INTEGER, mtime INTEGER, dedupe_seq INTEGER, "\
-"digest BLOB, UNIQUE(ino, subvol));"
+#define	CREATE_TABLE_FILES						\
+"CREATE TABLE IF NOT EXISTS files(filename TEXT PRIMARY KEY NOT NULL, "	\
+"ino INTEGER, subvol INTEGER, size INTEGER, blocks INTEGER, "		\
+"mtime INTEGER, dedupe_seq INTEGER, digest BLOB, "			\
+"UNIQUE(ino, subvol));"
 	ret = sqlite3_exec(db, CREATE_TABLE_FILES, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
 #define	CREATE_TABLE_EXTENTS						\
-"CREATE TABLE IF NOT EXISTS extents(digest BLOB KEY NOT NULL, ino INTEGER, "\
-"subvol INTEGER, loff INTEGER, poff INTEGER, len INTEGER, flags INTEGER, "\
-"UNIQUE(ino, subvol, loff, len) "\
-"FOREIGN KEY(ino, subvol) REFERENCES files(ino, subvol) ON DELETE CASCADE);"
+"CREATE TABLE IF NOT EXISTS extents(digest BLOB KEY NOT NULL, "		\
+"ino INTEGER, subvol INTEGER, loff INTEGER, poff INTEGER, "		\
+"len INTEGER, flags INTEGER, "						\
+"UNIQUE(ino, subvol, loff, len) "					\
+"FOREIGN KEY(ino, subvol) REFERENCES files(ino, subvol) "		\
+"ON DELETE CASCADE);"
 	ret = sqlite3_exec(db, CREATE_TABLE_EXTENTS, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
-#define	CREATE_TABLE_HASHES					\
-"CREATE TABLE IF NOT EXISTS hashes(digest BLOB KEY NOT NULL, ino INTEGER, "\
-"subvol INTEGER, loff INTEGER, flags INTEGER, UNIQUE(ino, subvol, loff) "\
-"FOREIGN KEY(ino, subvol) REFERENCES files(ino, subvol) ON DELETE CASCADE);"
+#define	CREATE_TABLE_HASHES						\
+"CREATE TABLE IF NOT EXISTS hashes(digest BLOB KEY NOT NULL, "		\
+"ino INTEGER, subvol INTEGER, loff INTEGER, flags INTEGER, "		\
+"UNIQUE(ino, subvol, loff) "						\
+"FOREIGN KEY(ino, subvol) REFERENCES files(ino, subvol) "		\
+"ON DELETE CASCADE);"
 	ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, NULL);
 
 out:
@@ -163,13 +170,13 @@ static int create_indexes(sqlite3 *db)
 {
 	int ret;
 
-#define	CREATE_HASHES_DIGEST_INDEX				\
+#define	CREATE_HASHES_DIGEST_INDEX					\
 "create index if not exists idx_digest on hashes(digest);"
 	ret = sqlite3_exec(db, CREATE_HASHES_DIGEST_INDEX, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
-#define	CREATE_HASHES_INOSUB_INDEX				\
+#define	CREATE_HASHES_INOSUB_INDEX					\
 "create index if not exists idx_hashes_inosub on hashes(ino, subvol);"
 	ret = sqlite3_exec(db, CREATE_HASHES_INOSUB_INDEX, NULL, NULL, NULL);
 	if (ret)
@@ -230,86 +237,96 @@ static int dbfile_set_modes(sqlite3 *db)
 	return ret;
 }
 
-#define MEMDB_FILENAME	"file::memory:?cache=shared"
-#define OPEN_FLAGS	(SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE|SQLITE_OPEN_NOMUTEX|SQLITE_OPEN_URI)
-
-int dbfile_open(char *filename, struct dbfile_config *cfg)
+static int dbfile_prepare(sqlite3 *db)
 {
+	struct dbfile_config cfg;
 	int ret;
-	sqlite3 *db = NULL;
-
-	db = dbfile_open_handle(filename);
+	char dbpath[PATH_MAX + 1];
 
 	ret = create_tables(db);
 	if (ret) {
 		perror_sqlite(ret, "creating tables");
-		sqlite3_close(db);
 		return ret;
 	}
 
 	ret = create_indexes(db);
 	if (ret) {
 		perror_sqlite(ret, "creating indexes");
-		sqlite3_close(db);
 		return ret;
 	}
 
-	if (filename) {
-		ret = chmod(filename, S_IRUSR|S_IWUSR);
+	ret = dbfile_get_dbpath(db, dbpath);
+	if (ret)
+		return ret;
+
+	if (strcmp("(null)", dbpath) != 0) {
+		ret = chmod(dbpath, S_IRUSR|S_IWUSR);
 		if (ret) {
 			perror("setting db file permissions");
-			sqlite3_close(db);
 			return ret;
 		}
 	}
 
-	ret = dbfile_get_config(db, cfg);
+	ret = dbfile_get_config(db, &cfg);
 	if (ret) {
 		perror_sqlite(ret, "reading initial db config");
-		sqlite3_close(db);
 		return ret;
 	}
 
-	gdb = db;
-
-	ret = dbfile_check(cfg);
-	if (ret) {
+	ret = dbfile_check(db, &cfg);
+	if (ret && strcmp("(null)", dbpath) != 0) {
 		fprintf(stderr, "Recreating hashfile ..\n");
 		sqlite3_close(db);
-		ret = unlink(filename);
+		ret = unlink(dbpath);
 		if ( ret && errno != ENOENT) {
 			ret = errno;
 			fprintf(stderr, "Error %d while unlinking old "
-				"db file \"%s\" : %s\n", ret, filename,
+				"db file \"%s\" : %s\n", ret, dbpath,
 				strerror(ret));
 			return ret;
 		}
 
-		return dbfile_open(filename, cfg);
+		db = __dbfile_open_handle(dbpath, false);
+		return dbfile_prepare(db);
 	}
 
 	/* May store the default config, if fields were missing
 	 * or if the database did not exist
 	 */
-	ret = dbfile_sync_config(cfg);
+	ret = __dbfile_sync_config(db, &cfg);
 	if (ret) {
 		perror_sqlite(ret, "sync db config");
-		sqlite3_close(db);
 		return ret;
 	}
 
 	return 0;
 }
 
-struct sqlite3 *dbfile_open_handle(char *filename)
+
+#define MEMDB_FILENAME		"file::memory:?cache=shared"
+#define OPEN_FLAGS		(SQLITE_OPEN_READWRITE|SQLITE_OPEN_NOMUTEX|SQLITE_OPEN_URI)
+#define OPEN_FLAGS_CREATE	(OPEN_FLAGS|SQLITE_OPEN_CREATE)
+static sqlite3 *__dbfile_open_handle(char *filename, bool force_create)
 {
 	int ret;
 	sqlite3 *db;
 
-	if (!filename)
+	if (!filename) {
 		filename = MEMDB_FILENAME;
+		force_create = true;
+	}
 
-	ret = sqlite3_open_v2(filename, &db, OPEN_FLAGS, NULL);
+	if (force_create)
+		ret = sqlite3_open_v2(filename, &db, OPEN_FLAGS_CREATE, NULL);
+	else
+		ret = sqlite3_open_v2(filename, &db, OPEN_FLAGS, NULL);
+
+	if (ret == SQLITE_CANTOPEN && !force_create) {
+		vprintf("Cannot open an existing hashfile, retrying in create mode\n");
+		sqlite3_close(db);
+		return __dbfile_open_handle(filename, true);
+	}
+
 	if (ret) {
 		perror_sqlite_open(db, filename);
 		sqlite3_close(db);
@@ -322,19 +339,233 @@ struct sqlite3 *dbfile_open_handle(char *filename)
 		return NULL;
 	}
 
+	/* The handle is now created
+	 * If force_create is true, then this is a new database, either
+	 * on disk or in memory, which shall be initialized
+	 */
+	if (force_create) {
+		ret = dbfile_prepare(db);
+		if (ret) {
+			sqlite3_close(db);
+			return NULL;
+		}
+	}
+
 	return db;
 }
 
-void dbfile_close_handle(struct sqlite3 *db)
+#define dbfile_prepare_stmt(member, query) do {							\
+	int ret = sqlite3_prepare_v2(result->db, query, -1, &(result->stmts.member), NULL);	\
+	if (ret) {										\
+		perror_sqlite(ret, "preparing stmt");						\
+		goto err;									\
+	}											\
+} while (0)
+
+struct dbhandle *dbfile_open_handle(char *filename)
 {
-	sqlite3_close(db);
+	struct dbhandle *result = calloc(1, sizeof(struct dbhandle));
+	result->db = __dbfile_open_handle(filename, false);
+
+	if (!result->db)
+		goto err;
+
+#define	INSERT_HASH							\
+"INSERT INTO hashes (ino, subvol, loff, flags, digest) "		\
+"VALUES (?1, ?2, ?3, ?4, ?5);"
+	dbfile_prepare_stmt(insert_hash, INSERT_HASH);
+
+#define	INSERT_EXTENTS							\
+"INSERT INTO extents (ino, subvol, loff, poff, len, flags, digest) "	\
+"VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);"
+	dbfile_prepare_stmt(insert_extent, INSERT_EXTENTS);
+
+#define	UPDATE_FILE_DIGEST						\
+"UPDATE files SET digest = ?1 "						\
+"WHERE ino = ?2 AND subvol = ?3;"
+	dbfile_prepare_stmt(update_file_digest, UPDATE_FILE_DIGEST);
+
+#define FIND_BLOCKS                                                     \
+"select files.filename, hashes.loff, hashes.flags from files "		\
+"INNER JOIN hashes "							\
+"on hashes.digest = ?1 AND files.subvol=hashes.subvol "			\
+"AND files.ino=hashes.ino;"
+	dbfile_prepare_stmt(find_blocks, FIND_BLOCKS);
+
+#define FIND_TOP_B_HASHES						\
+"select digest, count(digest) from hashes "				\
+"group by digest having (count(digest) > 1) "				\
+"order by (count(digest)) desc;"
+	dbfile_prepare_stmt(find_top_b_hashes, FIND_TOP_B_HASHES);
+
+#define FIND_TOP_E_HASHES						\
+"select digest, count(digest) from extents "				\
+"group by digest having (count(digest) > 1) "				\
+"order by (count(digest)) desc;"
+	dbfile_prepare_stmt(find_top_e_hashes, FIND_TOP_E_HASHES);
+
+#define FIND_B_FILES_COUNT						\
+"select count (distinct files.filename) from files "			\
+"INNER JOIN hashes "							\
+"on hashes.digest = ?1 AND files.subvol=hashes.subvol "			\
+"AND files.ino=hashes.ino;"
+	dbfile_prepare_stmt(find_b_files_count, FIND_B_FILES_COUNT);
+
+#define FIND_E_FILES_COUNT						\
+"select count (distinct files.filename) from files "			\
+"INNER JOIN extents "							\
+"on extents.digest = ?1 AND files.subvol = extents.subvol "		\
+"AND files.ino = extents.ino;"
+	dbfile_prepare_stmt(find_e_files_count, FIND_E_FILES_COUNT);
+
+#define	UPDATE_EXTENT_POFF						\
+"update extents set poff = ?1 "						\
+"where ino = ?2 and subvol = ?3 and loff = ?4;"
+	dbfile_prepare_stmt(update_extent_poff, UPDATE_EXTENT_POFF);
+
+#define	WRITE_FILE							\
+"insert or replace into files (ino, subvol, filename, size, mtime, "	\
+"dedupe_seq) VALUES (?1, ?2, ?3, ?4, ?5, ?6);"
+	dbfile_prepare_stmt(write_file, WRITE_FILE);
+
+#define REMOVE_BLOCK_HASHES						\
+"delete from hashes where ino = ?1 and subvol = ?2;"
+	dbfile_prepare_stmt(remove_block_hashes, REMOVE_BLOCK_HASHES);
+
+#define REMOVE_EXTENT_HASHES						\
+"delete from extents where ino = ?1 and subvol = ?2;"
+	dbfile_prepare_stmt(remove_extent_hashes, REMOVE_EXTENT_HASHES);
+
+#define	LOAD_ALL_FILERECS						\
+"select filename, ino, subvol, size, mtime, dedupe_seq from files;"
+	dbfile_prepare_stmt(load_all_filerecs, LOAD_ALL_FILERECS);
+
+#define LOAD_FILEREC							\
+"select filename, size, mtime, dedupe_seq from files "			\
+"where ino = ?1 and subvol = ?2;"
+	dbfile_prepare_stmt(load_filerec, LOAD_FILEREC);
+
+#define GET_DUPLICATE_HASHES						\
+"SELECT hashes.digest, ino, subvol, loff, flags FROM hashes "		\
+"JOIN (SELECT DISTINCT digest FROM hashes WHERE digest IN "		\
+"(SELECT DISTINCT digest FROM hashes WHERE ino IN "			\
+"(SELECT DISTINCT ino FROM files WHERE dedupe_seq > "			\
+"(SELECT keyval FROM config WHERE keyname = 'dedupe_sequence')))"	\
+"GROUP BY digest "							\
+"HAVING count(*) > 1) AS duplicate_hashes "				\
+"on hashes.digest = duplicate_hashes.digest;"
+	dbfile_prepare_stmt(get_duplicate_hashes, GET_DUPLICATE_HASHES);
+
+/*
+ * We need to select on both digest and len, otherwise we
+ * could run into a situation where a single extent with a
+ * colliding hash but different length gets placed into the
+ * results tree, which will get very angry when it has a
+ * result of only one extent.
+ */
+#define GET_DUPLICATE_EXTENTS						\
+"SELECT extents.digest, ino, subvol, loff, extents.len, poff, flags "	\
+"FROM extents "								\
+"JOIN (SELECT digest,len FROM extents where digest in "			\
+"(select distinct digest from extents where ino in "			\
+"(select ino from files where dedupe_seq > "				\
+"(select keyval from config where keyname = 'dedupe_sequence'))) "	\
+"GROUP BY digest,len HAVING count(*) > 1) "				\
+"AS duplicate_extents on extents.digest = duplicate_extents.digest "	\
+"AND extents.len = duplicate_extents.len;"
+	dbfile_prepare_stmt(get_duplicate_extents, GET_DUPLICATE_EXTENTS);
+
+#define GET_DUPLICATE_FILES						\
+"SELECT ino, subvol, files.size, files.digest FROM files "		\
+"JOIN (SELECT digest, size FROM files WHERE digest IN "			\
+"(SELECT distinct digest FROM files WHERE ino IN "			\
+"(SELECT ino FROM files WHERE dedupe_seq > "				\
+"(SELECT keyval FROM config WHERE keyname = 'dedupe_sequence'))) "	\
+"GROUP BY digest, size HAVING count(*) > 1) "				\
+"AS duplicate_files ON files.size != 0 AND "				\
+"files.digest = duplicate_files.digest AND "				\
+"files.size = duplicate_files.size;"
+	dbfile_prepare_stmt(get_duplicate_files, GET_DUPLICATE_FILES);
+
+#define GET_FILE_EXTENT							\
+"select poff, loff, len, flags from extents where "			\
+"ino = ?1 and subvol = ?2 and loff <= ?3 and (loff + len) > ?3;"
+	dbfile_prepare_stmt(get_file_extent, GET_FILE_EXTENT);
+
+#define GET_NONDUPE_EXTENTS						\
+"select extents.loff, len, poff, flags "				\
+"FROM extents where extents.ino = ?1 and extents.subvol = ?2 and "	\
+"(1 = (SELECT COUNT(*) FROM extents as e where e.digest = extents.digest));"
+	dbfile_prepare_stmt(get_nondupe_extents, GET_NONDUPE_EXTENTS);
+
+#define DELETE_FILE "delete from files where filename = ?1;"
+	dbfile_prepare_stmt(delete_file, DELETE_FILE);
+
+#define SELECT_FILE_CHANGES						\
+"select mtime, size from files where ino = ?1 and subvol = ?2;"
+	dbfile_prepare_stmt(select_file_changes, SELECT_FILE_CHANGES);
+
+#define COUNT_B_HASHES "select COUNT(*) from hashes;"
+	dbfile_prepare_stmt(count_b_hashes, COUNT_B_HASHES);
+
+#define COUNT_E_HASHES "select COUNT(*) from extents;"
+	dbfile_prepare_stmt(count_e_hashes, COUNT_E_HASHES);
+
+#define COUNT_FILES "select COUNT(*) from files;"
+	dbfile_prepare_stmt(count_files, COUNT_FILES);
+
+	return result;
+
+err:
+	dbfile_close_handle(result);
+	return NULL;
 }
 
-void dbfile_close(void)
+void dbfile_close_handle(struct dbhandle *db)
 {
-	if (gdb)
-		sqlite3_close(gdb);
-	gdb = NULL;
+	if(db) {
+		/* struct stmts is a named array of sqlite3_stmt*
+		 * let's iterate over all unnamed elements and
+		 * finalize each of them
+		 */
+		sqlite3_stmt **stmts = (sqlite3_stmt**)&(db->stmts);
+
+		int len = sizeof(struct stmts) / sizeof(sqlite3_stmt*);
+		for (int i = 0; i < len; i++) {
+			sqlite3_finalize(stmts[i]);
+		}
+
+		sqlite3_close(db->db);
+		free(db);
+	}
+}
+
+uint64_t count_file_by_digest(struct dbhandle *db, unsigned char *digest,
+				bool show_block_hashes)
+{
+	int ret;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt;
+
+	if (show_block_hashes)
+		stmt = db->stmts.find_b_files_count;
+	else
+		stmt = db->stmts.find_e_files_count;
+
+	ret = sqlite3_bind_blob(stmt, 1, digest, DIGEST_LEN, SQLITE_STATIC);
+	if (ret) {
+		fprintf(stderr, "Error %d binding digest: %s\n", ret,
+			sqlite3_errstr(ret));
+		return 0;
+	}
+
+	ret = sqlite3_step(stmt);
+	if (ret != SQLITE_ROW && ret != SQLITE_DONE) {
+		fprintf(stderr, "error %d, file count search: %s\n",
+			ret, sqlite3_errstr(ret));
+		return 0;
+	}
+
+	return sqlite3_column_int64(stmt, 0);
 }
 
 int dbfile_begin_trans(sqlite3 *db)
@@ -347,19 +578,11 @@ int dbfile_begin_trans(sqlite3 *db)
 	return ret;
 }
 
-int dbfile_update_extent_poff(sqlite3 *db, uint64_t ino, uint64_t subvol,
+int dbfile_update_extent_poff(struct dbhandle *db, uint64_t ino, uint64_t subvol,
 				uint64_t loff, uint64_t poff)
 {
 	int ret;
-	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
-
-#define	UPDATE_EXTENT_POFF						\
-"update extents set poff = ?1 where ino = ?2 and subvol = ?3 and loff = ?4;"
-	ret = sqlite3_prepare_v2(db, UPDATE_EXTENT_POFF, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing extent update statement");
-		return ret;
-	}
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.update_extent_poff;
 
 	ret = sqlite3_bind_int64(stmt, 1, poff);
 	if (ret)
@@ -383,8 +606,6 @@ int dbfile_update_extent_poff(sqlite3 *db, uint64_t ino, uint64_t subvol,
 		return ret;
 	}
 
-	sqlite3_reset(stmt);
-
 	ret = 0;
 bind_error:
 	if (ret)
@@ -400,6 +621,16 @@ int dbfile_commit_trans(sqlite3 *db)
 	ret = sqlite3_exec(db, "commit transaction", NULL, NULL, NULL);
 	if (ret)
 		perror_sqlite(ret, "committing transaction");
+	return ret;
+}
+
+int dbfile_abort_trans(sqlite3 *db)
+{
+	int ret;
+
+	ret = sqlite3_exec(db, "rollback transaction", NULL, NULL, NULL);
+	if (ret)
+		perror_sqlite(ret, "aborting transaction");
 	return ret;
 }
 
@@ -524,23 +755,15 @@ out:
 	return ret;
 }
 
-int dbfile_sync_config(struct dbfile_config *cfg)
+int dbfile_sync_config(struct dbhandle *db, struct dbfile_config *cfg)
 {
-	sqlite3 *db;
-	int ret;
-
-	db = dbfile_get_handle();
-	if (!db)
-		return ENOENT;
-
-	ret = __dbfile_sync_config(db, cfg);
-
-	return ret;
+	return __dbfile_sync_config(db->db, cfg);
 }
 
-static int __dbfile_count_rows_stmt(sqlite3_stmt *stmt, uint64_t *num)
+static int __dbfile_count_rows(sqlite3_stmt *s, uint64_t *num)
 {
 	int ret;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = s;
 
 	ret = sqlite3_step(stmt);
 	if (ret != SQLITE_ROW) {
@@ -549,40 +772,21 @@ static int __dbfile_count_rows_stmt(sqlite3_stmt *stmt, uint64_t *num)
 	}
 
 	*num = sqlite3_column_int64(stmt, 0);
-
-	sqlite3_reset(stmt);
-
 	return 0;
 }
 
-static int __dbfile_count_rows(sqlite3 *db, char *query, uint64_t *num)
-{
-	int ret;
-	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt;
-
-	ret = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
-	if (ret)
-		return ret;
-
-	return __dbfile_count_rows_stmt(stmt, num);
-}
-
-int dbfile_get_stats(sqlite3 *db, struct dbfile_stats *stats)
+int dbfile_get_stats(struct dbhandle *db, struct dbfile_stats *stats)
 {
 	int ret = 0;
-
-#define COUNT_B_HASHES "select COUNT(*) from hashes;"
-	ret = __dbfile_count_rows(db, COUNT_B_HASHES, &(stats->num_b_hashes));
+	ret = __dbfile_count_rows(db->stmts.count_b_hashes, &(stats->num_b_hashes));
 	if (ret)
 		return ret;
 
-#define COUNT_E_HASHES "select COUNT(*) from extents;"
-	ret = __dbfile_count_rows(db, COUNT_E_HASHES, &(stats->num_e_hashes));
+	ret = __dbfile_count_rows(db->stmts.count_e_hashes, &(stats->num_e_hashes));
 	if (ret)
 		return ret;
 
-#define COUNT_FILES "select COUNT(*) from files;"
-	ret = __dbfile_count_rows(db, COUNT_FILES, &(stats->num_files));
+	ret = __dbfile_count_rows(db->stmts.count_files, &(stats->num_files));
 	if (ret)
 		return ret;
 
@@ -746,9 +950,10 @@ int dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg)
 	return ret;
 }
 
-static int __dbfile_store_file_info(sqlite3_stmt *stmt, struct filerec *file)
+int dbfile_store_file_info(struct dbhandle *db, struct filerec *file)
 {
 	int ret;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.write_file;
 
 	ret = sqlite3_bind_int64(stmt, 1, file->inum);
 	if (ret)
@@ -788,54 +993,27 @@ out_error:
 	return ret;
 }
 
-int dbfile_store_file_info(sqlite3 *db, struct filerec *file)
-{
-	int ret;
-	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
-
-#define	WRITE_FILE							\
-"insert or replace into files (ino, subvol, filename, size, mtime, dedupe_seq) VALUES (?1, ?2, ?3, ?4, ?5, ?6);"
-	ret = sqlite3_prepare_v2(db, WRITE_FILE, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing filerec insert statement");
-		return ret;
-	}
-
-	ret = __dbfile_store_file_info(stmt, file);
-	return ret;
-}
-
 /*
  * Write any filerec metadata which was not updated during the
  * checksumming phase.
  */
-int dbfile_sync_files(sqlite3 *db)
+int dbfile_sync_files(struct dbhandle *db)
 {
 	int ret;
 	struct filerec *file;
-	sqlite3_stmt *stmt = NULL;
-
-	ret = sqlite3_prepare_v2(db, WRITE_FILE, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing filerec insert statement");
-		return ret;
-	}
 
 	list_for_each_entry(file, &filerec_list, rec_list) {
 		if (file->flags & FILEREC_UPDATE_DB) {
 			dprintf("File \"%s\" still needs update in db\n",
 				file->filename);
 
-			ret = __dbfile_store_file_info(stmt, file);
+			ret = dbfile_store_file_info(db, file);
 			if (ret)
 				break;
 
 			file->flags &= ~FILEREC_UPDATE_DB;
-			sqlite3_reset(stmt);
 		}
 	}
-
-	sqlite3_finalize(stmt);
 
 	return ret;
 }
@@ -868,48 +1046,24 @@ out:
 	return ret;
 }
 
-static int dbfile_remove_block_hashes(sqlite3 *db, struct filerec *file)
+static int dbfile_remove_block_hashes(struct dbhandle *db, struct filerec *file)
 {
-	int ret = 0;
-	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
-
-#define	REMOVE_BLOCK_HASHES					\
-	"delete from hashes where ino = ?1 and subvol = ?2;"
-	ret = sqlite3_prepare_v2(db, REMOVE_BLOCK_HASHES, -1,
-				 &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing block hashes delete statement");
-		return ret;
-	}
-
-	ret = __dbfile_remove_file_hashes(stmt, file->inum, file->subvolid);
-	return ret;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.remove_block_hashes;
+	return  __dbfile_remove_file_hashes(stmt, file->inum, file->subvolid);
 }
 
-int dbfile_remove_extent_hashes(sqlite3 *db, struct filerec *file)
+int dbfile_remove_extent_hashes(struct dbhandle *db, struct filerec *file)
 {
-	int ret = 0;
-	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
-
-#define	REMOVE_EXTENT_HASHES					\
-	"delete from extents where ino = ?1 and subvol = ?2;"
-	ret = sqlite3_prepare_v2(db, REMOVE_EXTENT_HASHES, -1,
-				 &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing extent hashes delete statement");
-		return ret;
-	}
-
-	ret = __dbfile_remove_file_hashes(stmt, file->inum, file->subvolid);
-	return ret;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.remove_extent_hashes;
+	return __dbfile_remove_file_hashes(stmt, file->inum, file->subvolid);
 }
 
-int dbfile_store_block_hashes(sqlite3 *db, struct filerec *file,
+int dbfile_store_block_hashes(struct dbhandle *db, struct filerec *file,
 				uint64_t nb_hash, struct block_csum *hashes)
 {
 	int ret;
 	uint64_t i;
-	sqlite3_stmt *stmt = NULL;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.insert_hash;
 	uint64_t loff;
 	uint32_t flags;
 	unsigned char *digest;
@@ -918,14 +1072,6 @@ int dbfile_store_block_hashes(sqlite3 *db, struct filerec *file,
 		ret = dbfile_remove_block_hashes(db, file);
 		if (ret)
 			return ret;
-	}
-
-#define	UPDATE_HASH						\
-"INSERT INTO hashes (ino, subvol, loff, flags, digest) VALUES (?1, ?2, ?3, ?4, ?5);"
-	ret = sqlite3_prepare_v2(db, UPDATE_HASH, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing hash insert statement");
-		goto out_error;
 	}
 
 	for (i = 0; i < nb_hash; i++) {
@@ -969,25 +1115,16 @@ bind_error:
 		perror_sqlite(ret, "binding values");
 out_error:
 
-	sqlite3_finalize(stmt);
 	return ret;
 }
 
-int dbfile_store_file_digest(sqlite3 *db, struct filerec *file,
+int dbfile_store_file_digest(struct dbhandle *db, struct filerec *file,
 				unsigned char *digest)
 {
 	int ret;
-	 _cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.update_file_digest;
 
-	dprintf("db: write file hash for file %s\n", file->filename);
-#define	UPDATE_FILE_DIGEST						\
-"UPDATE files SET digest = ?1 where ino = ?2 and subvol = ?3;"
-	ret = sqlite3_prepare_v2(db, UPDATE_FILE_DIGEST, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing file digest insert statement");
-		goto out_error;
-	}
-
+//	dprintf("db: write file hash for file %s\n", file->filename);
 	ret = sqlite3_bind_blob(stmt, 1, digest, DIGEST_LEN,
 				SQLITE_STATIC);
 	if (ret)
@@ -1015,12 +1152,12 @@ out_error:
 	return ret;
 }
 
-int dbfile_store_extent_hashes(sqlite3 *db, struct filerec *file,
+int dbfile_store_extent_hashes(struct dbhandle *db, struct filerec *file,
 				uint64_t nb_hash, struct extent_csum *hashes)
 {
 	int ret;
 	uint64_t i;
-	sqlite3_stmt *stmt = NULL;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.insert_extent;
 	uint64_t loff, poff, len;
 	uint32_t flags;
 	unsigned char *digest;
@@ -1033,14 +1170,6 @@ int dbfile_store_extent_hashes(sqlite3 *db, struct filerec *file,
 
 	dprintf("db: write %d hashes for file %s\n", (int)nb_hash,
 		file->filename);
-#define	UPDATE_EXTENTS						\
-"INSERT INTO extents (ino, subvol, loff, poff, len, flags, digest) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);"
-	ret = sqlite3_prepare_v2(db, UPDATE_EXTENTS, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing extents insert statement");
-		goto out_error;
-	}
-
 	for (i = 0; i < nb_hash; i++) {
 		loff = hashes[i].loff;
 		poff = hashes[i].poff;
@@ -1092,57 +1221,6 @@ bind_error:
 		perror_sqlite(ret, "binding values");
 out_error:
 
-	sqlite3_finalize(stmt);
-	return ret;
-}
-
-/*
- * Walk the files in our db and let the code in add_file_db() sort out
- * what to do with each one.
- */
-static int dbfile_load_files(struct sqlite3 *db)
-{
-	int ret, del_rec;
-	sqlite3_stmt *stmt = NULL;
-	const char *filename;
-	uint64_t size, mtime, ino, subvol;
-	unsigned int dedupe_seq;
-
-#define	LOAD_ALL_FILERECS	"select filename, ino, subvol, size, mtime, dedupe_seq from files;"
-
-	ret = sqlite3_prepare_v2(db, LOAD_ALL_FILERECS, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing statement");
-		return ret;
-	}
-
-	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
-		filename = (const char *)sqlite3_column_text(stmt, 0);
-		ino = sqlite3_column_int64(stmt, 1);
-		subvol = sqlite3_column_int64(stmt, 2);
-		size = sqlite3_column_int64(stmt, 3);
-		mtime = sqlite3_column_int64(stmt, 4);
-		dedupe_seq = sqlite3_column_int(stmt, 5);
-
-		ret = add_file_db(filename, ino, subvol, size, mtime,
-				  dedupe_seq, &del_rec);
-		if (ret)
-			goto out;
-
-		if (del_rec)
-			dbfile_remove_file(db, filename);
-	}
-	if (ret != SQLITE_DONE) {
-		perror_sqlite(ret, "looking up hash");
-		goto out;
-	}
-	sqlite3_reset(stmt);
-
-	ret = 0;
-out:
-	if (stmt)
-		sqlite3_finalize(stmt);
-
 	return ret;
 }
 
@@ -1160,39 +1238,49 @@ out:
  * inserting stuff during the csum stage. This keeps us from getting
  * into a situation where we've inserted duplicate file records.
  */
-int dbfile_scan_files()
+int dbfile_load_files(struct dbhandle *db)
 {
-	int ret;
-	sqlite3 *db;
+	int ret, del_rec;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.load_all_filerecs;
+	const char *filename;
+	uint64_t size, mtime, ino, subvol;
+	unsigned int dedupe_seq;
 
-	db = dbfile_get_handle();
-	if (!db)
-		return ENOENT;
+	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
+		filename = (const char *)sqlite3_column_text(stmt, 0);
+		ino = sqlite3_column_int64(stmt, 1);
+		subvol = sqlite3_column_int64(stmt, 2);
+		size = sqlite3_column_int64(stmt, 3);
+		mtime = sqlite3_column_int64(stmt, 4);
+		dedupe_seq = sqlite3_column_int(stmt, 5);
 
-	ret = dbfile_load_files(db);
-	return ret;
+		ret = add_file_db(filename, ino, subvol, size, mtime,
+				  dedupe_seq, &del_rec);
+		if (ret)
+			return ret;
+
+		if (del_rec)
+			dbfile_remove_file(db, filename);
+	}
+	if (ret != SQLITE_DONE) {
+		perror_sqlite(ret, "looking up hash");
+		return ret;
+	}
+
+	return 0;
 }
 
-int dbfile_load_one_filerec(sqlite3 *db, uint64_t ino, uint64_t subvol,
+int dbfile_load_one_filerec(struct dbhandle *db, uint64_t ino, uint64_t subvol,
 				   struct filerec **file)
 {
 	int ret;
-	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.load_filerec;
 	const unsigned char *filename;
 	uint64_t size;
 	uint64_t mtime;
 	unsigned int seq;
 
 	*file = NULL;
-
-#define LOAD_FILEREC	"select filename, size, mtime, dedupe_seq from files " \
-			"where ino = ?1 and subvol = ?2;"
-
-	ret = sqlite3_prepare_v2(db, LOAD_FILEREC, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing statement");
-		return ret;
-	}
 
 	ret = sqlite3_bind_int64(stmt, 1, ino);
 	if (ret) {
@@ -1232,8 +1320,8 @@ int dbfile_load_one_filerec(sqlite3 *db, uint64_t ino, uint64_t subvol,
 int dbfile_load_block_hashes(struct hash_tree *hash_tree)
 {
 	int ret;
-	sqlite3 *db;
-	sqlite3_stmt *stmt = NULL;
+	struct dbhandle *db;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = NULL;
 	uint64_t subvol, ino, loff;
 	unsigned char *digest;
 	int flags;
@@ -1243,21 +1331,7 @@ int dbfile_load_block_hashes(struct hash_tree *hash_tree)
 	if (!db)
 		return ENOENT;
 
-#define GET_DUPLICATE_HASHES \
-	"SELECT hashes.digest, ino, subvol, loff, flags FROM hashes " \
-	"JOIN (SELECT DISTINCT digest FROM hashes WHERE digest IN " \
-	"(SELECT DISTINCT digest FROM hashes WHERE ino IN " \
-	"(SELECT DISTINCT ino FROM files WHERE dedupe_seq > " \
-	"(SELECT keyval FROM config WHERE keyname = 'dedupe_sequence')))" \
-	"GROUP BY digest " \
-				"HAVING count(*) > 1) AS duplicate_hashes " \
-	"on hashes.digest = duplicate_hashes.digest;"
-
-	ret = sqlite3_prepare_v2(db, GET_DUPLICATE_HASHES, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing statement");
-		return ret;
-	}
+	stmt = db->stmts.get_duplicate_hashes;
 
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
 		digest = (unsigned char *)sqlite3_column_blob(stmt, 0);
@@ -1273,7 +1347,7 @@ int dbfile_load_block_hashes(struct hash_tree *hash_tree)
 				fprintf(stderr, "Error loading filerec (%"
 					PRIu64",%"PRIu64") from db\n",
 					ino, subvol);
-				goto out;
+				return ret;
 			}
 		}
 
@@ -1283,25 +1357,19 @@ int dbfile_load_block_hashes(struct hash_tree *hash_tree)
 	}
 	if (ret != SQLITE_DONE) {
 		perror_sqlite(ret, "looking up hash");
-		goto out;
+		return ret;
 	}
-	sqlite3_reset(stmt);
 
 	sort_file_hash_heads(hash_tree);
 
-	ret = 0;
-out:
-	if (stmt)
-		sqlite3_finalize(stmt);
-
-	return ret;
+	return 0;
 }
 
 int dbfile_load_extent_hashes(struct results_tree *res)
 {
 	int ret, flags;
-	sqlite3 *db;
-	sqlite3_stmt *stmt = NULL;
+	struct dbhandle *db;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = NULL;
 	uint64_t subvol, ino, loff, poff, len;
 	unsigned char *digest;
 	struct filerec *file;
@@ -1310,28 +1378,7 @@ int dbfile_load_extent_hashes(struct results_tree *res)
 	if (!db)
 		return ENOENT;
 
-	/*
-	 * We need to select on both digest and len, otherwise we
-	 * could run into a situation where a single extent with a
-	 * colliding hash but different length gets placed into the
-	 * results tree, which will get very angry when it has a
-	 * result of only one extent.
-	 */
-#define GET_DUPLICATE_EXTENTS					      \
-	"SELECT extents.digest, ino, subvol, loff, extents.len, poff, flags FROM extents " \
-	"JOIN (SELECT digest,len FROM extents where digest in " \
-	"(select distinct digest from extents where ino in " \
-	"(select ino from files where dedupe_seq > " \
-	"(select keyval from config where keyname = 'dedupe_sequence'))) " \
-	"GROUP BY digest,len HAVING count(*) > 1) " \
-	"AS duplicate_extents on extents.digest = duplicate_extents.digest AND " \
-	"extents.len = duplicate_extents.len;"
-
-	ret = sqlite3_prepare_v2(db, GET_DUPLICATE_EXTENTS, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing statement");
-		return ret;
-	}
+	stmt = db->stmts.get_duplicate_extents;
 
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
 		digest = (unsigned char *)sqlite3_column_blob(stmt, 0);
@@ -1349,7 +1396,7 @@ int dbfile_load_extent_hashes(struct results_tree *res)
 				fprintf(stderr, "Error loading filerec (%"
 					PRIu64",%"PRIu64") from db\n",
 					ino, subvol);
-				goto out;
+				return ret;
 			}
 		}
 
@@ -1359,43 +1406,29 @@ int dbfile_load_extent_hashes(struct results_tree *res)
 	}
 	if (ret != SQLITE_DONE) {
 		perror_sqlite(ret, "looking up hash");
-		goto out;
+		return ret;
 	}
-	sqlite3_reset(stmt);
 
-	ret = 0;
-out:
-	if (stmt)
-		sqlite3_finalize(stmt);
-
-	return ret;
+	return 0;
 }
 
-int dbfile_load_one_file_extent(sqlite3 *db, struct filerec *file,
+int dbfile_load_one_file_extent(struct dbhandle *db, struct filerec *file,
 				uint64_t loff, struct file_extent *extent)
 {
 	int ret;
-	sqlite3_stmt *stmt = NULL;
-
-#define GET_FILE_EXTENT	"select poff, loff, len, flags from extents where " \
-	"ino = ?1 and subvol = ?2 and loff <= ?3 and (loff + len) > ?3;"
-	ret = sqlite3_prepare_v2(db, GET_FILE_EXTENT, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing get file extents statement");
-		goto out;
-	}
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.get_file_extent;
 
 	ret = sqlite3_bind_int64(stmt, 1, file->inum);
 	if (ret)
-		goto out;
+		return ret;
 
 	ret = sqlite3_bind_int64(stmt, 2, file->subvolid);
 	if (ret)
-		goto out;
+		return ret;
 
 	ret = sqlite3_bind_int64(stmt, 3, loff);
 	if (ret)
-		goto out;
+		return ret;
 
 	ret = sqlite3_step(stmt);
 	if (ret != SQLITE_ROW) {
@@ -1408,32 +1441,17 @@ int dbfile_load_one_file_extent(sqlite3 *db, struct filerec *file,
 	extent->len = sqlite3_column_int64(stmt, 2);
 	extent->flags = sqlite3_column_int(stmt, 3);
 
-	ret = 0;
-out:
-	sqlite3_finalize(stmt);
-	return ret;
+	return 0;
 }
 
-int dbfile_load_nondupe_file_extents(sqlite3 *db, struct filerec *file,
+int dbfile_load_nondupe_file_extents(struct dbhandle *db, struct filerec *file,
 				     struct file_extent **ret_extents,
 				     unsigned int *num_extents)
 {
 	int ret;
-	sqlite3_stmt *stmt = NULL;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.get_nondupe_extents;
 	uint64_t count = 0, i;
 	struct file_extent *extents = NULL;
-
-#define NONDUPE_JOIN							\
-	"FROM extents where extents.ino = ?1 and extents.subvol = ?2 and " \
-	"(1 = (SELECT COUNT(*) FROM extents as e where e.digest = extents.digest));"
-#define GET_NONDUPE_EXTENTS						\
-	"select extents.loff, len, poff, flags " NONDUPE_JOIN
-
-	ret = sqlite3_prepare_v2(db, GET_NONDUPE_EXTENTS, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing nondupe extents statement");
-		goto out;
-	}
 
 	ret = sqlite3_bind_int64(stmt, 1, file->inum);
 	if (ret)
@@ -1471,7 +1489,6 @@ int dbfile_load_nondupe_file_extents(sqlite3 *db, struct filerec *file,
 out:
 	if (ret && extents)
 		free(extents);
-	sqlite3_finalize(stmt);
 	return ret;
 }
 
@@ -1485,12 +1502,12 @@ static int iter_cb(void *priv, int argc, char **argv,
 	return 0;
 }
 
-int dbfile_iter_files(sqlite3 *db, iter_files_func func)
+int dbfile_iter_files(struct dbhandle *db, iter_files_func func)
 {
 	int ret;
 
 #define	LIST_FILES	"select filename, ino, subvol from files;"
-	ret = sqlite3_exec(db, LIST_FILES, iter_cb, func, NULL);
+	ret = sqlite3_exec(db->db, LIST_FILES, iter_cb, func, NULL);
 	if (ret) {
 		perror_sqlite(ret, "Running sql to list files.");
 		return ret;
@@ -1499,17 +1516,10 @@ int dbfile_iter_files(sqlite3 *db, iter_files_func func)
 	return 0;
 }
 
-int dbfile_remove_file(sqlite3 *db, const char *filename)
+int dbfile_remove_file(struct dbhandle *db, const char *filename)
 {
 	int ret;
-	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
-
-#define DELETE_FILE "delete from files where filename = ?1;"
-	ret = sqlite3_prepare_v2(db, DELETE_FILE, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing files statement");
-		return ret;
-	}
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.delete_file;
 
 	dprintf("Remove file \"%s\" from the db\n", filename);
 
@@ -1528,7 +1538,7 @@ int dbfile_remove_file(sqlite3 *db, const char *filename)
 	return 0;
 }
 
-void dbfile_list_files(sqlite3 *db, int (*callback)(void*, int, char**, char**))
+void dbfile_list_files(struct dbhandle *db, int (*callback)(void*, int, char**, char**))
 {
 	int ret;
 	char *err;
@@ -1536,7 +1546,7 @@ void dbfile_list_files(sqlite3 *db, int (*callback)(void*, int, char**, char**))
 #define LIST_FILERECS							\
 "select ino, subvol, blocks, size, filename from files;"
 
-	ret = sqlite3_exec(db, LIST_FILERECS, callback, NULL, &err);
+	ret = sqlite3_exec(db->db, LIST_FILERECS, callback, NULL, &err);
 	if (ret) {
 		fprintf(stderr, "error %d, executing file search: %s\n", ret,
 			err);
@@ -1549,18 +1559,11 @@ void dbfile_list_files(sqlite3 *db, int (*callback)(void*, int, char**, char**))
  * Returns false only if they match.
  * Returns true if not, or if there is not data found, or on error.
  */
-int dbfile_describe_file(sqlite3 *db, uint64_t inum, uint64_t subvolid,
+int dbfile_describe_file(struct dbhandle *db, uint64_t inum, uint64_t subvolid,
 				uint64_t *mtime, uint64_t *size)
 {
 	int ret;
-	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
-
-#define SELECT_FILE_CHANGES "select mtime, size from files where ino = ?1 and subvol = ?2;"
-	ret = sqlite3_prepare_v2(db, SELECT_FILE_CHANGES, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing statement");
-		return ret;
-	}
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.select_file_changes;
 
 	ret = sqlite3_bind_int64(stmt, 1, inum);
 	if (ret) {
@@ -1579,7 +1582,7 @@ int dbfile_describe_file(sqlite3 *db, uint64_t inum, uint64_t subvolid,
 		return 0;
 
 	if (ret != SQLITE_ROW) {
-		perror_sqlite(ret, "fetching database's backend path");
+		perror_sqlite(ret, "fetching a file");
 		return ret;
 	}
 
@@ -1592,8 +1595,8 @@ int dbfile_describe_file(sqlite3 *db, uint64_t inum, uint64_t subvolid,
 int dbfile_load_same_files(struct results_tree *res)
 {
 	int ret;
-	sqlite3 *db;
-	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
+	struct dbhandle *db;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = NULL;
 	uint64_t subvol, ino, len;
 	unsigned char *digest;
 	struct filerec *file;
@@ -1602,22 +1605,7 @@ int dbfile_load_same_files(struct results_tree *res)
 	if (!db)
 		return ENOENT;
 
-#define GET_DUPLICATE_FILES					      \
-	"SELECT ino, subvol, files.size, files.digest FROM files "\
-	"JOIN (SELECT digest, size FROM files WHERE digest IN " \
-	"(SELECT distinct digest FROM files WHERE ino IN " \
-	"(SELECT ino FROM files WHERE dedupe_seq > " \
-	"(SELECT keyval FROM config WHERE keyname = 'dedupe_sequence'))) " \
-	"GROUP BY digest, size HAVING count(*) > 1) " \
-	"AS duplicate_files ON files.size != 0 AND " \
-	"files.digest = duplicate_files.digest AND " \
-	"files.size = duplicate_files.size;"
-
-	ret = sqlite3_prepare_v2(db, GET_DUPLICATE_FILES, -1, &stmt, NULL);
-	if (ret) {
-		perror_sqlite(ret, "preparing statement");
-		return ret;
-	}
+	stmt = db->stmts.get_duplicate_files;
 
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
 		ino = sqlite3_column_int64(stmt, 0);
@@ -1632,7 +1620,7 @@ int dbfile_load_same_files(struct results_tree *res)
 				fprintf(stderr, "Error loading filerec (%"
 					PRIu64",%"PRIu64") from db\n",
 					ino, subvol);
-				goto out;
+				return ret;
 			}
 		}
 
@@ -1642,11 +1630,13 @@ int dbfile_load_same_files(struct results_tree *res)
 	}
 	if (ret != SQLITE_DONE) {
 		perror_sqlite(ret, "looking up hash");
-		goto out;
+		return ret;
 	}
-	sqlite3_reset(stmt);
 
-	ret = 0;
-out:
-	return ret;
+	return 0;
+}
+
+void dbfile_set_gdb(struct dbhandle *db)
+{
+	gdb = db;
 }

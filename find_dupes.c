@@ -329,7 +329,7 @@ next_match:
 }
 
 static int search_extent(struct filerec *file, struct file_extent *extent,
-			 struct results_tree *dupe_extents, sqlite3 *db)
+			 struct results_tree *dupe_extents, struct dbhandle *db)
 {
 	int ret;
 	struct file_block *block, *found_block;
@@ -396,7 +396,7 @@ static int search_file_extents(struct filerec *file, struct results_tree *dupe_e
 {
 
 	int ret;
-	sqlite3 *db;
+	struct dbhandle *db;
 	struct file_extent *extents = NULL;
 	struct file_extent *extent;
 	unsigned int num_extents, i;

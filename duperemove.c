@@ -76,7 +76,7 @@ static int list_db_files(char *filename)
 {
 	int ret;
 
-	_cleanup_(sqlite3_close_cleanup) sqlite3 *db = dbfile_open_handle(filename);
+	_cleanup_(sqlite3_close_cleanup) struct dbhandle *db = dbfile_open_handle(filename);
 	if (!db) {
 		fprintf(stderr, "Error: Could not open \"%s\"\n", filename);
 		return -1;
@@ -86,7 +86,7 @@ static int list_db_files(char *filename)
 	return ret;
 }
 
-static void rm_db_files_from_stdin(sqlite3 *db)
+static void rm_db_files_from_stdin(struct dbhandle *db)
 {
 	_cleanup_(freep) char *path = NULL;
 	size_t pathlen = 0;
@@ -112,7 +112,7 @@ static void rm_db_files_from_stdin(sqlite3 *db)
 static int rm_db_files(int numfiles, char **files)
 {
 	int i, ret;
-	_cleanup_(sqlite3_close_cleanup) sqlite3 *db = dbfile_open_handle(options.hashfile);
+	_cleanup_(sqlite3_close_cleanup) struct dbhandle *db = dbfile_open_handle(options.hashfile);
 	if (!db) {
 		fprintf(stderr, "Error: Could not open \"%s\"\n", options.hashfile);
 		return -1;
@@ -556,7 +556,7 @@ void process_duplicates()
 		dbfile_cfg.blocksize = blocksize;
 		dbfile_cfg.onefs_dev = fs_onefs_dev();
 		dbfile_cfg.onefs_fsid = fs_onefs_id();
-		ret = dbfile_sync_config(&dbfile_cfg);
+		ret = dbfile_sync_config(dbfile_get_handle(), &dbfile_cfg);
 		if (ret)
 			goto out;
 	}
@@ -565,7 +565,7 @@ out:
 	free_hash_tree(&dups_tree);
 }
 
-static int create_scan_list(int argc, char **argv, int filelist_idx)
+static int create_scan_list(int argc, char **argv, int filelist_idx, struct dbhandle *db)
 {
 	int ret;
 
@@ -583,13 +583,13 @@ static int create_scan_list(int argc, char **argv, int filelist_idx)
 	 */
 	dbfile_cfg.onefs_dev = fs_onefs_dev();
 	dbfile_cfg.onefs_fsid = fs_onefs_id();
-	ret = dbfile_sync_config(&dbfile_cfg);
+	ret = dbfile_sync_config(db, &dbfile_cfg);
 	if (ret)
 		return ret;
 
 	if (options.rescan_files) {
 		qprintf("Adding files from database for hashing.\n");
-		ret = dbfile_scan_files();
+		ret = dbfile_load_files(db);
 		if (ret)
 			return ret;
 	}
@@ -605,6 +605,7 @@ static int create_scan_list(int argc, char **argv, int filelist_idx)
 int main(int argc, char **argv)
 {
 	int ret, filelist_idx = 0;
+	_cleanup_(sqlite3_close_cleanup) struct dbhandle *db = NULL;
 
 	char stdbuf[BUFSIZ];
 	setvbuf(stdout, stdbuf, _IOLBF, BUFSIZ);
@@ -633,7 +634,13 @@ int main(int argc, char **argv)
 	else if (rm_only_opt)
 		return rm_db_files(argc - filelist_idx, &argv[filelist_idx]);
 
-	ret = dbfile_open(options.hashfile, &dbfile_cfg);
+	db = dbfile_open_handle(options.hashfile);
+	if (!db)
+		goto out;
+
+	dbfile_set_gdb(db);
+
+	ret = dbfile_get_config(db->db, &dbfile_cfg);
 	if (ret)
 		goto out;
 
@@ -645,7 +652,7 @@ int main(int argc, char **argv)
 	print_header();
 
 	if (use_hashfile == H_WRITE) {
-		ret = create_scan_list(argc, argv, filelist_idx);
+		ret = create_scan_list(argc, argv, filelist_idx, db);
 		if (ret)
 			goto out;
 
@@ -655,7 +662,7 @@ int main(int argc, char **argv)
 			goto out;
 		}
 
-		ret = dbfile_sync_files(dbfile_get_handle());
+		ret = dbfile_sync_files(db);
 		if (ret)
 			goto out;
 
@@ -664,7 +671,7 @@ int main(int argc, char **argv)
 	}
 
 	if (use_hashfile == H_UPDATE) {
-		ret = create_scan_list(argc, argv, filelist_idx);
+		ret = create_scan_list(argc, argv, filelist_idx, db);
 		if (ret)
 			goto out;
 
@@ -674,7 +681,7 @@ int main(int argc, char **argv)
 			goto out;
 		}
 
-		ret = dbfile_sync_files(dbfile_get_handle());
+		ret = dbfile_sync_files(db);
 		if (ret)
 			goto out;
 	}
@@ -684,7 +691,6 @@ int main(int argc, char **argv)
 
 out:
 	free_all_filerecs();
-	dbfile_close();
 
 #ifdef DEBUG_BUILD
 	print_mem_stats();

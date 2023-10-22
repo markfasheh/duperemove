@@ -881,7 +881,7 @@ static void csum_whole_file(struct filerec *file,
 	uint64_t nb_hash = 0;
 	struct fiemap_ctxt *fc = NULL;
 	struct csum_ctxt csum_ctxt;
-	struct sqlite3 *db = NULL;
+	struct dbhandle *db = NULL;
 	struct extent_csum *extent_hashes = NULL;
 	struct block_csum *block_hashes = NULL;
 
@@ -907,7 +907,7 @@ static void csum_whole_file(struct filerec *file,
 	g_mutex_lock(&io_mutex);
 	/* Make sure that we'll check this file on any future dedupe passes */
 	filerec_clear_deduped(file);
-	ret = dbfile_begin_trans(db);
+	ret = dbfile_begin_trans(db->db);
 	if (ret) {
 		g_mutex_unlock(&io_mutex);
 		goto err;
@@ -952,7 +952,7 @@ static void csum_whole_file(struct filerec *file,
 		}
 	}
 
-	ret = dbfile_commit_trans(db);
+	ret = dbfile_commit_trans(db->db);
 	if (ret) {
 		g_mutex_unlock(&io_mutex);
 		goto err;
