@@ -449,8 +449,7 @@ struct dbhandle *dbfile_open_handle(char *filename)
 "SELECT hashes.digest, ino, subvol, loff, flags FROM hashes "		\
 "JOIN (SELECT DISTINCT digest FROM hashes WHERE digest IN "		\
 "(SELECT DISTINCT digest FROM hashes WHERE ino IN "			\
-"(SELECT DISTINCT ino FROM files WHERE dedupe_seq > "			\
-"(SELECT keyval FROM config WHERE keyname = 'dedupe_sequence')))"	\
+"(SELECT DISTINCT ino FROM files WHERE dedupe_seq = ?1))"		\
 "GROUP BY digest "							\
 "HAVING count(*) > 1) AS duplicate_hashes "				\
 "on hashes.digest = duplicate_hashes.digest;"
@@ -468,8 +467,7 @@ struct dbhandle *dbfile_open_handle(char *filename)
 "FROM extents "								\
 "JOIN (SELECT digest,len FROM extents where digest in "			\
 "(select distinct digest from extents where ino in "			\
-"(select ino from files where dedupe_seq > "				\
-"(select keyval from config where keyname = 'dedupe_sequence'))) "	\
+"(select ino from files where dedupe_seq = ?1)) "			\
 "GROUP BY digest,len HAVING count(*) > 1) "				\
 "AS duplicate_extents on extents.digest = duplicate_extents.digest "	\
 "AND extents.len = duplicate_extents.len;"
@@ -479,8 +477,7 @@ struct dbhandle *dbfile_open_handle(char *filename)
 "SELECT ino, subvol, files.size, files.digest FROM files "		\
 "JOIN (SELECT digest, size FROM files WHERE digest IN "			\
 "(SELECT distinct digest FROM files WHERE ino IN "			\
-"(SELECT ino FROM files WHERE dedupe_seq > "				\
-"(SELECT keyval FROM config WHERE keyname = 'dedupe_sequence'))) "	\
+"(SELECT ino FROM files WHERE dedupe_seq = ?1)) "			\
 "GROUP BY digest, size HAVING count(*) > 1) "				\
 "AS duplicate_files ON files.size != 0 AND "				\
 "files.digest = duplicate_files.digest AND "				\
@@ -513,6 +510,9 @@ struct dbhandle *dbfile_open_handle(char *filename)
 
 #define COUNT_FILES "select COUNT(*) from files;"
 	dbfile_prepare_stmt(count_files, COUNT_FILES);
+
+#define GET_MAX_DEDUPE_SEQ "select max(dedupe_seq) from files;"
+	dbfile_prepare_stmt(get_max_dedupe_seq, GET_MAX_DEDUPE_SEQ);
 
 	return result;
 
@@ -1305,7 +1305,7 @@ int dbfile_load_one_filerec(struct dbhandle *db, uint64_t ino, uint64_t subvol,
 	return 0;
 }
 
-int dbfile_load_block_hashes(struct hash_tree *hash_tree)
+int dbfile_load_block_hashes(struct hash_tree *hash_tree, unsigned int seq)
 {
 	int ret;
 	struct dbhandle *db;
@@ -1320,6 +1320,12 @@ int dbfile_load_block_hashes(struct hash_tree *hash_tree)
 		return ENOENT;
 
 	stmt = db->stmts.get_duplicate_hashes;
+
+	ret = sqlite3_bind_int64(stmt, 1, seq);
+	if (ret) {
+		perror_sqlite(ret, "binding value");
+		return ret;
+	}
 
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
 		digest = (unsigned char *)sqlite3_column_blob(stmt, 0);
@@ -1353,7 +1359,7 @@ int dbfile_load_block_hashes(struct hash_tree *hash_tree)
 	return 0;
 }
 
-int dbfile_load_extent_hashes(struct results_tree *res)
+int dbfile_load_extent_hashes(struct results_tree *res, unsigned int seq)
 {
 	int ret, flags;
 	struct dbhandle *db;
@@ -1367,6 +1373,12 @@ int dbfile_load_extent_hashes(struct results_tree *res)
 		return ENOENT;
 
 	stmt = db->stmts.get_duplicate_extents;
+
+	ret = sqlite3_bind_int64(stmt, 1, seq);
+	if (ret) {
+		perror_sqlite(ret, "binding value");
+		return ret;
+	}
 
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
 		digest = (unsigned char *)sqlite3_column_blob(stmt, 0);
@@ -1590,7 +1602,7 @@ int dbfile_describe_file(struct dbhandle *db, uint64_t inum, uint64_t subvolid,
 	return 0;
 }
 
-int dbfile_load_same_files(struct results_tree *res)
+int dbfile_load_same_files(struct results_tree *res, unsigned int seq)
 {
 	int ret;
 	struct dbhandle *db;
@@ -1604,6 +1616,12 @@ int dbfile_load_same_files(struct results_tree *res)
 		return ENOENT;
 
 	stmt = db->stmts.get_duplicate_files;
+
+	ret = sqlite3_bind_int64(stmt, 1, seq);
+	if (ret) {
+		perror_sqlite(ret, "binding value");
+		return ret;
+	}
 
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
 		ino = sqlite3_column_int64(stmt, 0);
@@ -1637,4 +1655,18 @@ int dbfile_load_same_files(struct results_tree *res)
 void dbfile_set_gdb(struct dbhandle *db)
 {
 	gdb = db;
+}
+
+unsigned int get_max_dedupe_seq(struct dbhandle *db)
+{
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.get_max_dedupe_seq;
+
+	int ret = sqlite3_step(stmt);
+	if (ret != SQLITE_ROW) {
+		fprintf(stderr, "error %d, get max dedupe seq: %s\n",
+			ret, sqlite3_errstr(ret));
+		return 0;
+	}
+
+	return sqlite3_column_int64(stmt, 0);
 }

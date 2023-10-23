@@ -496,7 +496,7 @@ static void print_header(void)
 	qprintf("Gathering file list...\n");
 }
 
-void process_duplicates()
+static void __process_duplicates(unsigned int seq)
 {
 	int ret;
 	struct results_tree res;
@@ -506,7 +506,7 @@ void process_duplicates()
 	init_hash_tree(&dups_tree);
 
 	qprintf("Loading only identical files from hashfile.\n");
-	ret = dbfile_load_same_files(&res);
+	ret = dbfile_load_same_files(&res, seq + 1);
 	if (ret)
 		goto out;
 
@@ -523,13 +523,13 @@ void process_duplicates()
 
 		qprintf("Loading only duplicated hashes from hashfile.\n");
 
-		ret = dbfile_load_extent_hashes(&res);
+		ret = dbfile_load_extent_hashes(&res, seq + 1);
 		if (ret)
 			goto out;
 
 		printf("Found %llu identical extents.\n", res.num_extents);
 		if (options.do_block_hash) {
-			ret = dbfile_load_block_hashes(&dups_tree);
+			ret = dbfile_load_block_hashes(&dups_tree, seq + 1);
 			if (ret)
 				goto out;
 
@@ -544,25 +544,35 @@ void process_duplicates()
 			print_dupes_table(&res, false);
 	}
 
-	if (options.run_dedupe) {
-		/*
-		 * Bump dedupe_seq, this effectively marks the files
-		 * in our hashfile as having been through dedupe.
-		 */
-		dedupe_seq++;
-
-		/* Sync to get new dedupe_seq written. */
-		dbfile_cfg.dedupe_seq = dedupe_seq;
-		dbfile_cfg.blocksize = blocksize;
-		dbfile_cfg.onefs_dev = fs_onefs_dev();
-		dbfile_cfg.onefs_fsid = fs_onefs_id();
-		ret = dbfile_sync_config(dbfile_get_handle(), &dbfile_cfg);
-		if (ret)
-			goto out;
-	}
 out:
 	free_results_tree(&res);
 	free_hash_tree(&dups_tree);
+}
+
+static void process_duplicates()
+{
+	unsigned int max = get_max_dedupe_seq(dbfile_get_handle());
+
+	for (unsigned int i = dedupe_seq; i < max; i++) {
+		/* Drop all filerecs from the previous iteration. Needed filerecs will be
+		 * recreated by __process_duplicates()
+		 */
+		free_all_filerecs();
+		__process_duplicates(i);
+
+		if (options.run_dedupe) {
+			/*
+			 * Bump dedupe_seq, this effectively marks the files
+			 * in our hashfile as having been through dedupe.
+			 */
+			dedupe_seq++;
+			dbfile_cfg.dedupe_seq = dedupe_seq;
+			dbfile_cfg.blocksize = blocksize;
+			dbfile_cfg.onefs_dev = fs_onefs_dev();
+			dbfile_cfg.onefs_fsid = fs_onefs_id();
+			dbfile_sync_config(dbfile_get_handle(), &dbfile_cfg);
+		}
+	}
 }
 
 static int create_scan_list(int argc, char **argv, int filelist_idx, struct dbhandle *db)
@@ -644,10 +654,10 @@ int main(int argc, char **argv)
 	if (ret)
 		goto out;
 
+	dedupe_seq = dbfile_cfg.dedupe_seq;
+
 	if (options.fdupes_mode)
 		return add_files_from_stdin(1, db);
-
-	dedupe_seq = dbfile_cfg.dedupe_seq;
 
 	print_header();
 
@@ -656,7 +666,7 @@ int main(int argc, char **argv)
 		if (ret)
 			goto out;
 
-		ret = populate_tree(NULL);
+		ret = populate_tree();
 		if (ret) {
 			fprintf(stderr,	"Error while populating extent tree!\n");
 			goto out;
@@ -675,11 +685,13 @@ int main(int argc, char **argv)
 		if (ret)
 			goto out;
 
-		ret = populate_tree(&process_duplicates);
+		ret = populate_tree();
 		if (ret) {
 			fprintf(stderr,	"Error while populating extent tree!\n");
 			goto out;
 		}
+
+		process_duplicates();
 
 		ret = dbfile_sync_files(db);
 		if (ret)

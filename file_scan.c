@@ -50,6 +50,7 @@
 #include "dbfile.h"
 #include "util.h"
 #include "opt.h"
+#include "threads.h"
 
 /* This is not in linux/magic.h */
 #ifndef	XFS_SB_MAGIC
@@ -62,6 +63,8 @@ static uint64_t one_fs_btrfs;
 static unsigned long long files_to_scan;
 static GMutex io_mutex; /* locks db writes */
 static unsigned int leading_spaces;
+
+static struct threads_pool scan_pool;
 
 #define READ_BUF_LEN (8*1024*1024) // 8MB
 
@@ -509,41 +512,22 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 	return 0;
 }
 
-static GThreadPool *setup_pool(void *arg, void *function)
-{
-	GError *err = NULL;
-	GThreadPool *pool;
-
-	pool = g_thread_pool_new((GFunc) function, arg, options.io_threads, FALSE,
-				 &err);
-	if (err != NULL) {
-		fprintf(stderr, "Unable to create thread pool: %s\n",
-			err->message);
-		g_error_free(err);
-		err = NULL;
-		return NULL;
-	}
-	return pool;
-}
-
-static void run_pool(GThreadPool *pool, struct filerec *file)
+static void run_pool(struct threads_pool *pool, struct filerec *file)
 {
 	GError *err = NULL;
 	struct filerec *tmp;
+	unsigned int seq;
 
 	unsigned int counter = 0;
 
-	qprintf("Using %u threads for file hashing phase\n", options.io_threads);
+	seq = dedupe_seq + 1;
 
-	/* Reset the scanned filerecs */
-	list_for_each_entry(file, &filerec_list, rec_list) {
-		file->scanned = false;
-	}
+	qprintf("Using %u threads for file hashing phase\n", options.io_threads);
 
 	list_for_each_entry_safe(file, tmp, &filerec_list, rec_list) {
 		if (file->flags & FILEREC_NEEDS_SCAN) {
-			file->scanned = true;
-			g_thread_pool_push(pool, file, &err);
+			file->dedupe_seq = seq;
+			g_thread_pool_push(pool->pool, file, &err);
 			if (err != NULL) {
 				fprintf(stderr,
 					"g_thread_pool_push: %s\n",
@@ -555,14 +539,13 @@ static void run_pool(GThreadPool *pool, struct filerec *file)
 			/* If batch_size is 0 then batching is disabled */
 			if ( options.batch_size != 0 ) {
 				counter += 1;
-				if (counter > options.batch_size) {
-					break;
+				if (counter >= options.batch_size) {
+					seq++;
+					counter = 0;
 				}
 			}
 		}
 	}
-
-	g_thread_pool_free(pool, FALSE, TRUE);
 }
 
 static inline int is_block_zeroed(void *buf, ssize_t buf_size)
@@ -904,8 +887,6 @@ static void csum_whole_file(struct filerec *file,
 		goto err;
 
 	g_mutex_lock(&io_mutex);
-	/* Make sure that we'll check this file on any future dedupe passes */
-	filerec_clear_deduped(file);
 	ret = dbfile_begin_trans(db->db);
 	if (ret) {
 		g_mutex_unlock(&io_mutex);
@@ -1014,9 +995,9 @@ err_noclose:
 	return;
 }
 
-int populate_tree(void (*callback)(void))
+int populate_tree()
 {
-	GThreadPool *pool;
+	struct threads_pool pool;
 	struct thread_params params;
 	int ret = 0;
 
@@ -1028,26 +1009,18 @@ int populate_tree(void (*callback)(void))
 	leading_spaces = num_digits(files_to_scan);
 
 	if (files_to_scan) {
-		while (params.num_files != files_to_scan) {
-			pool = setup_pool(&params, csum_whole_file);
-			if (!pool) {
-				ret = ENOMEM;
-				goto out;
-			}
-
-			run_pool(pool, file);
-			if (callback)
-				callback();
+		setup_pool(&pool, csum_whole_file, &params);
+		if (!pool.pool) {
+			ret = ENOMEM;
+			goto out;
 		}
 
+		run_pool(&pool, file);
+		free_pool(&pool);
 		printf("Total files scanned:  %llu\n", params.num_files);
 		qprintf("Total extent hashes scanned: %llu\n", params.num_hashes);
-	} else {
-		// Maybe some files where scanned in a previous run but never
-		// deduped
-		if (callback)
-			callback();
 	}
+
 out:
 	g_mutex_clear(&params.mutex);
 	return ret;
@@ -1082,4 +1055,16 @@ int add_exclude_pattern(const char *pattern)
 
 	list_add_tail(&exclude->list, &exclude_list);
 	return 0;
+}
+
+void filescan_prepare_pool()
+{
+	abort_on(scan_pool.pool);
+	setup_pool(&scan_pool, csum_whole_file, NULL);
+	abort_on(!scan_pool.pool);
+}
+
+void filescan_free_pool()
+{
+	free_pool(&scan_pool);
 }

@@ -44,9 +44,6 @@ struct filerec {
 
 	struct list_head	rec_list;	/* all filerecs */
 
-	/* Used to mark filerec that were scanned in the last batch */
-	bool			scanned;
-
 	/* protects comparisons and extent_tree trees */
 	GMutex			tree_mutex;
 
@@ -98,10 +95,6 @@ void filerec_close(struct filerec *file);
  * done. We can then compare sequence numbers to tell whether a file
  * has been deduped or not.
  */
-static inline void filerec_clear_deduped(struct filerec *file)
-{
-	file->dedupe_seq = dedupe_seq + 1;
-}
 static inline int filerec_deduped(struct filerec *file)
 {
 	return !!(file->dedupe_seq <= dedupe_seq);

@@ -466,7 +466,6 @@ int find_additional_dedupe(struct results_tree *dupe_extents)
 	GError *err = NULL;
 	GThreadPool *pool = NULL;
 	struct filerec *file;
-	int count = 0;
 
 	qprintf("Using %u threads to search within extents for "
 		"additional dedupe. This process will take some time, during "
@@ -482,18 +481,9 @@ int find_additional_dedupe(struct results_tree *dupe_extents)
 		return ENOMEM;
 	}
 
-	list_for_each_entry(file, &filerec_list, rec_list) {
-		if (file->scanned)
-			count++;
-	}
-
-	set_extent_search_status_count(count);
+	set_extent_search_status_count(num_filerecs);
 
 	list_for_each_entry(file, &filerec_list, rec_list) {
-		/* Ignore filerec that was not scanned recently */
-		if (!file->scanned)
-			continue;
-
 		/*
 		 * This is an empty file - or maybe an error somewhere ?
 		 * Anyway, let's skip it and mark it as "processed"

@@ -42,6 +42,7 @@ struct stmts {
 	sqlite3_stmt *count_b_hashes;
 	sqlite3_stmt *count_e_hashes;
 	sqlite3_stmt *count_files;
+	sqlite3_stmt *get_max_dedupe_seq;
 };
 
 struct dbhandle {
@@ -86,8 +87,8 @@ struct rb_root;
  * Load hashes into hash_tree only if they have a duplicate in the db.
  * The extent search is later run on the resulting hash_tree.
  */
-int dbfile_load_block_hashes(struct hash_tree *hash_tree);
-int dbfile_load_extent_hashes(struct results_tree *res);
+int dbfile_load_block_hashes(struct hash_tree *hash_tree, unsigned int seq);
+int dbfile_load_extent_hashes(struct results_tree *res, unsigned int seq);
 
 struct file_extent {
 	uint64_t	poff;
@@ -146,7 +147,7 @@ void dbfile_list_files(struct dbhandle *db, int (*callback)(void*, int, char**, 
 
 int dbfile_describe_file(struct dbhandle *db, uint64_t inum, uint64_t subvolid,
 				uint64_t *mtime, uint64_t *size);
-int dbfile_load_same_files(struct results_tree *res);
+int dbfile_load_same_files(struct results_tree *res, unsigned int seq);
 
 static inline void sqlite3_stmt_cleanup(void *p)
 {
@@ -164,4 +165,6 @@ static inline void sqlite3_reset_stmt(sqlite3_stmt **stmt)
 }
 
 void dbfile_set_gdb(struct dbhandle *db);
+
+unsigned int get_max_dedupe_seq(struct dbhandle *db);
 #endif	/* __DBFILE_H__ */
