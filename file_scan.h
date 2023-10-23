@@ -28,7 +28,7 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 dev_t fs_onefs_dev(void);
 uint64_t fs_onefs_id(void);
 
-int populate_tree(void (*callback)(void));
+int populate_tree();
 
 /* For dbfile.c */
 struct block_csum {
@@ -52,4 +52,6 @@ struct exclude_file {
 
 int add_exclude_pattern(const char *pattern);
 
+void filescan_prepare_pool();
+void filescan_free_pool();
 #endif	/* __FILE_SCAN_H__ */

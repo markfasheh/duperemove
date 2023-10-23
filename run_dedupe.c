@@ -535,7 +535,6 @@ static int extent_dedupe_worker(struct dupe_extents *dext,
 			/* Update those files' dedupe_seq. This will mark them as deduped
 			 * and prevent further processing (extent or block-based dedupe)
 			 */
-			extent->e_file->dedupe_seq++;
 			dbfile_store_file_info(db, extent->e_file->inum,
 				extent->e_file->subvolid, extent->e_file->filename,
 				extent->e_file->size, extent->e_file->mtime,

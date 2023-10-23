@@ -10,10 +10,10 @@ MANPAGES=duperemove.8 btrfs-extent-same.8 hashstats.8 show-shared-extents.8
 HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
 	ioctl.h filerec.h btrfs-util.h debug.h util.h \
 	memstats.h file_scan.h find_dupes.h run_dedupe.h xxhash.h \
-	dbfile.h rbtree_augmented.h list_sort.h opt.h
+	dbfile.h rbtree_augmented.h list_sort.h opt.h threads.h
 CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
 	btrfs-util.c util.c memstats.c file_scan.c find_dupes.c run_dedupe.c \
-	csum.c dbfile.c list_sort.c debug.c opt.c \
+	csum.c dbfile.c list_sort.c debug.c opt.c threads.c \
 	csum-xxhash.c
 
 hashstats_CFILES=hashstats.c
@@ -31,7 +31,8 @@ TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
 objects = $(CFILES:.c=.o)
 
 hashstats_obj = csum-xxhash.o rbtree.o hash-tree.o filerec.o util.o opt.o \
-	results-tree.o csum.o dbfile.o list_sort.o debug.o file_scan.o btrfs-util.o
+	results-tree.o csum.o dbfile.o list_sort.o debug.o file_scan.o btrfs-util.o \
+	threads.o
 show_shared_obj = rbtree.o util.o debug.o filerec.o
 csum_test_obj = csum-xxhash.o util.o csum.o debug.o
 

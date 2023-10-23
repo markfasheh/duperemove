@@ -9,6 +9,7 @@
 #include "util.c"
 #include "debug.c"
 #include "csum.c"
+#include "threads.c"
 #include "btrfs-util.c"
 #include "file_scan.c"
 #include "filerec.c"
