@@ -3,6 +3,7 @@ IS_RELEASE ?= $(if $(filter $(shell git rev-list $(shell git describe --abbrev=0
 
 CC ?= gcc
 CFLAGS ?= -Wall -ggdb
+PKG_CONFIG ?= pkg-config
 
 MANPAGES=duperemove.8 btrfs-extent-same.8 hashstats.8 show-shared-extents.8
 
@@ -37,10 +38,10 @@ csum_test_obj = csum-xxhash.o util.o csum.o debug.o
 install_progs = duperemove hashstats btrfs-extent-same show-shared-extents
 progs = $(install_progs) csum-test
 
-glib_CFLAGS=$(shell pkg-config --cflags glib-2.0)
-glib_LIBS=$(shell pkg-config --libs glib-2.0)
-sqlite_CFLAGS=$(shell pkg-config --cflags sqlite3)
-sqlite_LIBS=$(shell pkg-config --libs sqlite3)
+glib_CFLAGS=$(shell $(PKG_CONFIG) --cflags glib-2.0)
+glib_LIBS=$(shell $(PKG_CONFIG) --libs glib-2.0)
+sqlite_CFLAGS=$(shell $(PKG_CONFIG) --cflags sqlite3)
+sqlite_LIBS=$(shell $(PKG_CONFIG) --libs sqlite3)
 
 ifdef DEBUG
 	DEBUG_FLAGS = -ggdb3 -fsanitize=address -fno-omit-frame-pointer	-O0 \
