@@ -128,6 +128,11 @@ show-shared-extents: $(show_shared_obj) show-shared-extents.c
 hashstats: $(hashstats_obj) hashstats.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(hashstats_obj) hashstats.c -o hashstats $(LIBRARY_FLAGS)
 
+.PHONY: test
+test:
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) tests.c -o test $(LIBRARY_FLAGS)
+	./test
+
 clean:
 	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same filerec-test show-shared-extents hashstats csum-*.o *~
 
