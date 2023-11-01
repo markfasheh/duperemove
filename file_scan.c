@@ -569,7 +569,7 @@ static void run_pool(GThreadPool *pool, struct filerec *file)
 
 static inline int is_block_zeroed(void *buf, ssize_t buf_size)
 {
-	return !(buf && memcmp(buf, buf + 1, buf_size - 1));
+	return buf && ((int*)buf)[0] == 0 && !memcmp(buf, buf + 1, buf_size - 1);
 }
 
 static int xlate_extent_flags(int fieflags, ssize_t len)
