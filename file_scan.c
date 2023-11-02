@@ -325,7 +325,7 @@ int add_file(const char *path, struct dbhandle *db)
 		fprintf(stderr, "Error %d: %s while getting path to file %s. "
 			"Skipping.\n",
 			errno, strerror(errno), path);
-		goto out;
+		return 0;
 	}
 
 	ret = lstat(abspath, &st);
@@ -333,7 +333,7 @@ int add_file(const char *path, struct dbhandle *db)
 		fprintf(stderr, "Error %d: %s while stating file %s. "
 			"Skipping.\n",
 			errno, strerror(errno), abspath);
-		goto out;
+		return 0;
 	}
 
 	if (S_ISDIR(st.st_mode)) {
@@ -342,7 +342,7 @@ int add_file(const char *path, struct dbhandle *db)
 
 		/* Check if the whole directory is excluded */
 		if (is_excluded(abspath))
-			goto out;
+			return 0;
 
 		/*
 		 * Device doesn't work for btrfs as it changes between
@@ -353,19 +353,19 @@ int add_file(const char *path, struct dbhandle *db)
 		if (ret) {
 			vprintf("Skipping directory %s due to error %d: %s\n",
 				abspath, ret, strerror(ret));
-			goto out;
+			return 0;
 		}
 
 		/* Don't cross mount points since dedup doesn't work across */
 		if (will_cross_mountpoint(dev, btrfs_fsid)) {
 			vprintf("Mountpoint traversal disallowed: %s \n",
 				abspath);
-			goto out;
+			return 0;
 		}
 
 		if (walk_dir(abspath, db))
 			return 1;
-		goto out;
+		return 0;
 	}
 
 	/*
@@ -377,7 +377,7 @@ int add_file(const char *path, struct dbhandle *db)
 	 */
 	if (filerec_find_by_name(abspath)) {
 		vprintf("Filename \"%s\" was seen twice! Skipping.\n", abspath);
-		goto out;
+		return 0;
 	}
 
 	ret = __add_file(abspath, &st, &file);
@@ -386,7 +386,7 @@ int add_file(const char *path, struct dbhandle *db)
 
 	/* File has been excluded by _add_file() */
 	if (!file)
-		goto out;
+		return 0;
 
 	/*
 	 * Check the database to see if that file need rescan or not.
@@ -394,7 +394,7 @@ int add_file(const char *path, struct dbhandle *db)
 	ret = dbfile_describe_file(db, file->inum, file->subvolid, &mtime, &size);
 	if (ret) {
 		vprintf("dbfile_describe_file failed\n");
-		goto out;
+		return 0;
 	}
 
 	if (mtime != file->mtime || size != file->size)
@@ -403,7 +403,6 @@ int add_file(const char *path, struct dbhandle *db)
 	if (mtime != 0 || size != 0)
 		file->flags |= FILEREC_IN_DB;
 
-out:
 	return 0;
 }
 
