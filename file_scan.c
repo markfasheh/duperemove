@@ -732,13 +732,13 @@ static void csum_whole_file_init(struct filerec *file,
  * Return < 0 on error, 0 on success and 1 if we find an extent that should not
  * be read.
  */
-static int fiemap_helper(struct fiemap_ctxt *fc, struct filerec *file,
+static int fiemap_helper(struct fiemap_ctxt *fc, int fd,
 			 uint64_t *poff, uint64_t *loff, uint64_t *len,
 			 unsigned int *flags)
 {
 	int ret;
 
-	ret = fiemap_iter_next_extent(fc, file, poff, loff, len, flags);
+	ret = fiemap_iter_next_extent(fc, fd, poff, loff, len, flags);
 	if (ret)
 		return ret;
 
@@ -812,7 +812,7 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 
 	flags = 0;
 	while (!(flags & FIEMAP_EXTENT_LAST)) {
-		ret = fiemap_helper(fc, file, &poff, &loff, &len, &flags);
+		ret = fiemap_helper(fc, file->fd, &poff, &loff, &len, &flags);
 		if (ret < 0) {
 			fprintf(stderr, "Error %d from fiemap_helper()\n", ret);
 			goto out;

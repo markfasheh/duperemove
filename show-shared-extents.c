@@ -115,7 +115,7 @@ static int test_iter(struct filerec *file)
 	flags = 0;
 	loff = len = 0;
 	while (!(flags & FIEMAP_EXTENT_LAST) && loff + len < file->size) {
-		ret = fiemap_iter_next_extent(fc, file, &poff, &loff, &len,
+		ret = fiemap_iter_next_extent(fc, file->fd, &poff, &loff, &len,
 					      &flags);
 		if (ret)
 			return ret;
