@@ -887,7 +887,7 @@ static void csum_whole_file(struct filerec *file,
 	struct block_csum *block_hashes = NULL;
 
 	memset(&csum_ctxt, 0, sizeof(csum_ctxt));
-	csum_ctxt.buf = calloc(1, READ_BUF_LEN);
+	csum_ctxt.buf = malloc(READ_BUF_LEN);
 	assert(csum_ctxt.buf != NULL);
 	csum_ctxt.file = file;
 
