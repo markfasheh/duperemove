@@ -913,7 +913,9 @@ static void csum_whole_file(struct filerec *file,
 		goto err;
 	}
 
-	ret = dbfile_store_file_info(db, file);
+	ret = dbfile_store_file_info(db, file->inum, file->subvolid,
+					file->filename, file->size, file->mtime,
+					file->dedupe_seq);
 	if (ret) {
 		g_mutex_unlock(&io_mutex);
 		goto err;
@@ -921,7 +923,8 @@ static void csum_whole_file(struct filerec *file,
 
 	if (!options.only_whole_files) {
 		if (options.do_block_hash) {
-			ret = dbfile_store_block_hashes(db, file,
+			ret = dbfile_store_block_hashes(db, file->inum, file->subvolid,
+							file->flags,
 							csum_ctxt.nr_block_hashes,
 							csum_ctxt.block_hashes);
 			if (ret) {
@@ -930,7 +933,8 @@ static void csum_whole_file(struct filerec *file,
 			}
 		}
 
-		ret = dbfile_store_extent_hashes(db, file, nb_hash, extent_hashes);
+		ret = dbfile_store_extent_hashes(db, file->inum, file->subvolid,
+						file->flags, nb_hash, extent_hashes);
 		if (ret) {
 			g_mutex_unlock(&io_mutex);
 			goto err;
@@ -945,7 +949,7 @@ static void csum_whole_file(struct filerec *file,
 	 * of needless work: https://github.com/markfasheh/duperemove/issues/316
 	 */
 	if (nb_hash > 0) {
-		ret = dbfile_store_file_digest(db, file, csum_ctxt.file_digest);
+		ret = dbfile_store_file_digest(db, file->inum, file->subvolid, csum_ctxt.file_digest);
 		if (ret) {
 			g_mutex_unlock(&io_mutex);
 			goto err;

@@ -950,32 +950,34 @@ int dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg)
 	return ret;
 }
 
-int dbfile_store_file_info(struct dbhandle *db, struct filerec *file)
+int dbfile_store_file_info(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
+				char *path, uint64_t size, uint64_t mtime,
+				unsigned int dedupe_seq)
 {
 	int ret;
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.write_file;
 
-	ret = sqlite3_bind_int64(stmt, 1, file->inum);
+	ret = sqlite3_bind_int64(stmt, 1, ino);
 	if (ret)
 		goto bind_error;
 
-	ret = sqlite3_bind_int64(stmt, 2, file->subvolid);
+	ret = sqlite3_bind_int64(stmt, 2, subvolid);
 	if (ret)
 		goto bind_error;
 
-	ret = sqlite3_bind_text(stmt, 3, file->filename, -1, SQLITE_STATIC);
+	ret = sqlite3_bind_text(stmt, 3, path, -1, SQLITE_STATIC);
 	if (ret)
 		goto bind_error;
 
-	ret = sqlite3_bind_int64(stmt, 4, file->size);
+	ret = sqlite3_bind_int64(stmt, 4, size);
 	if (ret)
 		goto bind_error;
 
-	ret = sqlite3_bind_int64(stmt, 5, file->mtime);
+	ret = sqlite3_bind_int64(stmt, 5, mtime);
 	if (ret)
 		goto bind_error;
 
-	ret = sqlite3_bind_int(stmt, 6, file->dedupe_seq);
+	ret = sqlite3_bind_int(stmt, 6, dedupe_seq);
 	if (ret)
 		goto bind_error;
 
@@ -1007,7 +1009,9 @@ int dbfile_sync_files(struct dbhandle *db)
 			dprintf("File \"%s\" still needs update in db\n",
 				file->filename);
 
-			ret = dbfile_store_file_info(db, file);
+			ret = dbfile_store_file_info(db, file->inum, file->subvolid,
+					file->filename, file->size, file->mtime,
+					file->dedupe_seq);
 			if (ret)
 				break;
 
@@ -1046,56 +1050,51 @@ out:
 	return ret;
 }
 
-static int dbfile_remove_block_hashes(struct dbhandle *db, struct filerec *file)
+static int dbfile_remove_block_hashes(struct dbhandle *db, uint64_t ino,
+					uint64_t subvolid)
 {
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.remove_block_hashes;
-	return  __dbfile_remove_file_hashes(stmt, file->inum, file->subvolid);
+	return  __dbfile_remove_file_hashes(stmt, ino, subvolid);
 }
 
-int dbfile_remove_extent_hashes(struct dbhandle *db, struct filerec *file)
+int dbfile_remove_extent_hashes(struct dbhandle *db, uint64_t ino, uint64_t subvolid)
 {
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.remove_extent_hashes;
-	return __dbfile_remove_file_hashes(stmt, file->inum, file->subvolid);
+	return __dbfile_remove_file_hashes(stmt, ino, subvolid);
 }
 
-int dbfile_store_block_hashes(struct dbhandle *db, struct filerec *file,
+int dbfile_store_block_hashes(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
+				unsigned int flags,
 				uint64_t nb_hash, struct block_csum *hashes)
 {
 	int ret;
 	uint64_t i;
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.insert_hash;
-	uint64_t loff;
-	uint32_t flags;
-	unsigned char *digest;
 
-	if (file->flags & FILEREC_IN_DB) {
-		ret = dbfile_remove_block_hashes(db, file);
+	if (flags & FILEREC_IN_DB) {
+		ret = dbfile_remove_block_hashes(db, ino, subvolid);
 		if (ret)
 			return ret;
 	}
 
 	for (i = 0; i < nb_hash; i++) {
-		loff = hashes[i].loff;
-		flags = hashes[i].flags;
-		digest = hashes[i].digest;
-
-		ret = sqlite3_bind_int64(stmt, 1, file->inum);
+		ret = sqlite3_bind_int64(stmt, 1, ino);
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_bind_int64(stmt, 2, file->subvolid);
+		ret = sqlite3_bind_int64(stmt, 2, subvolid);
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_bind_int64(stmt, 3, loff);
+		ret = sqlite3_bind_int64(stmt, 3, hashes[i].loff);
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_bind_int(stmt, 4, flags);
+		ret = sqlite3_bind_int(stmt, 4, hashes[i].flags);
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_bind_blob(stmt, 5, digest, DIGEST_LEN,
+		ret = sqlite3_bind_blob(stmt, 5, hashes[i].digest, DIGEST_LEN,
 					SQLITE_STATIC);
 		if (ret)
 			goto bind_error;
@@ -1118,7 +1117,7 @@ out_error:
 	return ret;
 }
 
-int dbfile_store_file_digest(struct dbhandle *db, struct filerec *file,
+int dbfile_store_file_digest(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
 				unsigned char *digest)
 {
 	int ret;
@@ -1130,11 +1129,11 @@ int dbfile_store_file_digest(struct dbhandle *db, struct filerec *file,
 	if (ret)
 		goto bind_error;
 
-	ret = sqlite3_bind_int64(stmt, 2, file->inum);
+	ret = sqlite3_bind_int64(stmt, 2, ino);
 	if (ret)
 		goto bind_error;
 
-	ret = sqlite3_bind_int64(stmt, 3, file->subvolid);
+	ret = sqlite3_bind_int64(stmt, 3, subvolid);
 	if (ret)
 		goto bind_error;
 
@@ -1152,56 +1151,46 @@ out_error:
 	return ret;
 }
 
-int dbfile_store_extent_hashes(struct dbhandle *db, struct filerec *file,
+int dbfile_store_extent_hashes(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
+				unsigned int flags,
 				uint64_t nb_hash, struct extent_csum *hashes)
 {
 	int ret;
 	uint64_t i;
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.insert_extent;
-	uint64_t loff, poff, len;
-	uint32_t flags;
-	unsigned char *digest;
 
-	if (file->flags & FILEREC_IN_DB) {
-		ret = dbfile_remove_extent_hashes(db, file);
+	if (flags & FILEREC_IN_DB) {
+		ret = dbfile_remove_extent_hashes(db, ino, subvolid);
 		if (ret)
 			return ret;
 	}
 
-	dprintf("db: write %d hashes for file %s\n", (int)nb_hash,
-		file->filename);
 	for (i = 0; i < nb_hash; i++) {
-		loff = hashes[i].loff;
-		poff = hashes[i].poff;
-		len = hashes[i].len;
-		flags = hashes[i].flags;
-		digest = hashes[i].digest;
-
-		ret = sqlite3_bind_int64(stmt, 1, file->inum);
+		ret = sqlite3_bind_int64(stmt, 1, ino);
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_bind_int64(stmt, 2, file->subvolid);
+		ret = sqlite3_bind_int64(stmt, 2, subvolid);
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_bind_int64(stmt, 3, loff);
+		ret = sqlite3_bind_int64(stmt, 3, hashes[i].loff);
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_bind_int64(stmt, 4, poff);
+		ret = sqlite3_bind_int64(stmt, 4, hashes[i].poff);
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_bind_int64(stmt, 5, len);
+		ret = sqlite3_bind_int64(stmt, 5, hashes[i].len);
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_bind_int(stmt, 6, flags);
+		ret = sqlite3_bind_int(stmt, 6, hashes[i].flags);
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_bind_blob(stmt, 7, digest, DIGEST_LEN,
+		ret = sqlite3_bind_blob(stmt, 7, hashes[i].digest, DIGEST_LEN,
 					SQLITE_STATIC);
 		if (ret)
 			goto bind_error;
