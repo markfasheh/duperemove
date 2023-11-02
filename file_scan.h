@@ -2,6 +2,7 @@
 #define	__FILE_SCAN_H__
 
 #include <sys/types.h>
+#include "dbfile.h"
 
 #include "list.h"
 #include "csum.h"
@@ -9,7 +10,7 @@
 /*
  * Returns nonzero on fatal errors only
  */
-int add_file(const char *name);
+int add_file(const char *name, struct dbhandle *db);
 /*
  * Add from a db record. We still stat as before:
  *

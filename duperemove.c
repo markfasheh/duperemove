@@ -213,7 +213,7 @@ enum {
 	BATCH_SIZE_OPTION,
 };
 
-static int add_files_from_stdin(int fdupes)
+static int add_files_from_stdin(int fdupes, struct dbhandle *db)
 {
 	int ret = 0;
 	_cleanup_(freep) char *path = NULL;
@@ -240,7 +240,7 @@ static int add_files_from_stdin(int fdupes)
 			continue;
 		}
 
-		if (add_file(path)) {
+		if (add_file(path, db)) {
 			fprintf(stderr,
 				"Error: cannot add %s into the lookup list\n",
 				path);
@@ -251,14 +251,14 @@ static int add_files_from_stdin(int fdupes)
 	return 0;
 }
 
-static int add_files_from_cmdline(int numfiles, char **files)
+static int add_files_from_cmdline(int numfiles, char **files, struct dbhandle *db)
 {
 	int i;
 
 	for (i = 0; i < numfiles; i++) {
 		const char *name = files[i];
 
-		if (add_file(name)) {
+		if (add_file(name, db)) {
 			fprintf(stderr,
 				"Error: cannot add %s into the file lookup list\n",
 				name);
@@ -570,10 +570,10 @@ static int create_scan_list(int argc, char **argv, int filelist_idx, struct dbha
 	int ret;
 
 	if (stdin_filelist)
-		ret = add_files_from_stdin(0);
+		ret = add_files_from_stdin(0, db);
 	else
 		ret = add_files_from_cmdline(argc - filelist_idx,
-					     &argv[filelist_idx]);
+					     &argv[filelist_idx], db);
 	if (ret)
 		return ret;
 
@@ -645,7 +645,7 @@ int main(int argc, char **argv)
 		goto out;
 
 	if (options.fdupes_mode)
-		return add_files_from_stdin(1);
+		return add_files_from_stdin(1, db);
 
 	dedupe_seq = dbfile_cfg.dedupe_seq;
 

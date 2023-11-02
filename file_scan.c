@@ -158,7 +158,7 @@ static int is_excluded(const char *name)
 }
 
 
-static int walk_dir(char *path)
+static int walk_dir(char *path, struct dbhandle *db)
 {
 	int ret = 0;
 	struct dirent *entry;
@@ -198,7 +198,7 @@ static int walk_dir(char *path)
 			abort_on(strlen(path) + strlen(entry->d_name) > PATH_MAX);
 
 			sprintf(child, "%s/%s", path, entry->d_name);
-			ret = add_file(child);
+			ret = add_file(child, db);
 			if (ret)
 				return ret;
 		}
@@ -304,7 +304,7 @@ static bool will_cross_mountpoint(dev_t dev, uint64_t btrfs_fsid)
 /*
  * Returns nonzero on fatal errors only
  */
-int add_file(const char *path)
+int add_file(const char *path, struct dbhandle *db)
 {
 	int ret;
 	struct stat st;
@@ -363,7 +363,7 @@ int add_file(const char *path)
 			goto out;
 		}
 
-		if (walk_dir(abspath))
+		if (walk_dir(abspath, db))
 			return 1;
 		goto out;
 	}
@@ -391,7 +391,7 @@ int add_file(const char *path)
 	/*
 	 * Check the database to see if that file need rescan or not.
 	 */
-	ret = dbfile_describe_file(dbfile_get_handle(), file->inum, file->subvolid, &mtime, &size);
+	ret = dbfile_describe_file(db, file->inum, file->subvolid, &mtime, &size);
 	if (ret) {
 		vprintf("dbfile_describe_file failed\n");
 		goto out;
