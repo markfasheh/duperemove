@@ -30,7 +30,6 @@ struct stmts {
 	sqlite3_stmt *write_file;
 	sqlite3_stmt *remove_block_hashes;
 	sqlite3_stmt *remove_extent_hashes;
-	sqlite3_stmt *load_all_filerecs;
 	sqlite3_stmt *load_filerec;
 	sqlite3_stmt *get_duplicate_hashes;
 	sqlite3_stmt *get_duplicate_extents;
@@ -106,12 +105,6 @@ int dbfile_load_one_file_extent(struct dbhandle *db, struct filerec *file,
 int dbfile_load_one_filerec(struct dbhandle *db, uint64_t ino, uint64_t subvol,
 				struct filerec **file);
 
-/* Scan files based on db contents. Removes any orphaned file records. */
-int dbfile_load_files(struct dbhandle *db);
-
-/* Write any filerecs marked as needing update to the db */
-int dbfile_sync_files(struct dbhandle *db);
-
 /*
  * Following are used during file scan stage to get our hashes into
  * the database.
@@ -121,10 +114,8 @@ struct dbhandle *dbfile_get_handle(void);
 int dbfile_store_file_info(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
 			char *path, uint64_t size, uint64_t mtime, unsigned int dedupe_seq);
 int dbfile_store_block_hashes(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
-				unsigned int flags,
 				uint64_t nb_hash, struct block_csum *hashes);
 int dbfile_store_extent_hashes(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
-				unsigned int flags,
 				uint64_t nb_hash, struct extent_csum *hashes);
 int dbfile_store_file_digest(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
 				unsigned char *digest);
@@ -166,6 +157,8 @@ static inline void sqlite3_reset_stmt(sqlite3_stmt **stmt)
 }
 
 void dbfile_set_gdb(struct dbhandle *db);
+int dbfile_remove_hashes(struct dbhandle *db, uint64_t ino, uint64_t subvolid);
 
 unsigned int get_max_dedupe_seq(struct dbhandle *db);
+int dbfile_prune_unscanned_files(struct dbhandle *db);
 #endif	/* __DBFILE_H__ */

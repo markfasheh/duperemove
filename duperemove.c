@@ -173,8 +173,6 @@ static int parse_dedupe_opts(const char *raw_opts)
 			options.dedupe_same_file = !invert;
 		} else if (strcmp(token, "partial") == 0) {
 			options.do_block_hash = !invert;
-		} else if (strcmp(token, "rescan_files") == 0) {
-			options.rescan_files = !invert;
 		} else if (strcmp(token, "only_whole_files") == 0) {
 			options.only_whole_files = !invert;
 		} else {
@@ -188,7 +186,6 @@ static int parse_dedupe_opts(const char *raw_opts)
 			"options are:\n"
 			"\t[no]same\n"
 			"\t[no]only_whole_files\n"
-			"\t[no]rescan_files\n"
 			"\t[no]partial\n");
 		ret = EINVAL;
 	}
@@ -213,7 +210,7 @@ enum {
 	BATCH_SIZE_OPTION,
 };
 
-static int add_files_from_stdin(int fdupes, struct dbhandle *db)
+static int process_fdupes()
 {
 	int ret = 0;
 	_cleanup_(freep) char *path = NULL;
@@ -224,10 +221,11 @@ static int add_files_from_stdin(int fdupes, struct dbhandle *db)
 		if (readlen == 0)
 			continue;
 
-		if (fdupes && readlen == 1 && path[0] == '\n') {
+		if (readlen == 1 && path[0] == '\n') {
 			ret = fdupes_dedupe();
 			if (ret)
 				return ret;
+			free_all_filerecs();
 			continue;
 		}
 
@@ -240,7 +238,32 @@ static int add_files_from_stdin(int fdupes, struct dbhandle *db)
 			continue;
 		}
 
-		if (add_file(path, db)) {
+		add_file_fdupes(path);
+	}
+
+	return 0;
+}
+
+static int add_files_from_stdin(struct dbhandle *db)
+{
+	_cleanup_(freep) char *path = NULL;
+	size_t pathlen = 0;
+	ssize_t readlen;
+
+	while ((readlen = getline(&path, &pathlen, stdin)) != -1) {
+		if (readlen == 0)
+			continue;
+
+		if (readlen > 0 && path[readlen - 1] == '\n') {
+			path[--readlen] = '\0';
+		}
+
+		if (readlen > PATH_MAX - 1) {
+			fprintf(stderr, "Path max exceeded: %s\n", path);
+			continue;
+		}
+
+		if (scan_file(path, db)) {
 			fprintf(stderr,
 				"Error: cannot add %s into the lookup list\n",
 				path);
@@ -251,16 +274,16 @@ static int add_files_from_stdin(int fdupes, struct dbhandle *db)
 	return 0;
 }
 
-static int add_files_from_cmdline(int numfiles, char **files, struct dbhandle *db)
+static int scan_files_from_cmdline(int numfiles, char **files, struct dbhandle *db)
 {
 	int i;
 
 	for (i = 0; i < numfiles; i++) {
 		const char *name = files[i];
 
-		if (add_file(name, db)) {
+		if (scan_file(name, db)) {
 			fprintf(stderr,
-				"Error: cannot add %s into the file lookup list\n",
+				"Error: cannot scan %s\n",
 				name);
 			return 1;
 		}
@@ -575,39 +598,37 @@ static void process_duplicates()
 	}
 }
 
-static int create_scan_list(int argc, char **argv, int filelist_idx, struct dbhandle *db)
+static int scan_files(int argc, char **argv, int filelist_idx, struct dbhandle *db)
 {
 	int ret;
 
+	extern bool scan_files_completed;
+	filescan_prepare_pool();
+
 	if (stdin_filelist)
-		ret = add_files_from_stdin(0, db);
+		ret = add_files_from_stdin(db);
 	else
-		ret = add_files_from_cmdline(argc - filelist_idx,
+		ret = scan_files_from_cmdline(argc - filelist_idx,
 					     &argv[filelist_idx], db);
+
+	scan_files_completed = true; /* Used to modify the output and print percentages */
+
+	filescan_free_pool();
+
 	if (ret)
 		return ret;
 
 	/*
 	 * Those fields are 0 by default, and are added by
-	 * the add_files_from_cmdline call above. Let's sync them.
+	 * the scan_files_from_cmdline call above. Let's sync them.
+	 * Useful only when dedup is not enabled, otherwise data would already
+	 * be written by process_duplicates().
 	 */
 	dbfile_cfg.onefs_dev = fs_onefs_dev();
 	dbfile_cfg.onefs_fsid = fs_onefs_id();
 	ret = dbfile_sync_config(db, &dbfile_cfg);
 	if (ret)
 		return ret;
-
-	if (options.rescan_files) {
-		qprintf("Adding files from database for hashing.\n");
-		ret = dbfile_load_files(db);
-		if (ret)
-			return ret;
-	}
-
-	if (list_empty(&filerec_list)) {
-		fprintf(stderr, "No dedupe candidates found.\n");
-		return EINVAL;
-	}
 
 	return 0;
 }
@@ -639,6 +660,9 @@ int main(int argc, char **argv)
 	 */
 	increase_limits();
 
+	if (options.fdupes_mode)
+		return process_fdupes();
+
 	if (list_only_opt)
 		return list_db_files(options.hashfile);
 	else if (rm_only_opt)
@@ -656,49 +680,24 @@ int main(int argc, char **argv)
 
 	dedupe_seq = dbfile_cfg.dedupe_seq;
 
-	if (options.fdupes_mode)
-		return add_files_from_stdin(1, db);
-
 	print_header();
 
-	if (use_hashfile == H_WRITE) {
-		ret = create_scan_list(argc, argv, filelist_idx, db);
-		if (ret)
-			goto out;
-
-		ret = populate_tree();
+	if (use_hashfile == H_WRITE || use_hashfile == H_UPDATE) {
+		ret = dbfile_prune_unscanned_files(db);
 		if (ret) {
-			fprintf(stderr,	"Error while populating extent tree!\n");
+			fprintf(stderr, "Unable to prune unscanned files\n");
 			goto out;
 		}
 
-		ret = dbfile_sync_files(db);
+		ret = scan_files(argc, argv, filelist_idx, db);
 		if (ret)
 			goto out;
 
-		qprintf("Hashfile \"%s\" written, exiting.\n",
+		qprintf("Hashfile \"%s\" written\n",
 			options.hashfile);
 	}
 
-	if (use_hashfile == H_UPDATE) {
-		ret = create_scan_list(argc, argv, filelist_idx, db);
-		if (ret)
-			goto out;
-
-		ret = populate_tree();
-		if (ret) {
-			fprintf(stderr,	"Error while populating extent tree!\n");
-			goto out;
-		}
-
-		process_duplicates();
-
-		ret = dbfile_sync_files(db);
-		if (ret)
-			goto out;
-	}
-
-	if (use_hashfile == H_READ)
+	if (use_hashfile == H_READ || use_hashfile == H_UPDATE)
 		process_duplicates();
 
 out:

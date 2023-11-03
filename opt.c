@@ -14,7 +14,6 @@
 #include "opt.h"
 
 struct options options = {
-	.rescan_files = true,
 	.run_dedupe = 0,
 	.recurse_dirs = false,
 	.io_threads = 0,

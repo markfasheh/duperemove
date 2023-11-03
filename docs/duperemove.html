@@ -351,18 +351,6 @@ change.</p>
 Defaults to <code>on</code>. Allow dedupe of extents within the same
 file.
 </dd>
-<dt><strong>[no]rescan_files</strong></dt>
-<dd>
-Defaults to <code>on</code>. Duperemove will check for files that were
-found and deduplicated in a previous run, based on the hashfile.
-Deduplicated files may have changed if new content was added, but also
-if their physical layout was modified (defrag for instance). You can
-disable those checks to increase performance when running
-<code>duperemove</code> against a specific directory or file which you
-know is the only part of a larger, unchanged dataset. Duperemove will
-still dedupe that specific target against any shared extent found in the
-existing files.
-</dd>
 <dt><strong>[no]only_whole_files</strong></dt>
 <dd>
 Defaults to <code>off</code>. Duperemove will only work on full file.

@@ -10,25 +10,11 @@
 /*
  * Returns nonzero on fatal errors only
  */
-int add_file(const char *name, struct dbhandle *db);
-/*
- * Add from a db record. We still stat as before:
- *
- * If inum or subvolid do not match we mark the db record for
- * deletion. Otherwise we add a filerec based on the stat'd
- * information.
- *
- * * The filerec is marked to be updated in the db if size or mtime changed.
- * * The filerec is marked for rehash if mtime changed.
- */
-int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
-		uint64_t size, uint64_t mtime, unsigned int seq, int *delete);
+int scan_file(const char *name, struct dbhandle *db);
 
 /* Set/get onefs state, info is gathered from our config table */
 dev_t fs_onefs_dev(void);
 uint64_t fs_onefs_id(void);
-
-int populate_tree();
 
 /* For dbfile.c */
 struct block_csum {
@@ -50,8 +36,23 @@ struct exclude_file {
 	struct list_head list;
 };
 
+struct file_to_scan {
+	char *path;
+	int fd;
+	uint64_t ino;
+	uint64_t subvolid;
+
+	/*
+	 * Used to record the current file position in the scan queue,
+	 * to print the progress bar
+	 */
+	unsigned long long file_position;
+};
+
 int add_exclude_pattern(const char *pattern);
 
 void filescan_prepare_pool();
 void filescan_free_pool();
+
+void add_file_fdupes(char *path);
 #endif	/* __FILE_SCAN_H__ */

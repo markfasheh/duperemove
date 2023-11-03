@@ -27,6 +27,8 @@ static struct dbhandle *gdb = NULL;
 
 static sqlite3 *__dbfile_open_handle(char *filename, bool force_create);
 
+static GMutex io_mutex; /* Locks db writes */
+
 #if (SQLITE_VERSION_NUMBER < 3007015)
 #define	perror_sqlite(_err, _why)					\
 	fprintf(stderr, "%s(): Database error %d while %s: %s\n",	\
@@ -44,6 +46,16 @@ static sqlite3 *__dbfile_open_handle(char *filename, bool force_create);
 struct dbhandle *dbfile_get_handle(void)
 {
 	return gdb;
+}
+
+void dbfile_lock()
+{
+	g_mutex_lock(&io_mutex);
+}
+
+void dbfile_unlock()
+{
+	g_mutex_unlock(&io_mutex);
 }
 
 static void dbfile_config_defaults(struct dbfile_config *cfg)
@@ -435,10 +447,6 @@ struct dbhandle *dbfile_open_handle(char *filename)
 #define REMOVE_EXTENT_HASHES						\
 "delete from extents where ino = ?1 and subvol = ?2;"
 	dbfile_prepare_stmt(remove_extent_hashes, REMOVE_EXTENT_HASHES);
-
-#define	LOAD_ALL_FILERECS						\
-"select filename, ino, subvol, size, mtime, dedupe_seq from files;"
-	dbfile_prepare_stmt(load_all_filerecs, LOAD_ALL_FILERECS);
 
 #define LOAD_FILEREC							\
 "select filename, size, mtime, dedupe_seq from files "			\
@@ -997,33 +1005,6 @@ out_error:
 	return ret;
 }
 
-/*
- * Write any filerec metadata which was not updated during the
- * checksumming phase.
- */
-int dbfile_sync_files(struct dbhandle *db)
-{
-	int ret;
-	struct filerec *file;
-
-	list_for_each_entry(file, &filerec_list, rec_list) {
-		if (file->flags & FILEREC_UPDATE_DB) {
-			dprintf("File \"%s\" still needs update in db\n",
-				file->filename);
-
-			ret = dbfile_store_file_info(db, file->inum, file->subvolid,
-					file->filename, file->size, file->mtime,
-					file->dedupe_seq);
-			if (ret)
-				break;
-
-			file->flags &= ~FILEREC_UPDATE_DB;
-		}
-	}
-
-	return ret;
-}
-
 static int __dbfile_remove_file_hashes(sqlite3_stmt *stmt, uint64_t ino,
 				       uint64_t subvol)
 {
@@ -1052,32 +1033,31 @@ out:
 	return ret;
 }
 
-static int dbfile_remove_block_hashes(struct dbhandle *db, uint64_t ino,
+int dbfile_remove_extent_hashes(struct dbhandle *db, uint64_t ino,
 					uint64_t subvolid)
-{
-	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.remove_block_hashes;
-	return  __dbfile_remove_file_hashes(stmt, ino, subvolid);
-}
-
-int dbfile_remove_extent_hashes(struct dbhandle *db, uint64_t ino, uint64_t subvolid)
 {
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.remove_extent_hashes;
 	return __dbfile_remove_file_hashes(stmt, ino, subvolid);
 }
 
+int dbfile_remove_hashes(struct dbhandle *db, uint64_t ino, uint64_t subvolid)
+{
+	int ret = 0;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *b_stmt = db->stmts.remove_block_hashes;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *e_stmt = db->stmts.remove_extent_hashes;
+
+	ret += __dbfile_remove_file_hashes(b_stmt, ino, subvolid);
+	ret += __dbfile_remove_file_hashes(e_stmt, ino, subvolid);
+
+	return ret;
+}
+
 int dbfile_store_block_hashes(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
-				unsigned int flags,
 				uint64_t nb_hash, struct block_csum *hashes)
 {
 	int ret;
 	uint64_t i;
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.insert_hash;
-
-	if (flags & FILEREC_IN_DB) {
-		ret = dbfile_remove_block_hashes(db, ino, subvolid);
-		if (ret)
-			return ret;
-	}
 
 	for (i = 0; i < nb_hash; i++) {
 		ret = sqlite3_bind_int64(stmt, 1, ino);
@@ -1154,18 +1134,11 @@ out_error:
 }
 
 int dbfile_store_extent_hashes(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
-				unsigned int flags,
 				uint64_t nb_hash, struct extent_csum *hashes)
 {
 	int ret;
 	uint64_t i;
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.insert_extent;
-
-	if (flags & FILEREC_IN_DB) {
-		ret = dbfile_remove_extent_hashes(db, ino, subvolid);
-		if (ret)
-			return ret;
-	}
 
 	for (i = 0; i < nb_hash; i++) {
 		ret = sqlite3_bind_int64(stmt, 1, ino);
@@ -1213,52 +1186,6 @@ bind_error:
 out_error:
 
 	return ret;
-}
-
-/*
- * Scan files based on db contents:
- *
- *  1) Files in the db which don't yet have filerecs will be stat'd and added
- *
- *  2) Deleted files have their file and hash records removed
- *
- * The real work of step 1 happens in add_file_db()
- *
- * Step 2 happens at this time because it allows us to clean the
- * database of any unused inode / subvol pairs before we start
- * inserting stuff during the csum stage. This keeps us from getting
- * into a situation where we've inserted duplicate file records.
- */
-int dbfile_load_files(struct dbhandle *db)
-{
-	int ret, del_rec;
-	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.load_all_filerecs;
-	const char *filename;
-	uint64_t size, mtime, ino, subvol;
-	unsigned int dedupe_seq;
-
-	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
-		filename = (const char *)sqlite3_column_text(stmt, 0);
-		ino = sqlite3_column_int64(stmt, 1);
-		subvol = sqlite3_column_int64(stmt, 2);
-		size = sqlite3_column_int64(stmt, 3);
-		mtime = sqlite3_column_int64(stmt, 4);
-		dedupe_seq = sqlite3_column_int(stmt, 5);
-
-		ret = add_file_db(filename, ino, subvol, size, mtime,
-				  dedupe_seq, &del_rec);
-		if (ret)
-			return ret;
-
-		if (del_rec)
-			dbfile_remove_file(db, filename);
-	}
-	if (ret != SQLITE_DONE) {
-		perror_sqlite(ret, "looking up hash");
-		return ret;
-	}
-
-	return 0;
 }
 
 int dbfile_load_one_filerec(struct dbhandle *db, uint64_t ino, uint64_t subvol,
@@ -1496,9 +1423,9 @@ int dbfile_load_nondupe_file_extents(struct dbhandle *db, struct filerec *file,
 		perror_sqlite(ret, "stepping nondupe extents statement");
 		goto out;
 	}
-	*ret_extents = extents;
 	ret = 0;
 out:
+	*ret_extents = extents;
 	if (ret && extents)
 		free(extents);
 	return ret;
