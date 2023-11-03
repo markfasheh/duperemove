@@ -164,7 +164,7 @@ int main(int argc, char **argv)
 			return 1;
 		}
 
-		ret = filerec_open(file);
+		ret = filerec_open(file, false);
 		if (ret)
 			goto out;
 

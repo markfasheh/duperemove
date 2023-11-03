@@ -514,6 +514,8 @@ struct dbhandle *dbfile_open_handle(char *filename)
 #define GET_MAX_DEDUPE_SEQ "select max(dedupe_seq) from files;"
 	dbfile_prepare_stmt(get_max_dedupe_seq, GET_MAX_DEDUPE_SEQ);
 
+#define DELETE_UNSCANNED_FILES "delete from files where digest is NULL;"
+	dbfile_prepare_stmt(delete_unscanned_files, DELETE_UNSCANNED_FILES);
 	return result;
 
 err:
@@ -1669,4 +1671,22 @@ unsigned int get_max_dedupe_seq(struct dbhandle *db)
 	}
 
 	return sqlite3_column_int64(stmt, 0);
+}
+
+/*
+ * Remove entries from the files table that have no extents associated.
+ * This can happen if duperemove is ctrl^C while scanning files
+ */
+int dbfile_prune_unscanned_files(struct dbhandle *db)
+{
+	int ret;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.delete_unscanned_files;
+
+	ret = sqlite3_step(stmt);
+	if (ret != SQLITE_DONE) {
+		perror_sqlite(ret, "executing sql");
+		return ret;
+	}
+
+	return 0;
 }
