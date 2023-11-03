@@ -401,7 +401,9 @@ static void search_file_extents(struct filerec *file, struct results_tree *dupe_
 	struct file_extent *extent;
 	unsigned int num_extents, i;
 
+	dbfile_lock();
 	db = dbfile_open_handle(options.hashfile);
+	dbfile_unlock();
 	if (!db) {
 		fprintf(stderr, "ERROR: Couldn't open db file %s\n",
 			options.hashfile == NULL ? "(null)" : options.hashfile);
@@ -441,7 +443,10 @@ out:
 	update_extent_search_status(1);
 	if (extents)
 		free(extents);
+
+	dbfile_lock();
 	dbfile_close_handle(db);
+	dbfile_unlock();
 }
 
 struct cmp_ctxt {
