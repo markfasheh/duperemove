@@ -180,7 +180,7 @@ static void add_shared_extents_post(struct dupe_extents *dext, uint64_t *shared)
 
 	list_for_each_entry(extent, &dext->de_extents, e_list) {
 		file = extent->e_file;
-		ret = filerec_open(file);
+		ret = filerec_open(file, true);
 		if (ret)
 			return;
 
@@ -350,6 +350,15 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 
 		ret = filerec_open_once(extent->e_file, &open_files);
 		if (ret) {
+			if (ret == ENOENT) {
+				/*
+				 * File were deleted. Maybe it was scanned
+				 * a long time ago. Let's clean the db.
+				 */
+				dbfile_lock();
+				dbfile_remove_file(dbfile_get_handle(), extent->e_file->filename);
+				dbfile_unlock();
+			}
 			fprintf(stderr, "%s: Skipping dedupe.\n",
 				extent->e_file->filename);
 			/*
@@ -416,7 +425,6 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 		}
 
 run_dedupe:
-
 		/*
 		 * We can get here with only the target extent (0
 		 * queued) for many reasons. Skip the dedupe in that
@@ -541,8 +549,9 @@ static int extent_dedupe_worker(struct dupe_extents *dext,
 				extent->e_file->dedupe_seq);
 		} else {
 			/* Rescan physical offset and update the hashfile accordingly */
-			fiemap_scan_extent(extent);
-			dbfile_update_extent_poff(db, extent->e_file->inum, extent->e_file->subvolid, extent->e_loff, extent->e_poff);
+			ret = fiemap_scan_extent(extent);
+			if (!ret)
+				dbfile_update_extent_poff(db, extent->e_file->inum, extent->e_file->subvolid, extent->e_loff, extent->e_poff);
 		}
 	}
 	g_mutex_unlock(&db_mutex);

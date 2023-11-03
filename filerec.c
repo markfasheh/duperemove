@@ -391,7 +391,8 @@ void free_all_filerecs(void)
 	}
 }
 
-int filerec_open(struct filerec *file)
+/* Won't show error if file does not exist and quiet is true */
+int filerec_open(struct filerec *file, bool quiet)
 {
 	int ret = 0;
 	int fd;
@@ -403,8 +404,9 @@ int filerec_open(struct filerec *file)
 		fd = open(file->filename, O_RDONLY);
 		if (fd == -1) {
 			ret = errno;
-			fprintf(stderr, "Error %d: %s while opening \"%s\"\n",
-				ret, strerror(ret), file->filename);
+			if (ret != ENOENT || !quiet)
+				fprintf(stderr, "Error %d: %s while opening \"%s\"\n",
+					ret, strerror(ret), file->filename);
 			goto out_unlock;
 		}
 
@@ -445,7 +447,7 @@ int filerec_open_once(struct filerec *file,
 	if (!token)
 		return ENOMEM;
 
-	ret = filerec_open(file);
+	ret = filerec_open(file, true);
 	if (ret) {
 		filerec_token_free(token);
 		return ret;
@@ -531,7 +533,7 @@ int fiemap_scan_extent(struct extent *extent)
 
 	flags = loff = len = 0;
 
-	ret = filerec_open(extent->e_file);
+	ret = filerec_open(extent->e_file, true);
 	if (ret)
 		return ret;
 
