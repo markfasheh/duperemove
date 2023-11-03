@@ -49,7 +49,6 @@ static volatile unsigned long long total_dedupe_passes;
 static volatile unsigned long long curr_dedupe_pass;
 static unsigned int leading_spaces;
 static bool whole_file_dedup;
-GMutex db_mutex; /* locks db writes */
 
 void print_dupes_table(struct results_tree *res, bool whole_file)
 {
@@ -528,7 +527,7 @@ static int extent_dedupe_worker(struct dupe_extents *dext,
 		return ret;
 	}
 
-	g_mutex_lock(&db_mutex);
+	dbfile_lock();
 	list_for_each_entry(extent, &dext->de_extents, e_list) {
 		if (whole_file_dedup) {
 			/* If we are deduping a whole file, then the extents may be remapped
@@ -547,7 +546,7 @@ static int extent_dedupe_worker(struct dupe_extents *dext,
 				dbfile_update_extent_poff(db, extent->e_file->inum, extent->e_file->subvolid, extent->e_loff, extent->e_poff);
 		}
 	}
-	g_mutex_unlock(&db_mutex);
+	dbfile_unlock();
 
 	if (!list_empty(&dext->de_extents)) {
 		g_mutex_lock(&mutex);
