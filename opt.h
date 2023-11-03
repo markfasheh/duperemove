@@ -17,7 +17,6 @@
 #include <stdbool.h>
 
 struct options {
-	bool rescan_files : 1;
 	int run_dedupe;
 	bool recurse_dirs : 1;
 	unsigned int io_threads;

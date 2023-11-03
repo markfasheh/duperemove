@@ -60,40 +60,14 @@
 static dev_t one_fs_dev;
 static uint64_t one_fs_btrfs;
 
-static unsigned long long files_to_scan;
-static GMutex io_mutex; /* locks db writes */
-static unsigned int leading_spaces;
+bool scan_files_completed = false;
+static unsigned long long total_files_count = 0;
 
 static struct threads_pool scan_pool;
 
 #define READ_BUF_LEN (8*1024*1024) // 8MB
 
-struct thread_params {
-	GMutex mutex;
-	unsigned long long num_files;  /* Total number of files we hashed */
-	unsigned long long num_hashes; /* Total number of hashes we hashed */
-};
-
-extern struct dbfile_config dbfile_cfg;
 LIST_HEAD(exclude_list);
-
-static void set_filerec_scan_flags(struct filerec *file)
-{
-	if (!(file->flags & FILEREC_NEEDS_SCAN)) {
-		file->flags |= FILEREC_NEEDS_SCAN;
-		files_to_scan++;
-	}
-	file->flags |= FILEREC_UPDATE_DB;
-}
-
-static void clear_filerec_scan_flags(struct filerec *file)
-{
-	if (file->flags & FILEREC_NEEDS_SCAN) {
-		file->flags &= ~FILEREC_NEEDS_SCAN;
-		files_to_scan--;
-	}
-	file->flags &= ~FILEREC_UPDATE_DB;
-}
 
 dev_t fs_onefs_dev(void)
 {
@@ -201,87 +175,11 @@ static int walk_dir(char *path, struct dbhandle *db)
 			abort_on(strlen(path) + strlen(entry->d_name) > PATH_MAX);
 
 			sprintf(child, "%s/%s", path, entry->d_name);
-			ret = add_file(child, db);
+			ret = scan_file(child, db);
 			if (ret)
 				return ret;
 		}
 	}
-
-	return 0;
-}
-
-static int __add_file(const char *name, struct stat *st,
-		      struct filerec **ret_file)
-{
-	int ret;
-	_cleanup_(closefd) int fd = 0;
-	struct filerec *file;
-	uint64_t subvolid;
-	struct statfs fs;
-
-	if (is_excluded(name))
-		return 0;
-
-	if (S_ISDIR(st->st_mode))
-		return 0;
-
-	if (!S_ISREG(st->st_mode)) {
-		vprintf("Skipping non-regular file %s\n", name);
-		return 0;
-	}
-
-	fd = open(name, O_RDONLY);
-	if (fd == -1) {
-		fprintf(stderr, "Error %d: %s while opening file \"%s\". "
-			"Skipping.\n", errno, strerror(errno), name);
-		return 0;
-	}
-
-	ret = fstatfs(fd, &fs);
-	if (ret) {
-		fprintf(stderr, "Error %d: %s while doing fs stat on \"%s\". "
-			"Skipping.\n", ret, strerror(ret), name);
-		return 1;
-	}
-
-	if (options.run_dedupe == 1 &&
-	    ((fs.f_type != BTRFS_SUPER_MAGIC &&
-	      fs.f_type != XFS_SB_MAGIC))) {
-		fprintf(stderr,	"\"%s\": Can only dedupe files on btrfs or xfs, "
-			"use -d -d to override\n", name);
-		return ENOSYS;
-	}
-
-	if (fs.f_type == BTRFS_SUPER_MAGIC) {
-		/*
-		 * Inodes between subvolumes on a btrfs file system
-		 * can have the same i_ino. Get the subvolume id of
-		 * our file so hard link detection works.
-		 */
-		ret = lookup_btrfs_subvolid(fd, &subvolid);
-		if (ret) {
-			fprintf(stderr,
-				"Error %d: %s while finding subvolid for file "
-				"\"%s\". Skipping.\n", ret, strerror(ret),
-				name);
-			return 1;
-		}
-	} else {
-		subvolid = st->st_dev;
-	}
-
-	file = filerec_find(st->st_ino, subvolid);
-	if (!file)
-		file = filerec_new(name, st->st_ino, subvolid, st->st_size,
-				   timespec_to_nano(&st->st_mtim));
-
-	if (file == NULL) {
-		fprintf(stderr, "Out of memory while allocating file record "
-			"for: %s\n", name);
-		return ENOMEM;
-	}
-	if (ret_file)
-		*ret_file = file;
 
 	return 0;
 }
@@ -307,13 +205,27 @@ static bool will_cross_mountpoint(dev_t dev, uint64_t btrfs_fsid)
 /*
  * Returns nonzero on fatal errors only
  */
-int add_file(const char *path, struct dbhandle *db)
+int scan_file(const char *path, struct dbhandle *db)
 {
 	int ret;
 	struct stat st;
-	struct filerec *file = NULL;
 	char abspath[PATH_MAX];
 	uint64_t mtime = 0, size = 0;
+	static unsigned int seq = 0, counter = 0;
+	GError *err = NULL;
+	struct file_to_scan *file;
+
+	/*
+	 * The first call initializes the static variable
+	 * from the global dedupe_seq
+	 * The subsequents calls will increase it every <batchsize> times
+	 */
+	if (seq == 0)
+		seq = dedupe_seq + 1;
+
+	int fd = 0;
+	uint64_t subvolid;
+	struct statfs fs;
 
 	/*
 	 * Sanitize the file name and get absolute path. This avoids:
@@ -331,6 +243,9 @@ int add_file(const char *path, struct dbhandle *db)
 		return 0;
 	}
 
+	if (is_excluded(abspath))
+		return 0;
+
 	ret = lstat(abspath, &st);
 	if (ret) {
 		fprintf(stderr, "Error %d: %s while stating file %s. "
@@ -339,13 +254,14 @@ int add_file(const char *path, struct dbhandle *db)
 		return 0;
 	}
 
+	if (st.st_size == 0) {
+		vprintf("Skipping empty file %s\n", abspath);
+		return 0;
+	}
+
 	if (S_ISDIR(st.st_mode)) {
 		uint64_t btrfs_fsid;
 		dev_t dev = st.st_dev;
-
-		/* Check if the whole directory is excluded */
-		if (is_excluded(abspath))
-			return 0;
 
 		/*
 		 * Device doesn't work for btrfs as it changes between
@@ -371,181 +287,116 @@ int add_file(const char *path, struct dbhandle *db)
 		return 0;
 	}
 
-	/*
-	 * Since we scan the disk via stat() first, we should never
-	 * get a duplicate filename at this stage. However we can
-	 * still check to be safe as the result will otherwise be an
-	 * abort in the insert routine.
-	 * On the other hand, this check enforces hardlinks detection.
-	 */
-	if (filerec_find_by_name(abspath)) {
-		vprintf("Filename \"%s\" was seen twice! Skipping.\n", abspath);
+	if (!S_ISREG(st.st_mode)) {
+		vprintf("Skipping non-regular file %s\n", abspath);
 		return 0;
 	}
 
-	ret = __add_file(abspath, &st, &file);
-	if (ret)
-		return ret;
-
-	/* File has been excluded by _add_file() */
-	if (!file)
+	fd = open(abspath, O_RDONLY);
+	if (fd == -1) {
+		fprintf(stderr, "Error %d: %s while opening file \"%s\". "
+			"Skipping.\n", ret, strerror(ret), abspath);
 		return 0;
+	}
+
+	ret = fstatfs(fd, &fs);
+	if (ret) {
+		fprintf(stderr, "Error %d: %s while doing fs stat on \"%s\". "
+			"Skipping.\n", ret, strerror(ret), abspath);
+		close(fd);
+		return 0;
+	}
+
+	if (options.run_dedupe == 1 &&
+	    ((fs.f_type != BTRFS_SUPER_MAGIC &&
+	      fs.f_type != XFS_SB_MAGIC))) {
+		fprintf(stderr,	"\"%s\": Can only dedupe files on btrfs or xfs, "
+			"use -d -d to override\n", abspath);
+		close(fd);
+		return ENOSYS;
+	}
+
+	if (fs.f_type == BTRFS_SUPER_MAGIC) {
+		/*
+		 * Inodes between subvolumes on a btrfs file system
+		 * can have the same i_ino. Get the subvolume id of
+		 * our file so hard link detection works.
+		 */
+		ret = lookup_btrfs_subvolid(fd, &subvolid);
+		if (ret) {
+			fprintf(stderr,
+				"Error %d: %s while finding subvolid for file "
+				"\"%s\". Skipping.\n", ret, strerror(ret),
+				abspath);
+			close(fd);
+			return 0;
+		}
+	} else {
+		subvolid = st.st_dev;
+	}
+
+	close(fd);
 
 	/*
 	 * Check the database to see if that file need rescan or not.
 	 */
-	ret = dbfile_describe_file(db, file->inum, file->subvolid, &mtime, &size);
+	ret = dbfile_describe_file(db, st.st_ino, subvolid, &mtime, &size);
 	if (ret) {
 		vprintf("dbfile_describe_file failed\n");
 		return 0;
 	}
 
-	if (mtime != file->mtime || size != file->size)
-		set_filerec_scan_flags(file);
-
-	if (mtime != 0 || size != 0)
-		file->flags |= FILEREC_IN_DB;
-
-	return 0;
-}
-
-#define	print_file_changed(_filename, _inum, _subvolid, _file)		\
-	do {								\
-		vprintf("Database record (\"%s\", %"PRIu64".%"PRIu64") "\
-			"differs from disk (\"%s\", %"PRIu64".%"PRIu64	\
-			"), update flagged.\n", _filename, _inum,	\
-			_subvolid, (_file)->filename, (_file)->inum,	\
-			(_file)->_subvolid);				\
-	} while (0)
-
-/*
- * Add filerec from a db record.
- *
- * If we find a filerec in our ino/subvol hash, compare against db
- * info and update flags as necessary:
- *
- * * The filerec is marked to be updated in the db if size or mtime changed.
- * * The filerec is marked for rehash if mtime changed.
- *
- * If no filerec, we stat based on db filename:
- *
- * * If we don't find it (ENOENT), or subvol/inode has changed, mark
- *   the db record for deletion.
- *
- * Otherwise a filerec gets added based on the stat'd information.
- */
-int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
-		uint64_t size, uint64_t mtime, unsigned int seq, int *delete)
-{
-	int ret = 0;
-	struct filerec *file = filerec_find(inum, subvolid);
-	struct stat st;
-
-	*delete = 0;
-
-	dprintf("Lookup/stat file \"%s\" from hashdb\n", filename);
-
-	if (!file) {
-		file = filerec_find_by_name(filename);
-		if (file) {
-			/*
-			 * We have a file by this name but a different
-			 * inode number. Delete the record and allow
-			 * scan to put the correct one in.
-			 */
-			file->dedupe_seq = seq;
-			print_file_changed(filename, inum, subvolid, file);
-			set_filerec_scan_flags(file);
-			*delete = 1;
-			return 0;
-		}
-		/* Go to disk and look up by filename */
-		ret = lstat(filename, &st);
-		if (ret == -1 && errno == ENOENT) {
-			vprintf("File path %s no longer exists. Skipping.\n",
-				filename);
-			*delete = 1;
-			return 0;
-		} else if (ret == -1) {
-			fprintf(stderr,	"Error %d: %s while stating file %s.\n",
-				errno, strerror(errno), filename);
-			*delete = 1;
-			return 0;
-		}
-
-		ret = __add_file(filename, &st, &file);
-		if (ret)
-			return ret;
-
-		if (!file) {
-			/*
-			 * File is in DB and on disk but _add_file()
-			 * didn't like it (could be too small now,
-			 * mode change, etc).
-			 */
-			*delete = 1;
-			return 0;
+	if (options.batch_size != 0) {
+		counter += 1;
+		if (counter >= options.batch_size) {
+			seq++;
+			counter = 0;
 		}
 	}
-	/*
-	 * Set dedupe_seq from the db record. It will be updated if we
-	 * mark the file for rescan.
-	 */
-	file->dedupe_seq = seq;
 
-	clear_filerec_scan_flags(file);
-	if (mtime != file->mtime || size != file->size) {
-		set_filerec_scan_flags(file);
-		file->flags |= FILEREC_UPDATE_DB;
+	/* Database is up-to-date, nothing more to do */
+	if (mtime == timespec_to_nano(&(st.st_mtim)) && size == (uint64_t)st.st_size)
+		return 0;
+
+	dbfile_lock();
+	dbfile_begin_trans(db->db);
+	if (mtime != 0 || size != 0) {
+		/*
+		 * The file was scanned in a previous run.
+		 * We will rescan it, so let's remove old hashes
+		 */
+		dbfile_remove_hashes(db, st.st_ino, subvolid);
 	}
 
-	if (file->inum != inum || file->subvolid != subvolid ||
-	    strcmp(filename, file->filename)) {
-		print_file_changed(filename, inum, subvolid, file);
-		set_filerec_scan_flags(file);
-		*delete = 1;
-	} else {
-		/* All 3 of (filename, ino, subvol) match */
-		file->flags |= FILEREC_IN_DB;
+	/* Upsert the file record */
+	ret = dbfile_store_file_info(db, st.st_ino, subvolid, abspath, st.st_size, timespec_to_nano(&(st.st_mtim)), seq);
+	if (ret) {
+		dbfile_abort_trans(db->db);
+		dbfile_unlock();
+		return 0;
+	}
+
+	dbfile_commit_trans(db->db);
+	dbfile_unlock();
+
+	/* Schedule the file for scan */
+	file = malloc(sizeof(struct file_to_scan)); /* Freed by csum_whole_file() */
+
+	file->path = strdup(abspath);
+	file->ino = st.st_ino;
+	file->subvolid = subvolid;
+
+	total_files_count++;
+	file->file_position = total_files_count;
+
+	if(!g_thread_pool_push(scan_pool.pool, file, &err)) {
+		fprintf(stderr, "g_thread_pool_push: %s\n", err->message);
+		g_error_free(err);
+		err = NULL;
+		free(file);
 	}
 
 	return 0;
-}
-
-static void run_pool(struct threads_pool *pool, struct filerec *file)
-{
-	GError *err = NULL;
-	struct filerec *tmp;
-	unsigned int seq;
-
-	unsigned int counter = 0;
-
-	seq = dedupe_seq + 1;
-
-	qprintf("Using %u threads for file hashing phase\n", options.io_threads);
-
-	list_for_each_entry_safe(file, tmp, &filerec_list, rec_list) {
-		if (file->flags & FILEREC_NEEDS_SCAN) {
-			file->dedupe_seq = seq;
-			g_thread_pool_push(pool->pool, file, &err);
-			if (err != NULL) {
-				fprintf(stderr,
-					"g_thread_pool_push: %s\n",
-					err->message);
-				g_error_free(err);
-				err = NULL;
-			}
-
-			/* If batch_size is 0 then batching is disabled */
-			if ( options.batch_size != 0 ) {
-				counter += 1;
-				if (counter >= options.batch_size) {
-					seq++;
-					counter = 0;
-				}
-			}
-		}
-	}
 }
 
 static inline int is_block_zeroed(void *buf, ssize_t buf_size)
@@ -589,7 +440,7 @@ static int add_block_hash(struct block_csum **hashes, uint64_t *nr_hashes,
 struct csum_ctxt {
 	uint64_t blocks_recorded;
 	char *buf;
-	struct filerec *file;
+	struct file_to_scan *file;
 	unsigned char digest[DIGEST_LEN];
 
 	struct block_csum *block_hashes;
@@ -666,7 +517,8 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 		if (ret < 0) {
 			ret = errno;
 			fprintf(stderr, "Unable to read file %s: %s\n",
-				data->file->filename, strerror(ret));
+				data->file->path, strerror(ret));
+			*ret_total_bytes_read = 0;
 			return -ret;
 		}
 		if (ret == 0)
@@ -688,26 +540,6 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 	*ret_total_bytes_read = total_bytes_read;
 	ret = (total_bytes_read == 0) ? 0 : 1; // handle overflow
 	return ret;
-}
-
-static void csum_whole_file_init(struct filerec *file,
-				 struct fiemap_ctxt **fc)
-{
-	static long long unsigned _cur_scan_files;
-	unsigned long long cur_scan_files;
-
-	cur_scan_files = __atomic_add_fetch(&_cur_scan_files, 1, __ATOMIC_SEQ_CST);
-
-	qprintf("[%0*llu/%llu] (%05.2f%%) csum: %s\n",
-		leading_spaces, cur_scan_files, files_to_scan,
-		(double)cur_scan_files / (double)files_to_scan * 100,
-		file->filename);
-
-	*fc = alloc_fiemap_ctxt();
-	if (*fc == NULL) /* This should be non-fatal */
-		fprintf(stderr,
-			"Low memory allocating fiemap context for \"%s\"\n",
-			file->filename);
 }
 
 /*
@@ -733,16 +565,18 @@ static int fiemap_helper(struct fiemap_ctxt *fc, int fd,
 	return 0;
 }
 
-static int get_file_extent_count(struct filerec *file, uint32_t *count)
+static int get_file_extent_count(int fd, uint32_t *count)
 {
 	struct fiemap fiemap;
 	int err;
 
 	memset(&fiemap, 0, sizeof(fiemap));
 	fiemap.fm_length = ~0ULL;
-	err = ioctl(file->fd, FS_IOC_FIEMAP, (unsigned long) &fiemap);
-	if (err < 0)
+	err = ioctl(fd, FS_IOC_FIEMAP, (unsigned long) &fiemap);
+	if (err < 0) {
+		perror("fiemap failed");
 		return errno;
+	}
 
 	dprintf("Got %u extent for file\n", fiemap.fm_mapped_extents);
 	*count = fiemap.fm_mapped_extents;
@@ -750,55 +584,109 @@ static int get_file_extent_count(struct filerec *file, uint32_t *count)
 	return 0;
 }
 
-static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
-			  struct extent_csum **ret_extent_hashes,
-			  uint64_t *ret_nb_hash)
+static void print_progress(unsigned long long pos, char* path)
 {
+	unsigned int leading_space = num_digits(total_files_count);
+
+	/*
+	 * We do not print the percentage unless all files are actually
+	 * pushed into the thread queue
+	 */
+	if (scan_files_completed) {
+		qprintf("[%0*llu/%llu] (%05.2f%%) csum: %s\n",
+			leading_space, pos, total_files_count,
+			(double)pos / (double)total_files_count * 100,
+			path);
+	} else {
+		qprintf("[%0*llu/%llu] csum: %s\n",
+			leading_space, pos, total_files_count,
+			path);
+	}
+}
+
+static void csum_whole_file(struct file_to_scan *file)
+{
+	int ret = 0;
+	uint64_t nb_hash = 0;
+	_cleanup_(freep) struct fiemap_ctxt *fc = NULL;
+	struct csum_ctxt csum_ctxt = {0,};
+
+	_cleanup_(freep) struct extent_csum *extent_hashes = NULL;
+	static struct dbhandle *db = NULL;
+	static __thread char* buf = NULL;
+
 	uint64_t poff, loff, bytes_read, len;
 	uint32_t extents_count = 0;
-	int ret = 0;
 	unsigned int flags;
-	struct extent_csum *extent_hashes;
 	void *retp;
-	struct filerec *file = ctxt->file;
-	uint64_t nb_hash = 0;
-	struct block_csum *block_hashes;
-	struct running_checksum *file_csum;
-//	int nb_block_hash = 0;
+	struct block_csum *block_hashes = NULL;
+	struct running_checksum *file_csum = NULL;
 
-	ret = get_file_extent_count(file, &extents_count);
-	if (ret)
-		return ret;
+	print_progress(file->file_position, file->path);
+
+	if (!buf) {
+		buf = calloc(1, READ_BUF_LEN);
+		assert(buf != NULL);
+
+		register_cleanup(&scan_pool, (void*)&free, buf);
+	}
+
+	csum_ctxt.buf = buf;
+	csum_ctxt.file = file;
+
+	if(!db) {
+		dbfile_lock();
+		db = dbfile_open_handle(options.hashfile);
+		dbfile_unlock();
+		if (!db) {
+			fprintf(stderr, "csum_whole_file: unable to connect to the database");
+			goto err;
+		}
+
+		register_cleanup(&scan_pool, (void*)&dbfile_close_handle, db);
+	}
+
+	fc = alloc_fiemap_ctxt();
+	if (fc == NULL) {
+		fprintf(stderr,
+			"Low memory allocating fiemap context for \"%s\"\n",
+			file->path);
+		goto err;
+	}
+
+	file->fd = open(file->path, O_RDONLY);
+	if (file->fd == -1) {
+		fprintf(stderr, "csum_whole_file: Error %d: %s while opening file \"%s\". "
+			"Skipping.\n", ret, strerror(ret), file->path);
+		goto err;
+	}
+
+	ret = get_file_extent_count(csum_ctxt.file->fd, &extents_count);
+	if (ret) {
+		fprintf(stderr, "Error: cannot get file extent count for %s\n", file->path);
+		goto err;
+	}
 
 	extent_hashes = calloc(extents_count, sizeof(struct extent_csum));
 	if (extent_hashes == NULL)
-		return ENOMEM;
+		goto err;
 
 	block_hashes = malloc(sizeof(struct block_csum));
-	if (block_hashes == NULL) {
-		free(extent_hashes);
-		return ENOMEM;
-	}
+	if (block_hashes == NULL)
+		goto err;
 
-	/* We require fiemap to do dedupe by extent. */
-	if (fc == NULL) {
-		free(extent_hashes);
-		free(block_hashes);
-		return ENOMEM;
-	}
-
-	ctxt->block_hashes = block_hashes;
+	csum_ctxt.block_hashes = block_hashes;
 
 	file_csum = start_running_checksum();
 	if (!file_csum)
-		return 1;
+		goto err;
 
 	flags = 0;
 	while (!(flags & FIEMAP_EXTENT_LAST)) {
 		ret = fiemap_helper(fc, file->fd, &poff, &loff, &len, &flags);
 		if (ret < 0) {
 			fprintf(stderr, "Error %d from fiemap_helper()\n", ret);
-			goto out;
+			goto err;
 		}
 
 		if (ret == 1) {
@@ -806,117 +694,66 @@ static int csum_by_extent(struct csum_ctxt *ctxt, struct fiemap_ctxt *fc,
 			continue;
 		}
 
-		ret = csum_extent(ctxt, loff, len, flags, &bytes_read, file_csum);
+		ret = csum_extent(&csum_ctxt, loff, len, flags, &bytes_read, file_csum);
 		if (ret == 0) /* EOF */
 			break;
 
 		if (ret < 0)  /* Err */ {
 			fprintf(stderr, "Error %d from csum_extent()\n", ret);
-			goto out;
+			goto err;
 		}
 
 		if ((nb_hash + 1) > extents_count) {
 			retp = realloc(extent_hashes,
 				       sizeof(struct extent_csum) * (nb_hash + 1));
 			if (!retp) {
-				ret = ENOMEM;
-				goto out;
+				perror("csum_whole_file: realloc failed");
+				goto err;
 			}
 			extent_hashes = retp;
 		}
 
-//		printf("loff %"PRIu64" ret %d len %u flags 0x%x\n",
-//		       loff, ret, len, flags);
 		extent_hashes[nb_hash].loff = loff;
 		extent_hashes[nb_hash].poff = poff;
-		/* XXX: put len or actual read length in here? */
-//		extent_hashes[nb_hash].len = len;
 		extent_hashes[nb_hash].len = bytes_read;
 		extent_hashes[nb_hash].flags = flags;
-		memcpy(extent_hashes[nb_hash].digest, ctxt->digest,
+		memcpy(extent_hashes[nb_hash].digest, csum_ctxt.digest,
 		       DIGEST_LEN);
 		nb_hash++;
 
-		ctxt->blocks_recorded += (bytes_read + (blocksize - 1))/blocksize;
+		csum_ctxt.blocks_recorded += (bytes_read + (blocksize - 1))/blocksize;
 		if (bytes_read < len) {
 			/* Partial read, don't get any more blocks */
 			break;
 		}
 	}
 
-	finish_running_checksum(file_csum, ctxt->file_digest);
+	finish_running_checksum(file_csum, csum_ctxt.file_digest);
+	file_csum = NULL;
 
-	ret = 0;
-	*ret_nb_hash = nb_hash;
-	*ret_extent_hashes = extent_hashes;
-out:
-	if (ret && extent_hashes)
-		free(extent_hashes);
-
-	return ret;
-}
-
-static void csum_whole_file(struct filerec *file,
-			    struct thread_params *params)
-{
-	int ret = 0;
-	uint64_t nb_hash = 0;
-	struct fiemap_ctxt *fc = NULL;
-	struct csum_ctxt csum_ctxt;
-	struct dbhandle *db = NULL;
-	struct extent_csum *extent_hashes = NULL;
-	struct block_csum *block_hashes = NULL;
-
-	memset(&csum_ctxt, 0, sizeof(csum_ctxt));
-	csum_ctxt.buf = malloc(READ_BUF_LEN);
-	assert(csum_ctxt.buf != NULL);
-	csum_ctxt.file = file;
-
-	csum_whole_file_init(file, &fc);
-
-	db = dbfile_get_handle();
-	if (!db)
-		goto err_noclose;
-
-	ret = filerec_open(file);
-	if (ret)
-		goto err_noclose;
-
-	ret = csum_by_extent(&csum_ctxt, fc, &extent_hashes, &nb_hash);
-	if (ret)
-		goto err;
-
-	g_mutex_lock(&io_mutex);
+	dbfile_lock();
 	ret = dbfile_begin_trans(db->db);
 	if (ret) {
-		g_mutex_unlock(&io_mutex);
-		goto err;
-	}
-
-	ret = dbfile_store_file_info(db, file->inum, file->subvolid,
-					file->filename, file->size, file->mtime,
-					file->dedupe_seq);
-	if (ret) {
-		g_mutex_unlock(&io_mutex);
+		dbfile_unlock();
 		goto err;
 	}
 
 	if (!options.only_whole_files) {
 		if (options.do_block_hash) {
-			ret = dbfile_store_block_hashes(db, file->inum, file->subvolid,
-							file->flags,
+			ret = dbfile_store_block_hashes(db, file->ino, file->subvolid,
 							csum_ctxt.nr_block_hashes,
 							csum_ctxt.block_hashes);
 			if (ret) {
-				g_mutex_unlock(&io_mutex);
+				dbfile_abort_trans(db->db);
+				dbfile_unlock();
 				goto err;
 			}
 		}
 
-		ret = dbfile_store_extent_hashes(db, file->inum, file->subvolid,
-						file->flags, nb_hash, extent_hashes);
+		ret = dbfile_store_extent_hashes(db, file->ino, file->subvolid, nb_hash, extent_hashes);
 		if (ret) {
-			g_mutex_unlock(&io_mutex);
+			dbfile_abort_trans(db->db);
+			dbfile_unlock();
 			goto err;
 		}
 	}
@@ -929,101 +766,35 @@ static void csum_whole_file(struct filerec *file,
 	 * of needless work: https://github.com/markfasheh/duperemove/issues/316
 	 */
 	if (nb_hash > 0) {
-		ret = dbfile_store_file_digest(db, file->inum, file->subvolid, csum_ctxt.file_digest);
+		ret = dbfile_store_file_digest(db, file->ino, file->subvolid, csum_ctxt.file_digest);
 		if (ret) {
-			g_mutex_unlock(&io_mutex);
+			dbfile_abort_trans(db->db);
+			dbfile_unlock();
 			goto err;
 		}
 	}
 
 	ret = dbfile_commit_trans(db->db);
 	if (ret) {
-		g_mutex_unlock(&io_mutex);
+		dbfile_unlock();
 		goto err;
 	}
-	g_mutex_unlock(&io_mutex);
 
-	g_mutex_lock(&params->mutex);
-	params->num_files++;
-	params->num_hashes += nb_hash;
-	g_mutex_unlock(&params->mutex);
-
-	file->flags &= ~(FILEREC_NEEDS_SCAN|FILEREC_UPDATE_DB);
-	/* Set 'IN_DB' flag *after* we call dbfile_store_hashes() */
-	file->flags |= FILEREC_IN_DB;
-
-	filerec_close(file);
-	free(csum_ctxt.buf);
-	if (fc)
-		free(fc);
-	if (csum_ctxt.block_hashes)
-		free(csum_ctxt.block_hashes);
-
-	free(extent_hashes);
-	return;
+	dbfile_unlock();
 
 err:
-	filerec_close(file);
-err_noclose:
-	free(csum_ctxt.buf);
-	if (extent_hashes)
-		free(extent_hashes);
-	if (block_hashes)
-		free(block_hashes);
-	if (csum_ctxt.block_hashes)
-		free(csum_ctxt.block_hashes);
-	if (fc)
-		free(fc);
-
-	fprintf(
-		stderr,
-		"Skipping file due to error %d from function csum_by_extent (%s), %s\n",
-		ret,
-		strerror(ret),
-		file->filename);
-
-	g_mutex_lock(&params->mutex);
-	params->num_files++;
-	/*
-	 * filerec_free will remove from the filerec tree keep it
-	 * under tree_mutex until we have a need for real locking in
-	 * filerec.c
-	 */
-	filerec_free(file);
-	g_mutex_unlock(&params->mutex);
-
-	return;
-}
-
-int populate_tree()
-{
-	struct threads_pool pool;
-	struct thread_params params;
-	int ret = 0;
-
-	struct filerec *file = NULL;
-
-	g_mutex_init(&params.mutex);
-	params.num_files = params.num_hashes = 0;
-
-	leading_spaces = num_digits(files_to_scan);
-
-	if (files_to_scan) {
-		setup_pool(&pool, csum_whole_file, &params);
-		if (!pool.pool) {
-			ret = ENOMEM;
-			goto out;
-		}
-
-		run_pool(&pool, file);
-		free_pool(&pool);
-		printf("Total files scanned:  %llu\n", params.num_files);
-		qprintf("Total extent hashes scanned: %llu\n", params.num_hashes);
+	if (file_csum) {
+		/* The output is worthless, this is only used to free memory */
+		finish_running_checksum(file_csum, csum_ctxt.file_digest);
 	}
 
-out:
-	g_mutex_clear(&params.mutex);
-	return ret;
+	if (csum_ctxt.block_hashes)
+		free(csum_ctxt.block_hashes);
+
+	if (file->fd != -1)
+		close(file->fd);
+	free(file->path);
+	free(file);
 }
 
 int add_exclude_pattern(const char *pattern)
@@ -1067,4 +838,11 @@ void filescan_prepare_pool()
 void filescan_free_pool()
 {
 	free_pool(&scan_pool);
+}
+
+void add_file_fdupes(char *path)
+{
+	struct stat st;
+	lstat(path, &st);
+	filerec_new(path, st.st_ino, 0, st.st_size, 0);
 }

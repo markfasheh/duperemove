@@ -31,13 +31,11 @@ struct filerec {
 	int		fd;			/* file descriptor */
 	unsigned int	fd_refs;			/* fd refcount */
 
-	unsigned int		flags; /* defined below this struct */
 	char	*filename;		/* path to file */
 	uint64_t subvolid;
 
 	uint64_t		inum;
 	struct rb_node		inum_node;
-	struct rb_node		name_node;	/* by name */
 
 	uint64_t		size;
 	struct rb_root		block_tree;	/* root for hash blocks tree */
@@ -58,31 +56,12 @@ struct filerec {
 	struct fiemap_ctxt	*fiemap;
 };
 
-/*
- * Filerec needs update or insert into the db. Used when metadata
- * changed between disk and the db or when we must insert a fresh
- * record.
- */
-#define	FILEREC_UPDATE_DB	0x01
-/*
- * Filerec was found to have out-dated hashes (file data changed). We
- * must delete any existing hashes from the DB and rescan this file.
- */
-#define	FILEREC_NEEDS_SCAN	0x02
-/*
- * Filerec exists in DB. We use this to avoid running some sql for
- * file hashes for files which were freshly added via the command
- * line. See dbfile_write_hashes().
-*/
-#define	FILEREC_IN_DB		0x04
-
 void init_filerec(void);
 void free_all_filerecs(void);
 
 struct filerec *filerec_new(const char *filename, uint64_t inum,
 			    uint64_t subvolid, uint64_t size, uint64_t mtime);
 struct filerec *filerec_find(uint64_t inum, uint64_t subvolid);
-struct filerec *filerec_find_by_name(const char *filename);
 
 void filerec_free(struct filerec *file);
 int filerec_open(struct filerec *file, bool quiet);

@@ -227,18 +227,6 @@ the semantics of the \f[V]partial\f[R] argument may change.
 Defaults to \f[V]on\f[R].
 Allow dedupe of extents within the same file.
 .TP
-\f[B][no]rescan_files\f[R]
-Defaults to \f[V]on\f[R].
-Duperemove will check for files that were found and deduplicated in a
-previous run, based on the hashfile.
-Deduplicated files may have changed if new content was added, but also
-if their physical layout was modified (defrag for instance).
-You can disable those checks to increase performance when running
-\f[V]duperemove\f[R] against a specific directory or file which you know
-is the only part of a larger, unchanged dataset.
-Duperemove will still dedupe that specific target against any shared
-extent found in the existing files.
-.TP
 \f[B][no]only_whole_files\f[R]
 Defaults to \f[V]off\f[R].
 Duperemove will only work on full file.
