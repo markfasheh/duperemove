@@ -46,7 +46,6 @@
 static GMutex filerec_fd_mutex;
 struct list_head filerec_list;
 static struct rb_root filerec_by_inum = RB_ROOT;
-/* Name tree is secondary to inum tree */
 unsigned long long num_filerecs = 0ULL;
 unsigned int dedupe_seq = 0;
 
@@ -124,88 +123,6 @@ struct filerec_token *filerec_token_new(struct filerec *file)
 	return token;
 }
 
-int filerecs_compared(struct filerec *file1, struct filerec *file2)
-{
-	struct filerec *file = file1;
-	struct filerec *test = file2;
-
-	/*
-	 * We can store only one pointer if we make a rule that we
-	 * always search the filerec with the lower pointer value for
-	 * the one with the higher pointer value.
-	 */
-	if (file1 > file2) {
-		file = file2;
-		test = file1;
-	}
-
-	g_mutex_lock(&file->tree_mutex);
-	if (find_filerec_token_rb(&file->comparisons, test)) {
-		g_mutex_unlock(&file->tree_mutex);
-		return 1;
-	}
-	g_mutex_unlock(&file->tree_mutex);
-	return 0;
-}
-
-int mark_filerecs_compared(struct filerec *file1, struct filerec *file2)
-{
-	struct filerec_token *t;
-	struct filerec *file = file1;
-	struct filerec *test = file2;
-
-	if (file1 > file2) {
-		file = file2;
-		test = file1;
-	}
-
-	g_mutex_lock(&file->tree_mutex);
-	if (find_filerec_token_rb(&file->comparisons, test)) {
-		g_mutex_unlock(&file->tree_mutex);
-		return 0;
-	}
-	g_mutex_unlock(&file->tree_mutex);
-
-	t = filerec_token_new(test);
-	if (!t)
-		return ENOMEM;
-
-	g_mutex_lock(&file->tree_mutex);
-	if (find_filerec_token_rb(&file->comparisons, test)) {
-		g_mutex_unlock(&file->tree_mutex);
-		filerec_token_free(t);
-		return 0;
-	}
-
-	insert_filerec_token_rb(&file->comparisons, t);
-	g_mutex_unlock(&file->tree_mutex);
-
-	return 0;
-}
-
-static void free_compared_tree(struct filerec *file)
-{
-	struct rb_node *n = rb_first(&file->comparisons);
-	struct filerec_token *t;
-
-	while (n) {
-		t = rb_entry(n, struct filerec_token, t_node);
-		n = rb_next(n);
-		rb_erase(&t->t_node, &file->comparisons);
-		filerec_token_free(t);
-	}
-
-	abort_on(!RB_EMPTY_ROOT(&file->comparisons));
-}
-
-void free_all_filerec_compared(void)
-{
-	struct filerec *file;
-
-	list_for_each_entry(file, &filerec_list, rec_list)
-		free_compared_tree(file);
-}
-
 static int cmp_filerecs(struct filerec *file1, uint64_t file2_inum,
 			uint64_t file2_subvolid)
 {
@@ -268,7 +185,7 @@ struct filerec *filerec_find(uint64_t inum, uint64_t subvolid)
 
 static struct filerec *filerec_alloc_insert(const char *filename,
 					    uint64_t inum, uint64_t subvolid,
-					    uint64_t size, uint64_t mtime)
+					    uint64_t size)
 {
 	struct filerec *file = calloc_filerec(1);
 
@@ -286,10 +203,7 @@ static struct filerec *filerec_alloc_insert(const char *filename,
 	rb_init_node(&file->inum_node);
 	file->inum = inum;
 	file->subvolid = subvolid;
-	file->comparisons = RB_ROOT;
 	file->size = size;
-	file->mtime = mtime;
-	g_mutex_init(&file->tree_mutex);
 
 	insert_filerec(file);
 	list_add_tail(&file->rec_list, &filerec_list);
@@ -299,10 +213,10 @@ static struct filerec *filerec_alloc_insert(const char *filename,
 }
 
 struct filerec *filerec_new(const char *filename, uint64_t inum,
-			    uint64_t subvolid, uint64_t size, uint64_t mtime)
+			    uint64_t subvolid, uint64_t size)
 {
 	struct filerec *file;
-	file = filerec_alloc_insert(filename, inum, subvolid, size, mtime);
+	file = filerec_alloc_insert(filename, inum, subvolid, size);
 	return file;
 }
 
@@ -320,7 +234,6 @@ void filerec_free(struct filerec *file)
 
 		if (!RB_EMPTY_NODE(&file->inum_node))
 			rb_erase(&file->inum_node, &filerec_by_inum);
-		free_compared_tree(file);
 		free_filerec(file);
 		num_filerecs--;
 	}

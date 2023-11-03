@@ -517,10 +517,5 @@ int find_additional_dedupe(struct results_tree *dupe_extents)
 
 	g_thread_pool_free(pool, FALSE, TRUE);
 
-	/*
-	 * Save memory by freeing each filerec compared tree once all
-	 * threads have finished.
-	 */
-//	free_all_filerec_compared();
 	return ret;
 }
