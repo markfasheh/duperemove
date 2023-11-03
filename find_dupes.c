@@ -392,7 +392,7 @@ static int search_extent(struct filerec *file, struct file_extent *extent,
  * We don't yet catch the case where a non duped extent straddles more
  * than one extent.
  */
-int search_file_extents(struct filerec *file, struct results_tree *dupe_extents)
+static int search_file_extents(struct filerec *file, struct results_tree *dupe_extents)
 {
 
 	int ret;
