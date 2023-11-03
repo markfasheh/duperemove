@@ -822,5 +822,5 @@ void add_file_fdupes(char *path)
 {
 	struct stat st;
 	lstat(path, &st);
-	filerec_new(path, st.st_ino, 0, st.st_size, 0);
+	filerec_new(path, st.st_ino, 0, st.st_size);
 }

@@ -41,43 +41,19 @@ struct filerec {
 	struct rb_root		block_tree;	/* root for hash blocks tree */
 
 	struct list_head	rec_list;	/* all filerecs */
-
-	/* protects comparisons and extent_tree trees */
-	GMutex			tree_mutex;
-
-	struct rb_root		comparisons;
-
-	/* interval tree of dup-extents belonging to this file */
-	struct rb_root		extent_tree;
-	/* mtime in nanoseconds */
-	uint64_t		mtime;
-	unsigned int		dedupe_seq;
-
-	struct fiemap_ctxt	*fiemap;
 };
 
 void init_filerec(void);
 void free_all_filerecs(void);
 
 struct filerec *filerec_new(const char *filename, uint64_t inum,
-			    uint64_t subvolid, uint64_t size, uint64_t mtime);
+			    uint64_t subvolid, uint64_t size);
 struct filerec *filerec_find(uint64_t inum, uint64_t subvolid);
 
 void filerec_free(struct filerec *file);
 int filerec_open(struct filerec *file, bool quiet);
 void filerec_close(struct filerec *file);
 
-/*
- * dedupe_seq is used to track when a file has been deduped. When we
- * scan or rescan a file, we set its seq to dedupe_seq + 1. The global
- * dedupe_seq value is only incremented once a full dedupe pass is
- * done. We can then compare sequence numbers to tell whether a file
- * has been deduped or not.
- */
-static inline int filerec_deduped(struct filerec *file)
-{
-	return !!(file->dedupe_seq <= dedupe_seq);
-}
 struct open_once {
 	struct rb_root	root;
 };
@@ -105,10 +81,6 @@ void insert_filerec_token_rb(struct rb_root *root,
 void filerec_token_free(struct filerec_token *token);
 struct filerec_token *filerec_token_new(struct filerec *file);
 
-int filerecs_compared(struct filerec *file1, struct filerec *file2);
-int mark_filerecs_compared(struct filerec *file1, struct filerec *file2);
-void free_all_filerec_compared(void);
-
 struct fiemap_ctxt;
 struct fiemap_ctxt *alloc_fiemap_ctxt(void);
 int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, int fd,
@@ -121,12 +93,6 @@ int filerec_count_shared(struct filerec *file, uint64_t loff, uint32_t len,
 static inline uint64_t timespec_to_nano(struct timespec *t)
 {
 	return (uint64_t)t->tv_nsec + t->tv_sec * NANOSECONDS;
-}
-
-static inline void nano_to_timespec(uint64_t nanosecs, struct timespec *t)
-{
-	t->tv_sec = nanosecs / NANOSECONDS;
-	t->tv_nsec = nanosecs % NANOSECONDS;
 }
 
 int fiemap_scan_extent(struct extent *extent);

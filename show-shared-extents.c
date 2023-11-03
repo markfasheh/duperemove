@@ -158,7 +158,7 @@ int main(int argc, char **argv)
 	}
 
 	for (i = 1; i < argc; i++) {
-		file = filerec_new(argv[i], 500 + i, 1, 0, 0);
+		file = filerec_new(argv[i], 500 + i, 1, 0);
 		if (!file) {
 			fprintf(stderr, "filerec_new(): malloc error\n");
 			return 1;

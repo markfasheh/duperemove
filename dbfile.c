@@ -445,8 +445,7 @@ struct dbhandle *dbfile_open_handle(char *filename)
 	dbfile_prepare_stmt(remove_extent_hashes, REMOVE_EXTENT_HASHES);
 
 #define LOAD_FILEREC							\
-"select filename, size, mtime, dedupe_seq from files "			\
-"where ino = ?1 and subvol = ?2;"
+"select filename, size from files where ino = ?1 and subvol = ?2;"
 	dbfile_prepare_stmt(load_filerec, LOAD_FILEREC);
 
 #define GET_DUPLICATE_HASHES						\
@@ -1194,8 +1193,6 @@ int dbfile_load_one_filerec(struct dbhandle *db, uint64_t ino, uint64_t subvol,
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.load_filerec;
 	const unsigned char *filename;
 	uint64_t size;
-	uint64_t mtime;
-	unsigned int seq;
 
 	*file = NULL;
 
@@ -1223,10 +1220,8 @@ int dbfile_load_one_filerec(struct dbhandle *db, uint64_t ino, uint64_t subvol,
 
 	filename = sqlite3_column_text(stmt, 0);
 	size = sqlite3_column_int64(stmt, 1);
-	mtime = sqlite3_column_int64(stmt, 2);
-	seq = sqlite3_column_int(stmt, 3);
 
-	*file = filerec_new((const char *)filename, ino, subvol, size, mtime);
+	*file = filerec_new((const char *)filename, ino, subvol, size);
 	if (!*file)
 		return ENOMEM;
 
