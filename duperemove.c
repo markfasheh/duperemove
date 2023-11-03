@@ -648,7 +648,7 @@ int main(int argc, char **argv)
 		if (ret)
 			goto out;
 
-		ret = populate_tree(&dbfile_cfg, NULL);
+		ret = populate_tree(NULL);
 		if (ret) {
 			fprintf(stderr,	"Error while populating extent tree!\n");
 			goto out;
@@ -667,7 +667,7 @@ int main(int argc, char **argv)
 		if (ret)
 			goto out;
 
-		ret = populate_tree(&dbfile_cfg, &process_duplicates);
+		ret = populate_tree(&process_duplicates);
 		if (ret) {
 			fprintf(stderr,	"Error while populating extent tree!\n");
 			goto out;

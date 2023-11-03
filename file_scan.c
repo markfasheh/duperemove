@@ -69,7 +69,6 @@ struct thread_params {
 	GMutex mutex;
 	unsigned long long num_files;  /* Total number of files we hashed */
 	unsigned long long num_hashes; /* Total number of hashes we hashed */
-	struct dbfile_config	*dbfile_cfg; /* global dbfile config */
 };
 
 extern struct dbfile_config dbfile_cfg;
@@ -1003,7 +1002,7 @@ err_noclose:
 	return;
 }
 
-int populate_tree(struct dbfile_config *cfg, void (*callback)(void))
+int populate_tree(void (*callback)(void))
 {
 	GThreadPool *pool;
 	struct thread_params params;
@@ -1012,7 +1011,6 @@ int populate_tree(struct dbfile_config *cfg, void (*callback)(void))
 	struct filerec *file = NULL;
 
 	g_mutex_init(&params.mutex);
-	params.dbfile_cfg = cfg;
 	params.num_files = params.num_hashes = 0;
 
 	leading_spaces = num_digits(files_to_scan);
