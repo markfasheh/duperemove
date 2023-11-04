@@ -536,6 +536,7 @@ static int extent_dedupe_worker(struct dupe_extents *dext,
 			 * a better move.
 			 * TODO: do not delete the extents but rescan every files to fetch
 			 * the new extents mapping as well as their new hashes
+			 * This may cause dbfile_load_one_file_extent() to raise an error.
 			 */
 			dbfile_remove_extent_hashes(db, extent->e_file->inum, extent->e_file->subvolid);
 		} else {
