@@ -331,7 +331,8 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			exit(0);
 		case DEBUG_OPTION:
 			debug = 1;
-			/* Fall through */
+			verbose = 1;
+			break;
 		case 'v':
 			verbose = 1;
 			break;
