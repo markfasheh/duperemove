@@ -1361,6 +1361,11 @@ int dbfile_load_one_file_extent(struct dbhandle *db, struct filerec *file,
 	}
 
 	ret = sqlite3_step(stmt);
+
+	/* TODO: drop me when extent_dedupe_worker() is fixed */
+	if (ret == SQLITE_DONE)
+		return 0;
+
 	if (ret != SQLITE_ROW) {
 		perror_sqlite(ret, "retrieving extent info");
 		return ret;
