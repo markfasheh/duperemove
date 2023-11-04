@@ -331,7 +331,7 @@ next_match:
 static int search_extent(struct filerec *file, struct file_extent *extent,
 			 struct results_tree *dupe_extents, struct dbhandle *db)
 {
-	int ret;
+	int ret = 0;
 	struct file_block *block, *found_block;
 	struct filerec *found_file;
 	struct dupe_blocks_list *blocklist;
@@ -392,7 +392,7 @@ static int search_extent(struct filerec *file, struct file_extent *extent,
  * We don't yet catch the case where a non duped extent straddles more
  * than one extent.
  */
-static int search_file_extents(struct filerec *file, struct results_tree *dupe_extents)
+static void search_file_extents(struct filerec *file, struct results_tree *dupe_extents)
 {
 
 	int ret;
@@ -405,7 +405,7 @@ static int search_file_extents(struct filerec *file, struct results_tree *dupe_e
 	if (!db) {
 		fprintf(stderr, "ERROR: Couldn't open db file %s\n",
 			options.hashfile == NULL ? "(null)" : options.hashfile);
-		return ENOMEM;
+		return;
 	}
 	/*
 	 * Pick a non-deduped extent from file. The extent info
@@ -436,13 +436,12 @@ static int search_file_extents(struct filerec *file, struct results_tree *dupe_e
 		if (ret)
 			goto out;
 	}
-	ret = 0;
+
 out:
 	update_extent_search_status(1);
 	if (extents)
 		free(extents);
 	dbfile_close_handle(db);
-	return 0;
 }
 
 struct cmp_ctxt {

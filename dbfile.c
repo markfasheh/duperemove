@@ -1300,8 +1300,7 @@ int dbfile_load_one_filerec(struct dbhandle *db, uint64_t ino, uint64_t subvol,
 
 	*file = filerec_new((const char *)filename, ino, subvol, size, mtime);
 	if (!*file)
-		ret = ENOMEM;
-	(*file)->dedupe_seq = seq;
+		return ENOMEM;
 
 	return 0;
 }
