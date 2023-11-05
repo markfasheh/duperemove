@@ -28,7 +28,6 @@ int add_file_db(const char *filename, uint64_t inum, uint64_t subvolid,
 dev_t fs_onefs_dev(void);
 uint64_t fs_onefs_id(void);
 
-struct dbfile_config;
 int populate_tree(void (*callback)(void));
 
 /* For dbfile.c */
