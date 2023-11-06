@@ -1408,16 +1408,22 @@ int dbfile_load_one_file_extent(struct dbhandle *db, struct filerec *file,
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.get_file_extent;
 
 	ret = sqlite3_bind_int64(stmt, 1, file->inum);
-	if (ret)
+	if (ret) {
+		perror_sqlite(ret, "binding value");
 		return ret;
+	}
 
 	ret = sqlite3_bind_int64(stmt, 2, file->subvolid);
-	if (ret)
+	if (ret) {
+		perror_sqlite(ret, "binding value");
 		return ret;
+	}
 
 	ret = sqlite3_bind_int64(stmt, 3, loff);
-	if (ret)
+	if (ret) {
+		perror_sqlite(ret, "binding value");
 		return ret;
+	}
 
 	ret = sqlite3_step(stmt);
 	if (ret != SQLITE_ROW) {
@@ -1443,12 +1449,16 @@ int dbfile_load_nondupe_file_extents(struct dbhandle *db, struct filerec *file,
 	struct file_extent *extents = NULL;
 
 	ret = sqlite3_bind_int64(stmt, 1, file->inum);
-	if (ret)
+	if (ret) {
+		perror_sqlite(ret, "binding values");
 		goto out;
+	}
 
 	ret = sqlite3_bind_int64(stmt, 2, file->subvolid);
-	if (ret)
+	if (ret) {
+		perror_sqlite(ret, "binding values");
 		goto out;
+	}
 
 	i = 0;
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
