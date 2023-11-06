@@ -214,6 +214,7 @@ int scan_file(const char *path, struct dbhandle *db)
 	static unsigned int seq = 0, counter = 0;
 	GError *err = NULL;
 	struct file_to_scan *file;
+	int64_t fileid = 0;
 
 	/*
 	 * The first call initializes the static variable
@@ -369,8 +370,8 @@ int scan_file(const char *path, struct dbhandle *db)
 	}
 
 	/* Upsert the file record */
-	ret = dbfile_store_file_info(db, st.st_ino, subvolid, abspath, st.st_size, timespec_to_nano(&(st.st_mtim)), seq);
-	if (ret) {
+	fileid = dbfile_store_file_info(db, st.st_ino, subvolid, abspath, st.st_size, timespec_to_nano(&(st.st_mtim)), seq);
+	if (!fileid) {
 		dbfile_abort_trans(db->db);
 		dbfile_unlock();
 		return 0;
@@ -383,8 +384,7 @@ int scan_file(const char *path, struct dbhandle *db)
 	file = malloc(sizeof(struct file_to_scan)); /* Freed by csum_whole_file() */
 
 	file->path = strdup(abspath);
-	file->ino = st.st_ino;
-	file->subvolid = subvolid;
+	file->fileid = fileid;
 
 	total_files_count++;
 	file->file_position = total_files_count;
@@ -740,7 +740,7 @@ static void csum_whole_file(struct file_to_scan *file)
 
 	if (!options.only_whole_files) {
 		if (options.do_block_hash) {
-			ret = dbfile_store_block_hashes(db, file->ino, file->subvolid,
+			ret = dbfile_store_block_hashes(db, file->fileid,
 							csum_ctxt.nr_block_hashes,
 							csum_ctxt.block_hashes);
 			if (ret) {
@@ -750,7 +750,7 @@ static void csum_whole_file(struct file_to_scan *file)
 			}
 		}
 
-		ret = dbfile_store_extent_hashes(db, file->ino, file->subvolid, nb_hash, extent_hashes);
+		ret = dbfile_store_extent_hashes(db, file->fileid, nb_hash, extent_hashes);
 		if (ret) {
 			dbfile_abort_trans(db->db);
 			dbfile_unlock();
@@ -766,7 +766,7 @@ static void csum_whole_file(struct file_to_scan *file)
 	 * of needless work: https://github.com/markfasheh/duperemove/issues/316
 	 */
 	if (nb_hash > 0) {
-		ret = dbfile_store_file_digest(db, file->ino, file->subvolid, csum_ctxt.file_digest);
+		ret = dbfile_store_file_digest(db, file->fileid, csum_ctxt.file_digest);
 		if (ret) {
 			dbfile_abort_trans(db->db);
 			dbfile_unlock();
