@@ -39,8 +39,7 @@ struct exclude_file {
 struct file_to_scan {
 	char *path;
 	int fd;
-	uint64_t ino;
-	uint64_t subvolid;
+	int64_t fileid;
 
 	/*
 	 * Used to record the current file position in the scan queue,

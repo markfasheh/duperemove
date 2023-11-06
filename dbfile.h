@@ -14,8 +14,8 @@ struct extent_csum;
 struct results_tree;
 struct dbfile_config;
 
-#define DB_FILE_MAJOR	3
-#define DB_FILE_MINOR	4
+#define DB_FILE_MAJOR	4
+#define DB_FILE_MINOR	0
 
 struct stmts {
 	sqlite3_stmt *insert_hash;
@@ -111,13 +111,13 @@ int dbfile_load_one_filerec(struct dbhandle *db, uint64_t ino, uint64_t subvol,
  */
 struct dbhandle *dbfile_get_handle(void);
 
-int dbfile_store_file_info(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
+uint64_t dbfile_store_file_info(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
 			char *path, uint64_t size, uint64_t mtime, unsigned int dedupe_seq);
-int dbfile_store_block_hashes(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
+int dbfile_store_block_hashes(struct dbhandle *db, int64_t fileid,
 				uint64_t nb_hash, struct block_csum *hashes);
-int dbfile_store_extent_hashes(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
+int dbfile_store_extent_hashes(struct dbhandle *db, int64_t fileid,
 				uint64_t nb_hash, struct extent_csum *hashes);
-int dbfile_store_file_digest(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
+int dbfile_store_file_digest(struct dbhandle *db, int64_t fileid,
 				unsigned char *digest);
 int dbfile_begin_trans(sqlite3 *db);
 int dbfile_commit_trans(sqlite3 *db);
