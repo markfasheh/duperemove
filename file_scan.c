@@ -937,10 +937,19 @@ static void csum_whole_file(struct filerec *file,
 		}
 	}
 
-	ret = dbfile_store_file_digest(db, file, csum_ctxt.file_digest);
-	if (ret) {
-		g_mutex_unlock(&io_mutex);
-		goto err;
+	/* Do not store files with zero hashable extents. Those are
+	 * usually small files inlined with extent type
+	 * FIEMAP_EXTENT_DATA_INLINE. We avoid storing them as all these
+	 * files have the same zero bytes checksum. Attempt to
+	 * deduplicate those will never succeed and will produce a lot
+	 * of needless work: https://github.com/markfasheh/duperemove/issues/316
+	 */
+	if (nb_hash > 0) {
+		ret = dbfile_store_file_digest(db, file, csum_ctxt.file_digest);
+		if (ret) {
+			g_mutex_unlock(&io_mutex);
+			goto err;
+		}
 	}
 
 	ret = dbfile_commit_trans(db);
