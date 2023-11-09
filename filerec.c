@@ -610,7 +610,7 @@ int filerec_count_shared(struct filerec *file, uint64_t loff, uint32_t len,
 			    && flags & FIEMAP_EXTENT_SHARED) {
 				if (extent_loff < loff)
 					extent_loff = loff;
-				if (extent_end < end)
+				if (end < extent_end)
 					extent_end = end;
 				*shared += extent_end - extent_loff + 1;
 			}
