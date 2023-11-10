@@ -1424,9 +1424,8 @@ int dbfile_load_nondupe_file_extents(sqlite3 *db, struct filerec *file,
 	struct file_extent *extents = NULL;
 
 #define NONDUPE_JOIN							\
-	"FROM extents JOIN (SELECT digest FROM extents GROUP BY digest "\
-	"HAVING count(*) = 1) AS nondupe_extents on extents.digest = "	\
-	"nondupe_extents.digest where extents.ino = ?1 and extents.subvol = ?2;"
+	"FROM extents where extents.ino = ?1 and extents.subvol = ?2 and " \
+	"(1 = (SELECT COUNT(*) FROM extents as e where e.digest = extents.digest));"
 #define GET_NONDUPE_EXTENTS						\
 	"select extents.loff, len, poff, flags " NONDUPE_JOIN
 
