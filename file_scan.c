@@ -346,6 +346,10 @@ int scan_file(const char *path, struct dbhandle *db)
 		return 0;
 	}
 
+	/* Database is up-to-date, nothing more to do */
+	if (mtime == timespec_to_nano(&(st.st_mtim)) && size == (uint64_t)st.st_size)
+		return 0;
+
 	if (options.batch_size != 0) {
 		counter += 1;
 		if (counter >= options.batch_size) {
@@ -353,10 +357,6 @@ int scan_file(const char *path, struct dbhandle *db)
 			counter = 0;
 		}
 	}
-
-	/* Database is up-to-date, nothing more to do */
-	if (mtime == timespec_to_nano(&(st.st_mtim)) && size == (uint64_t)st.st_size)
-		return 0;
 
 	dbfile_lock();
 	dbfile_begin_trans(db->db);
