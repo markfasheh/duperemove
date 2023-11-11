@@ -454,13 +454,20 @@ struct dbhandle *dbfile_open_handle(char *filename)
 	dbfile_prepare_stmt(load_filerec, LOAD_FILEREC);
 
 #define GET_DUPLICATE_HASHES						\
-"SELECT hashes.digest, ino, subvol, loff, flags FROM hashes "		\
-"JOIN (SELECT DISTINCT digest FROM hashes WHERE digest IN "		\
-"(SELECT DISTINCT digest FROM hashes WHERE ino IN "			\
-"(SELECT DISTINCT ino FROM files WHERE dedupe_seq = ?1))"		\
+"WITH without_future_hashes as ("					\
+"	select * from hashes "						\
+"	join files on files.ino = hashes.ino "				\
+"	and files.dedupe_seq <= ?1), "					\
+"current_hashes as ("							\
+"	select * from hashes "						\
+"	join files on files.ino = hashes.ino "				\
+"	and files.dedupe_seq = ?1) "					\
+"SELECT without_future_hashes.digest, ino, subvol, loff, flags "	\
+"FROM without_future_hashes "						\
+"JOIN (SELECT DISTINCT digest FROM current_hashes "			\
 "GROUP BY digest "							\
 "HAVING count(*) > 1) AS duplicate_hashes "				\
-"on hashes.digest = duplicate_hashes.digest;"
+"on without_future_hashes.digest = duplicate_hashes.digest;"
 	dbfile_prepare_stmt(get_duplicate_hashes, GET_DUPLICATE_HASHES);
 
 /*
@@ -471,14 +478,21 @@ struct dbhandle *dbfile_open_handle(char *filename)
  * result of only one extent.
  */
 #define GET_DUPLICATE_EXTENTS						\
-"SELECT extents.digest, ino, subvol, loff, extents.len, poff, flags "	\
-"FROM extents "								\
-"JOIN (SELECT digest,len FROM extents where digest in "			\
-"(select distinct digest from extents where ino in "			\
-"(select ino from files where dedupe_seq = ?1)) "			\
-"GROUP BY digest,len HAVING count(*) > 1) "				\
-"AS duplicate_extents on extents.digest = duplicate_extents.digest "	\
-"AND extents.len = duplicate_extents.len;"
+"WITH without_future_extents as ("					\
+"	select * from extents "						\
+"	join files on files.ino = extents.ino "				\
+"	and files.dedupe_seq <= ?1), "					\
+"current_extents as ("							\
+"	select * from extents "						\
+"	join files on files.ino = extents.ino "				\
+"	and files.dedupe_seq = ?1) "					\
+"SELECT without_future_extents.digest, ino, subvol, loff, "		\
+"without_future_extents.len, poff, flags "				\
+"FROM without_future_extents "						\
+"JOIN (SELECT digest, len FROM current_extents "			\
+"GROUP BY digest, len HAVING count(*) > 1) AS duplicate_extents "	\
+"on without_future_extents.digest = duplicate_extents.digest "		\
+"AND without_future_extents.len = duplicate_extents.len;"
 	dbfile_prepare_stmt(get_duplicate_extents, GET_DUPLICATE_EXTENTS);
 
 #define GET_DUPLICATE_FILES						\
@@ -489,7 +503,8 @@ struct dbhandle *dbfile_open_handle(char *filename)
 "GROUP BY digest, size HAVING count(*) > 1) "				\
 "AS duplicate_files ON files.size != 0 AND "				\
 "files.digest = duplicate_files.digest AND "				\
-"files.size = duplicate_files.size;"
+"files.size = duplicate_files.size AND "				\
+"files.dedupe_seq <= ?1;"
 	dbfile_prepare_stmt(get_duplicate_files, GET_DUPLICATE_FILES);
 
 #define GET_FILE_EXTENT							\
