@@ -14,12 +14,10 @@ date: December 2014
 `show-shared-extents` *files* *...*
 
 # DESCRIPTION
-Print all the extents in `files` that are shared. A sum of shared
-extents is also printed.
+Count the sum of bytes shared in a file.
 
-On btrfs, an extent is reported as shared if it has more than one reference.
+An extent is reported as shared if it has more than one reference.
 
 # SEE ALSO
 
-* `duperemove(8)`
-* `btrfs(8)`
+* `filefrag(8)`

@@ -1,0 +1,8 @@
+#!/bin/bash
+
+for file in "$@"
+do
+	shared=$(filefrag -v -b1 "$file" | awk -F':' 'BEGIN {shared = 0} /shared/ {shared += $4} END {print shared}')
+	echo "$file: $shared shared bytes"
+done
+
