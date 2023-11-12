@@ -51,6 +51,7 @@
 #include "util.h"
 #include "opt.h"
 #include "threads.h"
+#include "fiemap.h"
 
 /* This is not in linux/magic.h */
 #ifndef	XFS_SB_MAGIC
@@ -525,48 +526,6 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 	return ret;
 }
 
-/*
- * Helper for csum_by_block/csum_by_extent.
- * Return < 0 on error, 0 on success and 1 if we find an extent that should not
- * be read.
- */
-static int fiemap_helper(struct fiemap_ctxt *fc, int fd,
-			 uint64_t *poff, uint64_t *loff, uint64_t *len,
-			 unsigned int *flags)
-{
-	int ret;
-
-	ret = fiemap_iter_next_extent(fc, fd, poff, loff, len, flags);
-	if (ret)
-		return ret;
-
-	if ((options.skip_zeroes && *flags & FIEMAP_EXTENT_UNWRITTEN) ||
-	    (*flags & FIEMAP_SKIP_FLAGS)) {
-		/* Unwritten or other extent we don't want to read */
-		return 1;
-	}
-	return 0;
-}
-
-static int get_file_extent_count(int fd, uint32_t *count)
-{
-	struct fiemap fiemap;
-	int err;
-
-	memset(&fiemap, 0, sizeof(fiemap));
-	fiemap.fm_length = ~0ULL;
-	err = ioctl(fd, FS_IOC_FIEMAP, (unsigned long) &fiemap);
-	if (err < 0) {
-		perror("fiemap failed");
-		return errno;
-	}
-
-	dprintf("Got %u extent for file\n", fiemap.fm_mapped_extents);
-	*count = fiemap.fm_mapped_extents;
-
-	return 0;
-}
-
 static void print_progress(unsigned long long pos, char* path)
 {
 	unsigned int leading_space = num_digits(total_files_count);
@@ -591,7 +550,7 @@ static void csum_whole_file(struct file_to_scan *file)
 {
 	int ret = 0;
 	uint64_t nb_hash = 0;
-	_cleanup_(freep) struct fiemap_ctxt *fc = NULL;
+	_cleanup_(freep) struct fiemap *fiemap = NULL;
 	struct csum_ctxt csum_ctxt = {0,};
 
 	_cleanup_(freep) struct extent_csum *extent_hashes = NULL;
@@ -599,8 +558,7 @@ static void csum_whole_file(struct file_to_scan *file)
 	static __thread char* buf = NULL;
 
 	uint64_t poff, loff, bytes_read, len;
-	uint32_t extents_count = 0;
-	unsigned int flags;
+	unsigned int flags = 0;
 	void *retp;
 	struct block_csum *block_hashes = NULL;
 	struct running_checksum *file_csum = NULL;
@@ -629,14 +587,6 @@ static void csum_whole_file(struct file_to_scan *file)
 		register_cleanup(&scan_pool, (void*)&dbfile_close_handle, db);
 	}
 
-	fc = alloc_fiemap_ctxt();
-	if (fc == NULL) {
-		fprintf(stderr,
-			"Low memory allocating fiemap context for \"%s\"\n",
-			file->path);
-		goto err;
-	}
-
 	file->fd = open(file->path, O_RDONLY);
 	if (file->fd == -1) {
 		fprintf(stderr, "csum_whole_file: Error %d: %s while opening file \"%s\". "
@@ -644,13 +594,11 @@ static void csum_whole_file(struct file_to_scan *file)
 		goto err;
 	}
 
-	ret = get_file_extent_count(csum_ctxt.file->fd, &extents_count);
-	if (ret) {
-		fprintf(stderr, "Error: cannot get file extent count for %s\n", file->path);
+	fiemap = do_fiemap(file->fd);
+	if (!fiemap)
 		goto err;
-	}
 
-	extent_hashes = calloc(extents_count, sizeof(struct extent_csum));
+	extent_hashes = calloc(fiemap->fm_mapped_extents, sizeof(struct extent_csum));
 	if (extent_hashes == NULL)
 		goto err;
 
@@ -664,16 +612,17 @@ static void csum_whole_file(struct file_to_scan *file)
 	if (!file_csum)
 		goto err;
 
-	flags = 0;
-	while (!(flags & FIEMAP_EXTENT_LAST)) {
-		ret = fiemap_helper(fc, file->fd, &poff, &loff, &len, &flags);
-		if (ret < 0) {
-			fprintf(stderr, "Error %d from fiemap_helper()\n", ret);
-			goto err;
-		}
+	for (unsigned int i = 0; i < fiemap->fm_mapped_extents; i++) {
+		struct fiemap_extent *extent = &fiemap->fm_extents[i];
 
-		if (ret == 1) {
-			/* Skip reading this extent */
+		flags = extent->fe_flags;
+		poff = extent->fe_physical;
+		loff = extent->fe_logical;
+		len = extent->fe_length;
+
+		if ((options.skip_zeroes && flags & FIEMAP_EXTENT_UNWRITTEN) ||
+				(flags & FIEMAP_SKIP_FLAGS)) {
+			/* Unwritten or other extent we don't want to read */
 			continue;
 		}
 
@@ -686,7 +635,7 @@ static void csum_whole_file(struct file_to_scan *file)
 			goto err;
 		}
 
-		if ((nb_hash + 1) > extents_count) {
+		if ((nb_hash + 1) > fiemap->fm_mapped_extents) {
 			retp = realloc(extent_hashes,
 				       sizeof(struct extent_csum) * (nb_hash + 1));
 			if (!retp) {
