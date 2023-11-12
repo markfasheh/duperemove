@@ -52,9 +52,6 @@ struct extent {
 	struct list_head	e_list; /* For de_extents */
 	struct rb_node		e_node; /* For de_extents_root */
 
-#define	E_MAY_DELETE	0x01
-	int			e_flags;
-
 	/*
 	 * Physical offset and length are used to figure out whether
 	 * we have already deduped this extent yet.
@@ -77,7 +74,7 @@ int insert_result(struct results_tree *res, unsigned char *digest,
 		  uint64_t endoff[2]);
 int insert_one_result(struct results_tree *res, unsigned char *digest,
 		      struct filerec *file, uint64_t startoff, uint64_t len,
-		      uint64_t poff, int flags);
+		      uint64_t poff);
 
 void init_results_tree(struct results_tree *res);
 void free_results_tree(struct results_tree *res);

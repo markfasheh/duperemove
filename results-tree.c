@@ -224,7 +224,7 @@ static struct dupe_extents *find_alloc_dext(struct results_tree *res,
  */
 int insert_one_result(struct results_tree *res, unsigned char *digest,
 		      struct filerec *file, uint64_t startoff, uint64_t len,
-		      uint64_t poff, int flags)
+		      uint64_t poff)
 {
 	struct extent *extent = alloc_extent(file, startoff);
 	struct dupe_extents *dext;
@@ -235,10 +235,6 @@ int insert_one_result(struct results_tree *res, unsigned char *digest,
 	extent_poff(extent) = poff;
 	extent_plen(extent) = len;
 	extent_shared_bytes(extent) = 0;
-	if (!(flags & FIEMAP_EXTENT_DELALLOC)
-	    && flags & FIEMAP_EXTENT_SHARED)
-		extent_shared_bytes(extent) = len; /* XXX: get rid of this */
-
 	dext = find_alloc_dext(res, digest, len, NULL);
 	if (!dext)
 		return ENOMEM;
