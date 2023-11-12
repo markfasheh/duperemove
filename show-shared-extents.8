@@ -24,13 +24,9 @@
 \f[V]show-shared-extents\f[R] \f[I]files\f[R] \f[I]\&...\f[R]
 .SH DESCRIPTION
 .PP
-Print all the extents in \f[V]files\f[R] that are shared.
-A sum of shared extents is also printed.
+Count the sum of bytes shared in a file.
 .PP
-On btrfs, an extent is reported as shared if it has more than one
-reference.
+An extent is reported as shared if it has more than one reference.
 .SH SEE ALSO
 .IP \[bu] 2
-\f[V]duperemove(8)\f[R]
-.IP \[bu] 2
-\f[V]btrfs(8)\f[R]
+\f[V]filefrag(8)\f[R]

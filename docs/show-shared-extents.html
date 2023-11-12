@@ -165,14 +165,12 @@
 <h1 id="synopsis">SYNOPSIS</h1>
 <p><code>show-shared-extents</code> <em>files</em> <em>…</em></p>
 <h1 id="description">DESCRIPTION</h1>
-<p>Print all the extents in <code>files</code> that are shared. A sum of
-shared extents is also printed.</p>
-<p>On btrfs, an extent is reported as shared if it has more than one
+<p>Count the sum of bytes shared in a file.</p>
+<p>An extent is reported as shared if it has more than one
 reference.</p>
 <h1 id="see-also">SEE ALSO</h1>
 <ul>
-<li><code>duperemove(8)</code></li>
-<li><code>btrfs(8)</code></li>
+<li><code>filefrag(8)</code></li>
 </ul>
 </body>
 </html>

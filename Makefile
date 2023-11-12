@@ -33,10 +33,9 @@ objects = $(CFILES:.c=.o)
 hashstats_obj = csum-xxhash.o rbtree.o hash-tree.o filerec.o util.o opt.o \
 	results-tree.o csum.o dbfile.o list_sort.o debug.o file_scan.o btrfs-util.o \
 	threads.o
-show_shared_obj = rbtree.o util.o debug.o filerec.o
 csum_test_obj = csum-xxhash.o util.o csum.o debug.o
 
-install_progs = duperemove hashstats btrfs-extent-same show-shared-extents
+install_progs = duperemove hashstats btrfs-extent-same
 progs = $(install_progs) csum-test
 
 glib_CFLAGS=$(shell $(PKG_CONFIG) --cflags glib-2.0)
@@ -123,9 +122,6 @@ uninstall:
 csum-test: $(csum_test_obj) csum-test.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(csum_test_obj) -o csum-test csum-test.c  $(LIBRARY_FLAGS)
 
-show-shared-extents: $(show_shared_obj) show-shared-extents.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) show-shared-extents.c $(show_shared_obj) -o show-shared-extents $(LIBRARY_FLAGS)
-
 hashstats: $(hashstats_obj) hashstats.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(hashstats_obj) hashstats.c -o hashstats $(LIBRARY_FLAGS)
 
@@ -135,7 +131,7 @@ test:
 	./test
 
 clean:
-	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same filerec-test show-shared-extents hashstats csum-*.o *~
+	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same filerec-test hashstats csum-*.o *~
 
 doc: $(MANPAGES)
 
