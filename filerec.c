@@ -16,26 +16,12 @@
  */
 
 #include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/ioctl.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
-#include <string.h>
-#include <stdint.h>
-#include <inttypes.h>
-#include <stddef.h>
-
-#include <linux/types.h>
-#include <linux/fs.h>
-#include <linux/fiemap.h>
-
-#include <glib.h>
 
 #include "util.h"
-#include "kernel.h"
 #include "rbtree.h"
 #include "list.h"
 #include "debug.h"
@@ -332,56 +318,6 @@ void filerec_close_open_list(struct open_once *open_files)
 	}
 }
 
-#define FIEMAP_BUF_SIZE	16384
-#define FIEMAP_COUNT	((FIEMAP_BUF_SIZE - sizeof(struct fiemap)) / sizeof(struct fiemap_extent))
-struct fiemap_ctxt {
-	struct fiemap		*fiemap;
-	char			buf[FIEMAP_BUF_SIZE];
-	unsigned int		idx;
-	bool			initialized;
-};
-
-struct fiemap_ctxt *alloc_fiemap_ctxt(void)
-{
-	struct fiemap_ctxt *ctxt = calloc(1, sizeof(*ctxt));
-
-	if (ctxt) {
-		ctxt->fiemap = (struct fiemap *) ctxt->buf;
-	}
-	return ctxt;
-}
-
-static int do_fiemap_old(struct fiemap *fiemap, int fd,
-		     uint64_t start)
-{
-	int err;
-	unsigned int i;
-	struct fiemap_extent *extent;
-
-	memset(fiemap, 0, sizeof(struct fiemap));
-
-	fiemap->fm_length = ~0ULL;
-	fiemap->fm_extent_count = FIEMAP_COUNT;
-	fiemap->fm_start = start;
-
-	err = ioctl(fd, FS_IOC_FIEMAP, (unsigned long) fiemap);
-	if (err < 0)
-		return errno;
-
-	dprintf("%d extents found\n", fiemap->fm_mapped_extents);
-	if (debug) {
-		for (i = 0; i < fiemap->fm_mapped_extents; i++) {
-			extent = &fiemap->fm_extents[i];
-
-			dprintf("[%d] logical: %llu, physical: %llu length: %llu\n",
-			       i, (unsigned long long)extent->fe_logical,
-			       (unsigned long long)extent->fe_physical,
-			       (unsigned long long)extent->fe_length);
-		}
-	}
-	return 0;
-}
-
 int fiemap_scan_extent(struct extent *extent)
 {
 	int ret = 0;
@@ -400,38 +336,4 @@ int fiemap_scan_extent(struct extent *extent)
 	extent->e_poff = result->fe_physical;
 	filerec_close(extent->e_file);
 	return ret;
-}
-
-int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, int fd,
-			    uint64_t *poff, uint64_t *loff,
-			    uint64_t *len, unsigned int *flags)
-{
-	int ret;
-	uint64_t fiestart = 0;
-	unsigned int idx = ctxt->idx;
-	struct fiemap *fiemap = ctxt->fiemap;
-	struct fiemap_extent *extent;
-
-	if (!ctxt->initialized || idx >= fiemap->fm_mapped_extents) {
-		if (ctxt->initialized) {
-			extent = &fiemap->fm_extents[idx - 1];
-			fiestart = extent->fe_logical + extent->fe_length;
-		}
-		ret = do_fiemap_old(fiemap, fd, fiestart);
-		if (ret)
-			return ret;
-		ctxt->initialized = true;
-		idx = ctxt->idx = 0;
-	}
-
-	fiemap = ctxt->fiemap;
-	extent = &fiemap->fm_extents[idx];
-
-	*len = extent->fe_length;
-	*poff = extent->fe_physical;
-	*loff = extent->fe_logical;
-	*flags = extent->fe_flags;
-
-	ctxt->idx++;
-	return 0;
 }
