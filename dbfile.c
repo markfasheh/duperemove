@@ -148,7 +148,7 @@ static int create_tables(sqlite3 *db)
 "filename TEXT NOT NULL, "						\
 "ino INTEGER, subvol INTEGER, size INTEGER, blocks INTEGER, "		\
 "mtime INTEGER, dedupe_seq INTEGER, digest BLOB, "			\
-"UNIQUE(ino, subvol), UNIQUE(filename));"
+"flags INTEGER, UNIQUE(ino, subvol), UNIQUE(filename));"
 	ret = sqlite3_exec(db, CREATE_TABLE_FILES, NULL, NULL, NULL);
 	if (ret)
 		goto out;
@@ -389,9 +389,9 @@ struct dbhandle *dbfile_open_handle(char *filename)
 "VALUES (?1, ?2, ?3, ?4, ?5);"
 	dbfile_prepare_stmt(insert_extent, INSERT_EXTENTS);
 
-#define	UPDATE_FILE_DIGEST						\
-"UPDATE files SET digest = ?1 where id = ?2;"
-	dbfile_prepare_stmt(update_file_digest, UPDATE_FILE_DIGEST);
+#define UPDATE_SCANNED_FILE						\
+"UPDATE files SET digest = ?1, flags = ?2 where id = ?3;"
+	dbfile_prepare_stmt(update_scanned_file, UPDATE_SCANNED_FILE);
 
 #define FIND_BLOCKS                                                     \
 "select files.filename, hashes.loff from files "			\
@@ -500,6 +500,7 @@ struct dbhandle *dbfile_open_handle(char *filename)
 "AS duplicate_files ON files.size != 0 AND "				\
 "files.digest = duplicate_files.digest AND "				\
 "files.size = duplicate_files.size AND "				\
+"NOT (files.flags & 1) AND "						\
 "files.dedupe_seq <= ?1;"
 	dbfile_prepare_stmt(get_duplicate_files, GET_DUPLICATE_FILES);
 
@@ -1106,19 +1107,22 @@ out_error:
 	return ret;
 }
 
-int dbfile_store_file_digest(struct dbhandle *db, int64_t fileid,
-				unsigned char *digest)
+int dbfile_update_scanned_file(struct dbhandle *db, int64_t fileid,
+				unsigned char *digest, unsigned int flags)
 {
 	int ret;
-	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.update_file_digest;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.update_scanned_file;
 
-//	dprintf("db: write file hash for file %s\n", file->filename);
 	ret = sqlite3_bind_blob(stmt, 1, digest, DIGEST_LEN,
 				SQLITE_STATIC);
 	if (ret)
 		goto bind_error;
 
-	ret = sqlite3_bind_int64(stmt, 2, fileid);
+	ret = sqlite3_bind_int64(stmt, 2, flags);
+	if (ret)
+		goto bind_error;
+
+	ret = sqlite3_bind_int64(stmt, 3, fileid);
 	if (ret)
 		goto bind_error;
 

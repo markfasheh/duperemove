@@ -20,7 +20,7 @@ struct dbfile_config;
 struct stmts {
 	sqlite3_stmt *insert_hash;
 	sqlite3_stmt *insert_extent;
-	sqlite3_stmt *update_file_digest;
+	sqlite3_stmt *update_scanned_file;
 	sqlite3_stmt *find_blocks;
 	sqlite3_stmt *find_top_b_hashes;
 	sqlite3_stmt *find_top_e_hashes;
@@ -116,8 +116,8 @@ int dbfile_store_block_hashes(struct dbhandle *db, int64_t fileid,
 				uint64_t nb_hash, struct block_csum *hashes);
 int dbfile_store_extent_hashes(struct dbhandle *db, int64_t fileid,
 				uint64_t nb_hash, struct extent_csum *hashes);
-int dbfile_store_file_digest(struct dbhandle *db, int64_t fileid,
-				unsigned char *digest);
+int dbfile_update_scanned_file(struct dbhandle *db, int64_t fileid,
+				unsigned char *digest, unsigned int flags);
 int dbfile_begin_trans(sqlite3 *db);
 int dbfile_commit_trans(sqlite3 *db);
 int dbfile_abort_trans(sqlite3 *db);
