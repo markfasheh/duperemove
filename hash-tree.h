@@ -45,10 +45,9 @@ struct file_block {
 	struct dupe_blocks_list	*b_parent;
 	struct filerec	*b_file;
 	uint64_t	b_loff;
-	unsigned int	b_flags;
 
 	/*
-	 * All blocks with this md5. Can be on dupe_blocks_list->dl_list, or
+	 * All blocks with this hash. Can be on dupe_blocks_list->dl_list, or
 	 * block_dedupe_list->bd_block_list (see run_dedupe.c).
 	 */
 	struct list_head	b_list;
@@ -61,7 +60,7 @@ struct dupe_blocks_list *find_block_list(struct hash_tree *tree,
 					 unsigned char *digest);
 
 int insert_hashed_block(struct hash_tree *tree, unsigned char *digest,
-			struct filerec *file, uint64_t loff, unsigned int flags);
+			struct filerec *file, uint64_t loff);
 int remove_hashed_block(struct hash_tree *tree, struct file_block *block);
 struct file_block *find_filerec_block(struct filerec *file,
 				      uint64_t loff);

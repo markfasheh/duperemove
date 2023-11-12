@@ -247,7 +247,7 @@ struct dupe_blocks_list *find_block_list(struct hash_tree *tree,
 }
 
 int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
-			struct filerec *file, uint64_t loff, unsigned int flags)
+			struct filerec *file, uint64_t loff)
 {
 	struct file_block *e = malloc_file_block();
 	struct dupe_blocks_list *d;
@@ -274,7 +274,6 @@ int insert_hashed_block(struct hash_tree *tree,	unsigned char *digest,
 
 	e->b_file = file;
 	e->b_loff = loff;
-	e->b_flags = flags;
 	e->b_parent = d;
 
 	rb_init_node(&e->b_file_next);
