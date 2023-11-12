@@ -132,17 +132,22 @@ static void wait_update_extent_search_status()
 	clear_extent_search_status(search_processed, 0);
 }
 
-static inline unsigned long long block_len(struct file_block *block,
-					   struct file_extent *extent)
+static inline unsigned long block_len(struct file_block *block)
 {
-	if (block->b_flags & FILE_BLOCK_PARTIAL)
-		return extent->len % blocksize;
-	return blocksize;
+	/* Block is not near the end of file */
+	if (block->b_loff + blocksize <= block->b_file->size)
+		return blocksize;
+
+	/* Block is at the end, or passed the end .. should not happen */
+	if (block->b_loff >= block->b_file->size)
+		return 0;
+
+	/* We are in the last "blocksize" part of the file */
+	return (block->b_file->size - block->b_loff) % blocksize;
 }
 
 static void record_match(struct results_tree *res, unsigned char *digest,
-			 struct filerec *orig, struct file_extent *orig_extent,
-			 struct filerec *walk, struct file_extent *walk_extent,
+			 struct filerec *orig, struct filerec *walk,
 			 struct file_block **start, struct file_block **end)
 {
 	int ret;
@@ -159,8 +164,8 @@ static void record_match(struct results_tree *res, unsigned char *digest,
 	soff[0] = start[0]->b_loff;
 	soff[1] = start[1]->b_loff;
 
-	eoff[0] = block_len(end[0], orig_extent) + end[0]->b_loff - 1;
-	eoff[1] = block_len(end[1], walk_extent) + end[1]->b_loff - 1;
+	eoff[0] = block_len(end[0]) + end[0]->b_loff - 1;
+	eoff[1] = block_len(end[1]) + end[1]->b_loff - 1;
 
 	len = eoff[0] - soff[0] + 1;
 
@@ -211,10 +216,8 @@ static inline int end_of_block_list(struct file_block *b)
  */
 static int compare_extents(struct filerec *orig_file,
 			   struct file_block *orig_file_block,
-			   struct file_extent *orig_file_extent,
 			   struct filerec *walk_file,
 			   struct file_block *walk_file_block,
-			   struct file_extent *walk_file_extent,
 			   uint64_t search_len,
 			   struct results_tree *res)
 {
@@ -304,10 +307,9 @@ next_match:
 	 * - don't limit search or matches at all (what we have in
          *   walk_dupe_block())
 	 */
-	match_end = block_len(end[1], walk_file_extent) + end[1]->b_loff - 1;
+	match_end = block_len(end[1]) + end[1]->b_loff - 1;
 	if (match_end <= extent_end)
-		record_match(res, match_id, orig_file, orig_file_extent,
-			     walk_file, walk_file_extent, start, end);
+		record_match(res, match_id, orig_file, walk_file, start, end);
 	else
 		return 0;
 
@@ -374,9 +376,8 @@ static int search_extent(struct filerec *file, struct file_extent *extent,
 		 * TODO: Allow us to solve for a dupe that straddles
 		 * two extents.
 		 */
-
-		ret = compare_extents(file, block, extent, found_file,
-				      found_block, &found_extent, extent->len,
+		ret = compare_extents(file, block, found_file,
+				      found_block, extent->len,
 				      dupe_extents);
 		if (ret)
 			break;

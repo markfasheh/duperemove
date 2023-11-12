@@ -458,7 +458,7 @@ struct dbhandle *dbfile_open_handle(char *filename)
 "	select * from hashes "						\
 "	join files on files.id = hashes.fileid "			\
 "	and files.dedupe_seq = ?1) "					\
-"SELECT without_future_hashes.digest, ino, subvol, loff, flags "	\
+"SELECT without_future_hashes.digest, ino, subvol, loff "		\
 "FROM without_future_hashes "						\
 "JOIN (SELECT DISTINCT digest FROM current_hashes "			\
 "GROUP BY digest "							\
@@ -1240,7 +1240,6 @@ int dbfile_load_block_hashes(struct hash_tree *hash_tree, unsigned int seq)
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = NULL;
 	uint64_t subvol, ino, loff;
 	unsigned char *digest;
-	int flags;
 	struct filerec *file;
 
 	db = dbfile_get_handle();
@@ -1260,7 +1259,6 @@ int dbfile_load_block_hashes(struct hash_tree *hash_tree, unsigned int seq)
 		ino = sqlite3_column_int64(stmt, 1);
 		subvol = sqlite3_column_int64(stmt, 2);
 		loff = sqlite3_column_int64(stmt, 3);
-		flags = sqlite3_column_int(stmt, 4);
 
 		file = filerec_find(ino, subvol);
 		if (!file) {
@@ -1273,7 +1271,7 @@ int dbfile_load_block_hashes(struct hash_tree *hash_tree, unsigned int seq)
 			}
 		}
 
-		ret = insert_hashed_block(hash_tree, digest, file, loff, flags);
+		ret = insert_hashed_block(hash_tree, digest, file, loff);
 		if (ret)
 			return ENOMEM;
 	}
