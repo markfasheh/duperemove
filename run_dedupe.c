@@ -129,33 +129,6 @@ static void process_dedupe_results(struct dedupe_ctxt *ctxt,
 	}
 }
 
-#if 0
-static void get_extent_info(struct dupe_extents *dext)
-{
-       int ret = 0;
-       struct extent *extent;
-       struct filerec *file;
-
-       list_for_each_entry(extent, &dext->de_extents, e_list) {
-               file = extent->e_file;
-
-               if (filerec_open(file, 0))
-                       continue;
-
-               extent_shared_bytes(extent) = 0;
-               ret = filerec_count_shared(file, extent->e_loff, dext->de_len,
-                                          &extent_shared_bytes(extent),
-                                          &extent_poff(extent),
-                                          &extent_plen(extent));
-               if (ret) {
-                       fprintf(stderr, "%s: fiemap error %d: %s\n",
-                               extent->e_file->filename, ret, strerror(ret));
-               }
-               filerec_close(file);
-       }
-}
-#endif
-
 static void add_shared_extents(struct dupe_extents *dext, uint64_t *shared)
 {
 	struct extent *extent;
