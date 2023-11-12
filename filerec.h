@@ -81,12 +81,6 @@ void insert_filerec_token_rb(struct rb_root *root,
 void filerec_token_free(struct filerec_token *token);
 struct filerec_token *filerec_token_new(struct filerec *file);
 
-struct fiemap_ctxt;
-struct fiemap_ctxt *alloc_fiemap_ctxt(void);
-int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, int fd,
-			    uint64_t *poff, uint64_t *loff, uint64_t *len,
-			    unsigned int *flags);
-
 #define	NANOSECONDS	1000000000
 static inline uint64_t timespec_to_nano(struct timespec *t)
 {
