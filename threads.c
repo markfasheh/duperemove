@@ -37,9 +37,11 @@ void register_cleanup(struct threads_pool *pool, void *function, void *ptr)
 	item->ptr = ptr;
 	item->function = function;
 
+	g_mutex_lock(&pool->mutex);
 	pool->items = realloc(pool->items, (pool->item_count + 1) * sizeof(struct threads_cleanup_item*));
 	pool->items[pool->item_count] = item;
 	pool->item_count += 1;
+	g_mutex_unlock(&pool->mutex);
 }
 
 void free_pool(struct threads_pool *pool)
