@@ -165,7 +165,7 @@ static int create_tables(sqlite3 *db)
 
 #define	CREATE_TABLE_HASHES						\
 "CREATE TABLE IF NOT EXISTS hashes(digest BLOB KEY NOT NULL, "		\
-"fileid INTEGER, loff INTEGER, flags INTEGER, "				\
+"fileid INTEGER, loff INTEGER, "					\
 "UNIQUE(fileid, loff) "							\
 "FOREIGN KEY(fileid) REFERENCES files(id) ON DELETE CASCADE);"
 	ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, NULL);
@@ -382,7 +382,7 @@ struct dbhandle *dbfile_open_handle(char *filename)
 		goto err;
 
 #define	INSERT_HASH							\
-"INSERT INTO hashes (fileid, loff, flags, digest) VALUES (?1, ?2, ?3, ?4);"
+"INSERT INTO hashes (fileid, loff, digest) VALUES (?1, ?2, ?3);"
 	dbfile_prepare_stmt(insert_hash, INSERT_HASH);
 
 #define	INSERT_EXTENTS							\
@@ -395,7 +395,7 @@ struct dbhandle *dbfile_open_handle(char *filename)
 	dbfile_prepare_stmt(update_file_digest, UPDATE_FILE_DIGEST);
 
 #define FIND_BLOCKS                                                     \
-"select files.filename, hashes.loff, hashes.flags from files "		\
+"select files.filename, hashes.loff from files "			\
 "INNER JOIN hashes "							\
 "on hashes.digest = ?1 AND files.id = hashes.fileid;"
 	dbfile_prepare_stmt(find_blocks, FIND_BLOCKS);
@@ -1083,11 +1083,7 @@ int dbfile_store_block_hashes(struct dbhandle *db, int64_t fileid,
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_bind_int(stmt, 3, hashes[i].flags);
-		if (ret)
-			goto bind_error;
-
-		ret = sqlite3_bind_blob(stmt, 4, hashes[i].digest, DIGEST_LEN,
+		ret = sqlite3_bind_blob(stmt, 3, hashes[i].digest, DIGEST_LEN,
 					SQLITE_STATIC);
 		if (ret)
 			goto bind_error;

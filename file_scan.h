@@ -24,7 +24,6 @@ uint64_t fs_onefs_id(void);
 /* For dbfile.c */
 struct block_csum {
 	uint64_t	loff;
-	unsigned int	flags;
 	unsigned char	digest[DIGEST_LEN];
 };
 

@@ -404,21 +404,8 @@ static inline int is_block_zeroed(void *buf, ssize_t buf_size)
 	return buf && ((int*)buf)[0] == 0 && !memcmp(buf, buf + 1, buf_size - 1);
 }
 
-static int xlate_extent_flags(int fieflags, ssize_t len)
-{
-	int flags = 0;
-
-	if (fieflags & FIEMAP_SKIP_FLAGS)
-		flags |= FILE_BLOCK_SKIP_COMPARE;
-
-	if (len < blocksize)
-		flags |= FILE_BLOCK_PARTIAL;
-
-	return flags;
-}
-
 static int add_block_hash(struct block_csum **hashes, uint64_t *nr_hashes,
-			  uint64_t loff, unsigned char *digest, int flags)
+			  uint64_t loff, unsigned char *digest)
 {
 	void *retp;
 	struct block_csum *block_hashes;
@@ -429,7 +416,6 @@ static int add_block_hash(struct block_csum **hashes, uint64_t *nr_hashes,
 
 	block_hashes = retp;
 	block_hashes[*nr_hashes].loff = loff;
-	block_hashes[*nr_hashes].flags = flags;
 	memcpy(block_hashes[*nr_hashes].digest, digest, DIGEST_LEN);
 
 	*hashes = retp;
@@ -451,7 +437,7 @@ struct csum_ctxt {
 };
 
 static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
-		       const uint64_t extoff, const ssize_t extlen, int flags,
+		       const uint64_t extoff, const ssize_t extlen,
 		       struct running_checksum *file_csum)
 {
 	int ret = 0;
@@ -471,8 +457,7 @@ static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
 				ret = add_block_hash(&data->block_hashes,
 						     &data->nr_block_hashes,
 						     extoff + start,
-						     data->block_digest,
-						     flags);
+						     data->block_digest);
 				if (ret)
 					break;
 			}
@@ -494,12 +479,11 @@ static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
 }
 
 static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
-		       uint64_t extent_len, int extent_flags,
+		       uint64_t extent_len,
 		       uint64_t *ret_total_bytes_read,
 		       struct running_checksum *file_csum)
 {
 	int ret = 0;
-	int flags;
 	uint64_t total_bytes_read = 0;
 	struct running_checksum *csum;
 
@@ -526,9 +510,8 @@ static int csum_extent(struct csum_ctxt *data, uint64_t extent_off,
 
 		bytes_read = ret;
 		total_bytes_read += bytes_read;
-		flags = xlate_extent_flags(extent_flags, bytes_read);
 
-		ret = csum_blocks(data, csum, extent_off, bytes_read, flags, file_csum);
+		ret = csum_blocks(data, csum, extent_off, bytes_read, file_csum);
 		if (ret)
 			break;
 
@@ -694,7 +677,7 @@ static void csum_whole_file(struct file_to_scan *file)
 			continue;
 		}
 
-		ret = csum_extent(&csum_ctxt, loff, len, flags, &bytes_read, file_csum);
+		ret = csum_extent(&csum_ctxt, loff, len, &bytes_read, file_csum);
 		if (ret == 0) /* EOF */
 			break;
 

@@ -23,7 +23,6 @@
 
 #include "csum.h"
 #include "dbfile.h"
-#include "file_flags.h"
 #include "file_scan.h"
 
 unsigned int blocksize;
@@ -34,28 +33,10 @@ static int num_to_print = 10;
 static bool print_file_list = false;
 static char *serialize_fname = NULL;
 
-static void printf_file_block_flags(unsigned int flags)
-{
-	if (!flags)
-		return;
-
-	printf("( ");
-	if (flags & FILE_BLOCK_SKIP_COMPARE)
-		printf("skip_compare ");
-	if (flags & FILE_BLOCK_DEDUPED)
-		printf("deduped ");
-	if (flags & FILE_BLOCK_HOLE)
-		printf("hole ");
-	if (flags & FILE_BLOCK_PARTIAL)
-		printf("partial ");
-	printf(")");
-}
-
 static int print_all_blocks(struct dbhandle *db, unsigned char *digest)
 {
 	int ret;
 	uint64_t loff;
-	unsigned int flags;
 	const unsigned char *filename;
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *find_blocks_stmt = db->stmts.find_blocks;
 
@@ -70,15 +51,10 @@ static int print_all_blocks(struct dbhandle *db, unsigned char *digest)
 	while ((ret = sqlite3_step(find_blocks_stmt)) == SQLITE_ROW) {
 		filename = sqlite3_column_text(find_blocks_stmt, 0);
 		loff = sqlite3_column_int64(find_blocks_stmt, 1);
-		flags = sqlite3_column_int(find_blocks_stmt, 2);
 
-		printf("  %s\tloff: %llu lblock: %llu "
-		       "flags: 0x%x ", filename,
+		printf("  %s\tloff: %llu lblock: %llu", filename,
 		       (unsigned long long)loff,
-		       (unsigned long long)loff / blocksize,
-		       flags);
-		printf_file_block_flags(flags);
-		printf("\n");
+		       (unsigned long long)loff / blocksize);
 	}
 	if (ret != SQLITE_DONE) {
 		fprintf(stderr,
