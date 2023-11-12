@@ -59,23 +59,6 @@ struct file_block {
 struct dupe_blocks_list *find_block_list(struct hash_tree *tree,
 					 unsigned char *digest);
 
-static inline unsigned long block_len_using_isize(struct file_block *block)
-{
-	/*
-	 * Avoid storing the length of each block and instead use a
-	 * flag for partial blocks.
-	 *
-	 * NOTE: This only works if we assume that partial blocks are
-	 * at the end of a file
-	 */
-	if (block->b_flags & FILE_BLOCK_PARTIAL) {
-		int ret = block->b_file->size % blocksize;
-		abort_on(ret == 0);
-		return ret;
-	}
-	return blocksize;
-}
-
 int insert_hashed_block(struct hash_tree *tree, unsigned char *digest,
 			struct filerec *file, uint64_t loff);
 int remove_hashed_block(struct hash_tree *tree, struct file_block *block);
@@ -93,7 +76,6 @@ struct file_block *find_filerec_block(struct filerec *file,
  * really shows up during benchmarking.
  */
 void sort_file_hash_heads(struct hash_tree *tree);
-void sort_hashes_by_size(struct hash_tree *tree);
 
 /*
  * Stores a list of blocks with the same hash / filerec
@@ -111,7 +93,6 @@ struct file_hash_head {
 	struct list_head h_blocks;
 };
 
-int file_in_dups_list(struct dupe_blocks_list *dups, struct filerec *file);
 struct file_hash_head *find_file_hash_head(struct dupe_blocks_list *dups,
 					   struct filerec *file);
 

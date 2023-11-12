@@ -198,13 +198,6 @@ void sort_file_hash_heads(struct hash_tree *tree)
 	}
 }
 
-int file_in_dups_list(struct dupe_blocks_list *dups, struct filerec *file)
-{
-	if (find_file_hash_head(dups, file))
-		return 1;
-	return 0;
-}
-
 static void insert_block_list(struct hash_tree *tree,
 			      struct dupe_blocks_list *list)
 {
@@ -334,27 +327,6 @@ int remove_hashed_block(struct hash_tree *tree,
 	free_file_block(block);
 	tree->num_blocks--;
 	return ret;
-}
-
-static int cmp_by_size(void *priv [[maybe_unused]], struct list_head *a,
-		struct list_head *b)
-{
-	struct dupe_blocks_list *dla, *dlb;
-
-	dla = list_entry(a, struct dupe_blocks_list, dl_size_list);
-	dlb = list_entry(b, struct dupe_blocks_list, dl_size_list);
-
-	/* largest first */
-	if (dla->dl_num_elem > dlb->dl_num_elem)
-		return -1;
-	else if (dla->dl_num_elem < dlb->dl_num_elem)
-		return 1;
-	return 0;
-}
-
-void sort_hashes_by_size(struct hash_tree *tree)
-{
-	list_sort(tree, &tree->size_list, cmp_by_size);
 }
 
 void init_hash_tree(struct hash_tree *tree)
