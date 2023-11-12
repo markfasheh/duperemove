@@ -330,22 +330,6 @@ int remove_hashed_block(struct hash_tree *tree,
 	return ret;
 }
 
-static int cmp_by_size(void *priv [[maybe_unused]], struct list_head *a,
-		struct list_head *b)
-{
-	struct dupe_blocks_list *dla, *dlb;
-
-	dla = list_entry(a, struct dupe_blocks_list, dl_size_list);
-	dlb = list_entry(b, struct dupe_blocks_list, dl_size_list);
-
-	/* largest first */
-	if (dla->dl_num_elem > dlb->dl_num_elem)
-		return -1;
-	else if (dla->dl_num_elem < dlb->dl_num_elem)
-		return 1;
-	return 0;
-}
-
 void init_hash_tree(struct hash_tree *tree)
 {
 	tree->root = RB_ROOT;
