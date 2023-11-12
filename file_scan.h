@@ -7,6 +7,11 @@
 #include "list.h"
 #include "csum.h"
 
+#define MIN_BLOCKSIZE   (4U*1024)
+/* max blocksize is somewhat arbitrary. */
+#define MAX_BLOCKSIZE   (1024U*1024)
+#define DEFAULT_BLOCKSIZE       (128U*1024)
+
 /*
  * Returns nonzero on fatal errors only
  */
