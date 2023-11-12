@@ -3,6 +3,7 @@
 
 #include <linux/fiemap.h>
 #include <sys/types.h>
+#include <stdint.h>
 
 /*
  * Given a filled fiemap structure, extract the struct fiemap_extent
@@ -19,4 +20,9 @@ struct fiemap_extent *get_extent(struct fiemap *fiemap, size_t loff,
  * Extract the extents mapping of a file.
  */
 struct fiemap *do_fiemap(int fd);
+
+/*
+ * Count how much of the area between start_off and end_off is shared.
+ */
+int fiemap_count_shared(int fd, size_t start_off, size_t end_off, size_t *shared);
 #endif	/* __FIEMAP_H__ */
