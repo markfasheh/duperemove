@@ -30,6 +30,7 @@ struct threads_pool {
 	GThreadPool *pool;
 	struct threads_cleanup_item** items;
 	unsigned int item_count;
+	GMutex mutex; /* Protect the cleanup items operations */
 };
 
 void setup_pool(struct threads_pool *pool, void *function, void *arg);
