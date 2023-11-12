@@ -94,7 +94,6 @@ struct file_extent {
 	uint64_t	poff;
 	uint64_t	loff;
 	uint64_t	len;
-	unsigned int	flags;
 };
 int dbfile_load_nondupe_file_extents(struct dbhandle *db, struct filerec *file,
 				     struct file_extent **ret_extents,

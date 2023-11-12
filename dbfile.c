@@ -155,8 +155,7 @@ static int create_tables(sqlite3 *db)
 
 #define	CREATE_TABLE_EXTENTS						\
 "CREATE TABLE IF NOT EXISTS extents(digest BLOB KEY NOT NULL, "		\
-"fileid INTEGER, loff INTEGER, poff INTEGER, "				\
-"len INTEGER, flags INTEGER, "						\
+"fileid INTEGER, loff INTEGER, poff INTEGER, len INTEGER, "		\
 "UNIQUE(fileid, loff, len) "						\
 "FOREIGN KEY(fileid) REFERENCES files(id) ON DELETE CASCADE);"
 	ret = sqlite3_exec(db, CREATE_TABLE_EXTENTS, NULL, NULL, NULL);
@@ -386,8 +385,8 @@ struct dbhandle *dbfile_open_handle(char *filename)
 	dbfile_prepare_stmt(insert_hash, INSERT_HASH);
 
 #define	INSERT_EXTENTS							\
-"INSERT INTO extents (fileid, loff, poff, len, flags, digest) "		\
-"VALUES (?1, ?2, ?3, ?4, ?5, ?6);"
+"INSERT INTO extents (fileid, loff, poff, len, digest) "		\
+"VALUES (?1, ?2, ?3, ?4, ?5);"
 	dbfile_prepare_stmt(insert_extent, INSERT_EXTENTS);
 
 #define	UPDATE_FILE_DIGEST						\
@@ -483,7 +482,7 @@ struct dbhandle *dbfile_open_handle(char *filename)
 "	join files on files.id = extents.fileid "			\
 "	and files.dedupe_seq = ?1) "					\
 "SELECT without_future_extents.digest, ino, subvol, loff, "		\
-"without_future_extents.len, poff, flags "				\
+"without_future_extents.len, poff "					\
 "FROM without_future_extents "						\
 "JOIN (SELECT digest, len FROM current_extents "			\
 "GROUP BY digest, len HAVING count(*) > 1) AS duplicate_extents "	\
@@ -504,13 +503,13 @@ struct dbhandle *dbfile_open_handle(char *filename)
 	dbfile_prepare_stmt(get_duplicate_files, GET_DUPLICATE_FILES);
 
 #define GET_FILE_EXTENT							\
-"select poff, loff, len, flags from extents "				\
+"select poff, loff, len from extents "					\
 "join files on files.id = extents.fileid "				\
 "where ino = ?1 and subvol = ?2 and loff <= ?3 and (loff + len) > ?3;"
 	dbfile_prepare_stmt(get_file_extent, GET_FILE_EXTENT);
 
 #define GET_NONDUPE_EXTENTS						\
-"select extents.loff, len, poff, flags "				\
+"select extents.loff, len, poff "					\
 "FROM extents join files on files.id = extents.fileid "			\
 "where files.ino = ?1 and files.subvol = ?2 and "			\
 "(1 = (SELECT COUNT(*) FROM extents as e where e.digest = extents.digest));"
@@ -1160,11 +1159,7 @@ int dbfile_store_extent_hashes(struct dbhandle *db, int64_t fileid,
 		if (ret)
 			goto bind_error;
 
-		ret = sqlite3_bind_int(stmt, 5, hashes[i].flags);
-		if (ret)
-			goto bind_error;
-
-		ret = sqlite3_bind_blob(stmt, 6, hashes[i].digest, DIGEST_LEN,
+		ret = sqlite3_bind_blob(stmt, 5, hashes[i].digest, DIGEST_LEN,
 					SQLITE_STATIC);
 		if (ret)
 			goto bind_error;
@@ -1283,7 +1278,7 @@ int dbfile_load_block_hashes(struct hash_tree *hash_tree, unsigned int seq)
 
 int dbfile_load_extent_hashes(struct results_tree *res, unsigned int seq)
 {
-	int ret, flags;
+	int ret;
 	struct dbhandle *db;
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = NULL;
 	uint64_t subvol, ino, loff, poff, len;
@@ -1309,7 +1304,6 @@ int dbfile_load_extent_hashes(struct results_tree *res, unsigned int seq)
 		loff = sqlite3_column_int64(stmt, 3);
 		len = sqlite3_column_int64(stmt, 4);
 		poff = sqlite3_column_int64(stmt, 5);
-		flags = sqlite3_column_int(stmt, 6);
 
 		file = filerec_find(ino, subvol);
 		if (!file) {
@@ -1322,7 +1316,7 @@ int dbfile_load_extent_hashes(struct results_tree *res, unsigned int seq)
 			}
 		}
 
-		ret = insert_one_result(res, digest, file, loff, len, poff, flags);
+		ret = insert_one_result(res, digest, file, loff, len, poff);
 		if (ret)
 			return ENOMEM;
 	}
@@ -1372,7 +1366,6 @@ int dbfile_load_one_file_extent(struct dbhandle *db, struct filerec *file,
 	extent->poff = sqlite3_column_int64(stmt, 0);
 	extent->loff = sqlite3_column_int64(stmt, 1);
 	extent->len = sqlite3_column_int64(stmt, 2);
-	extent->flags = sqlite3_column_int(stmt, 3);
 
 	return 0;
 }
@@ -1411,7 +1404,6 @@ int dbfile_load_nondupe_file_extents(struct dbhandle *db, struct filerec *file,
 		extents[i].loff = sqlite3_column_int64(stmt, 0);
 		extents[i].len = sqlite3_column_int64(stmt, 1);
 		extents[i].poff = sqlite3_column_int64(stmt, 2);
-		extents[i].flags = sqlite3_column_int(stmt, 3);
 
 		++i;
 	}
@@ -1567,7 +1559,7 @@ int dbfile_load_same_files(struct results_tree *res, unsigned int seq)
 			}
 		}
 
-		ret = insert_one_result(res, digest, file, 0, len, 0, 0);
+		ret = insert_one_result(res, digest, file, 0, len, 0);
 		if (ret)
 			return ENOMEM;
 	}

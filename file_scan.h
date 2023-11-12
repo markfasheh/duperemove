@@ -31,7 +31,6 @@ struct extent_csum {
 	uint64_t	loff;
 	uint64_t	poff;
 	uint64_t	len;
-	unsigned int	flags;
 	unsigned char	digest[DIGEST_LEN];
 };
 

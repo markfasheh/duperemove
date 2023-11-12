@@ -699,7 +699,6 @@ static void csum_whole_file(struct file_to_scan *file)
 		extent_hashes[nb_hash].loff = loff;
 		extent_hashes[nb_hash].poff = poff;
 		extent_hashes[nb_hash].len = bytes_read;
-		extent_hashes[nb_hash].flags = flags;
 		memcpy(extent_hashes[nb_hash].digest, csum_ctxt.digest,
 		       DIGEST_LEN);
 		nb_hash++;
