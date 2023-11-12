@@ -40,6 +40,7 @@
 #include "list.h"
 #include "debug.h"
 #include "memstats.h"
+#include "fiemap.h"
 
 #include "filerec.h"
 
@@ -350,7 +351,7 @@ struct fiemap_ctxt *alloc_fiemap_ctxt(void)
 	return ctxt;
 }
 
-static int do_fiemap(struct fiemap *fiemap, int fd,
+static int do_fiemap_old(struct fiemap *fiemap, int fd,
 		     uint64_t start)
 {
 	int err;
@@ -384,22 +385,19 @@ static int do_fiemap(struct fiemap *fiemap, int fd,
 int fiemap_scan_extent(struct extent *extent)
 {
 	int ret = 0;
-	unsigned int flags;
-	uint64_t loff, len;
-	_cleanup_(freep) struct fiemap_ctxt *ctxt = alloc_fiemap_ctxt();
-
-	flags = loff = len = 0;
+	_cleanup_(freep) struct fiemap *fiemap = NULL;
+	struct fiemap_extent *result;
 
 	ret = filerec_open(extent->e_file, true);
 	if (ret)
 		return ret;
 
-	while (!(flags & FIEMAP_EXTENT_LAST) && loff + len < extent->e_file->size) {
-		ret = fiemap_iter_next_extent(ctxt, extent->e_file->fd, &(extent->e_poff), &loff, &len, &flags);
-		if (ret)
-			break;
-	}
+	fiemap = do_fiemap(extent->e_file->fd);
+	if (!fiemap)
+		return -1;
 
+	result = get_extent(fiemap, extent->e_loff, NULL);
+	extent->e_poff = result->fe_physical;
 	filerec_close(extent->e_file);
 	return ret;
 }
@@ -419,7 +417,7 @@ int fiemap_iter_next_extent(struct fiemap_ctxt *ctxt, int fd,
 			extent = &fiemap->fm_extents[idx - 1];
 			fiestart = extent->fe_logical + extent->fe_length;
 		}
-		ret = do_fiemap(fiemap, fd, fiestart);
+		ret = do_fiemap_old(fiemap, fd, fiestart);
 		if (ret)
 			return ret;
 		ctxt->initialized = true;

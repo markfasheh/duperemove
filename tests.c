@@ -19,6 +19,7 @@
 #include "list_sort.c"
 #include "find_dupes.c"
 #include "memstats.c"
+#include "fiemap.c"
 
 
 unsigned int blocksize = DEFAULT_BLOCKSIZE;
@@ -34,7 +35,7 @@ MU_TEST(test_is_block_zeroed) {
 
 	// Block do not have the same content
 	block[50] = 50;
-	mu_check(is_block_zeroed(NULL, 0) == false);
+	mu_check(is_block_zeroed(NULL, 100) == false);
 }
 
 MU_TEST(test_block_len) {
