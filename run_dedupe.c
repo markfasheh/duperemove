@@ -39,6 +39,7 @@
 #include "memstats.h"
 #include "debug.h"
 #include "dbfile.h"
+#include "fiemap.h"
 
 #include "run_dedupe.h"
 
@@ -156,7 +157,7 @@ static void add_shared_extents_post(struct dupe_extents *dext, uint64_t *shared)
 		if (ret)
 			return;
 
-		ret = filerec_count_shared(file, extent->e_loff, dext->de_len,
+		ret = fiemap_count_shared(file->fd, extent->e_loff, extent->e_loff + dext->de_len,
 					   &bytes);
 
 		*shared += bytes;
