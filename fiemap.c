@@ -91,11 +91,8 @@ struct fiemap *do_fiemap(int fd)
 		return NULL;
 	}
 
-	if (fiemap->fm_mapped_extents != count) {
-		fprintf(stderr, "fiemap: file changed between fiemap calls\n");
-		free(fiemap);
-		return NULL;
-	}
+	if (fiemap->fm_mapped_extents != count)
+		dprintf("do_fiemap: file changed between fiemap calls\n");
 
 	return fiemap;
 }
