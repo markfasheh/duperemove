@@ -70,6 +70,18 @@ static struct threads_pool scan_pool;
 
 LIST_HEAD(exclude_list);
 
+static struct dbhandle *get_db()
+{
+	struct dbhandle *db;
+
+	dbfile_lock();
+	db = dbfile_open_handle(options.hashfile);
+	dbfile_unlock();
+	if (db)
+		register_cleanup(&scan_pool, (void*)&dbfile_close_handle, db);
+	return db;
+}
+
 dev_t fs_onefs_dev(void)
 {
 	return one_fs_dev;
@@ -134,7 +146,6 @@ static int is_excluded(const char *name)
 
 	return 0;
 }
-
 
 static int walk_dir(char *path, struct dbhandle *db)
 {
@@ -575,16 +586,11 @@ static void csum_whole_file(struct file_to_scan *file)
 	csum_ctxt.buf = buf;
 	csum_ctxt.file = file;
 
-	if(!db) {
-		dbfile_lock();
-		db = dbfile_open_handle(options.hashfile);
-		dbfile_unlock();
-		if (!db) {
-			fprintf(stderr, "csum_whole_file: unable to connect to the database");
-			goto err;
-		}
-
-		register_cleanup(&scan_pool, (void*)&dbfile_close_handle, db);
+	if (!db)
+		db = get_db();
+	if (!db) {
+		fprintf(stderr, "csum_whole_file: unable to connect to the database");
+		goto err;
 	}
 
 	file->fd = open(file->path, O_RDONLY);
