@@ -51,7 +51,7 @@ struct fiemap_extent *get_extent(struct fiemap *fiemap, size_t loff,
 
 	for (unsigned int i = 0; i < fiemap->fm_mapped_extents; i++) {
 		extent = &fiemap->fm_extents[i];
-		ext_end_off = extent->fe_logical + extent->fe_length;
+		ext_end_off = extent->fe_logical + extent->fe_length - 1;
 		if (ext_end_off < loff)
 			continue;
 
