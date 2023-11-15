@@ -1132,6 +1132,13 @@ int dbfile_store_extent_hashes(struct dbhandle *db, int64_t fileid,
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.insert_extent;
 
 	for (i = 0; i < nb_hash; i++) {
+		/*
+		 * If len == 0, then this extent was never scanned and
+		 * must be skipped.
+		 */
+		if (hashes[i].len == 0)
+			continue;
+
 		ret = sqlite3_bind_int64(stmt, 1, fileid);
 		if (ret)
 			goto bind_error;

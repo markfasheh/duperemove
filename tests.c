@@ -24,17 +24,18 @@
 unsigned int blocksize = DEFAULT_BLOCKSIZE;
 
 MU_TEST(test_is_block_zeroed) {
+	blocksize = 100;
 	char block[100] = {0,};
 	// Actual zeroed block
-	mu_check(is_block_zeroed(&block, 100) == true);
+	mu_check(is_block_zeroed(&block) == true);
 
 	// Block has the same content, but not zeroed
 	memset(block, 1, 100);
-	mu_check(is_block_zeroed(&block, 100) == false);
+	mu_check(is_block_zeroed(&block) == false);
 
 	// Block do not have the same content
 	block[50] = 50;
-	mu_check(is_block_zeroed(NULL, 100) == false);
+	mu_check(is_block_zeroed(NULL) == false);
 }
 
 MU_TEST(test_block_len) {
