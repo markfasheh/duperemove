@@ -14,7 +14,7 @@ HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
 CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
 	btrfs-util.c util.c memstats.c file_scan.c find_dupes.c run_dedupe.c \
 	csum.c dbfile.c list_sort.c debug.c opt.c threads.c \
-	csum-xxhash.c fiemap.c
+	fiemap.c
 
 hashstats_CFILES=hashstats.c
 btrfs_extent_same_CFILES=btrfs-extent-same.c
@@ -30,10 +30,10 @@ TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
 
 objects = $(CFILES:.c=.o)
 
-hashstats_obj = csum-xxhash.o rbtree.o hash-tree.o filerec.o util.o opt.o \
+hashstats_obj = rbtree.o hash-tree.o filerec.o util.o opt.o \
 	results-tree.o csum.o dbfile.o list_sort.o debug.o file_scan.o btrfs-util.o \
 	threads.o fiemap.o
-csum_test_obj = csum-xxhash.o util.o csum.o debug.o
+csum_test_obj = util.o csum.o debug.o
 
 install_progs = duperemove hashstats btrfs-extent-same
 progs = $(install_progs) csum-test

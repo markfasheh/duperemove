@@ -3,7 +3,6 @@
 
 #include "minunit.h"
 #include "rbtree.c"
-#include "csum-xxhash.c"
 
 #include "opt.c"
 #include "util.c"
