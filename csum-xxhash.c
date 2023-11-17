@@ -64,8 +64,10 @@ static void xxhash_finish_running_checksum(struct running_checksum *_c,
 
 	XXH128_hash_t hash = XXH3_128bits_digest(c->state);
 
-	((uint64_t*)digest)[0] = hash.low64;
-	((uint64_t*)digest)[1] = hash.high64;
+	if (digest) {
+		((uint64_t*)digest)[0] = hash.low64;
+		((uint64_t*)digest)[1] = hash.high64;
+	}
 	XXH3_freeState(c->state);
 }
 
