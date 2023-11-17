@@ -491,16 +491,18 @@ struct dbhandle *dbfile_open_handle(char *filename)
 	dbfile_prepare_stmt(get_duplicate_extents, GET_DUPLICATE_EXTENTS);
 
 #define GET_DUPLICATE_FILES						\
-"SELECT ino, subvol, files.size, files.digest FROM files "		\
-"JOIN (SELECT digest, size FROM files WHERE digest IN "			\
-"(SELECT distinct digest FROM files WHERE id IN "			\
-"(SELECT id FROM files WHERE dedupe_seq = ?1)) "			\
+"WITH without_future_files as ( "					\
+"        select * from files where dedupe_seq <= ?1), "			\
+"current_files as ( "							\
+"        select * from files where dedupe_seq = ?1) "			\
+"SELECT ino, subvol, without_future_files.size, "			\
+"without_future_files.digest FROM without_future_files "		\
+"JOIN (SELECT digest, size FROM current_files "				\
 "GROUP BY digest, size HAVING count(*) > 1) "				\
-"AS duplicate_files ON files.size != 0 AND "				\
-"files.digest = duplicate_files.digest AND "				\
-"files.size = duplicate_files.size AND "				\
-"NOT (files.flags & 1) AND "						\
-"files.dedupe_seq <= ?1;"
+"AS duplicate_files "							\
+"ON without_future_files.digest = duplicate_files.digest "		\
+"AND without_future_files.size = duplicate_files.size "			\
+"AND NOT (without_future_files.flags & 1);"
 	dbfile_prepare_stmt(get_duplicate_files, GET_DUPLICATE_FILES);
 
 #define GET_FILE_EXTENT							\
