@@ -18,7 +18,7 @@ struct dbfile_config;
 #define DB_FILE_MINOR	0
 
 struct stmts {
-	sqlite3_stmt *insert_hash;
+	sqlite3_stmt *insert_block;
 	sqlite3_stmt *insert_extent;
 	sqlite3_stmt *update_scanned_file;
 	sqlite3_stmt *find_blocks;
@@ -31,7 +31,7 @@ struct stmts {
 	sqlite3_stmt *remove_block_hashes;
 	sqlite3_stmt *remove_extent_hashes;
 	sqlite3_stmt *load_filerec;
-	sqlite3_stmt *get_duplicate_hashes;
+	sqlite3_stmt *get_duplicate_blocks;
 	sqlite3_stmt *get_duplicate_extents;
 	sqlite3_stmt *get_duplicate_files;
 	sqlite3_stmt *get_file_extent;

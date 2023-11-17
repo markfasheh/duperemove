@@ -162,12 +162,12 @@ static int create_tables(sqlite3 *db)
 	if (ret)
 		goto out;
 
-#define	CREATE_TABLE_HASHES						\
-"CREATE TABLE IF NOT EXISTS hashes(digest BLOB KEY NOT NULL, "		\
+#define	CREATE_TABLE_BLOCKS						\
+"CREATE TABLE IF NOT EXISTS blocks(digest BLOB KEY NOT NULL, "		\
 "fileid INTEGER, loff INTEGER, "					\
 "UNIQUE(fileid, loff) "							\
 "FOREIGN KEY(fileid) REFERENCES files(id) ON DELETE CASCADE);"
-	ret = sqlite3_exec(db, CREATE_TABLE_HASHES, NULL, NULL, NULL);
+	ret = sqlite3_exec(db, CREATE_TABLE_BLOCKS, NULL, NULL, NULL);
 
 out:
 	if (ret)
@@ -180,15 +180,15 @@ static int create_indexes(sqlite3 *db)
 {
 	int ret;
 
-#define	CREATE_HASHES_DIGEST_INDEX					\
-"create index if not exists idx_digest on hashes(digest);"
-	ret = sqlite3_exec(db, CREATE_HASHES_DIGEST_INDEX, NULL, NULL, NULL);
+#define	CREATE_BLOCKS_DIGEST_INDEX					\
+"create index if not exists idx_digest on blocks(digest);"
+	ret = sqlite3_exec(db, CREATE_BLOCKS_DIGEST_INDEX, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
-#define	CREATE_HASHES_INOSUB_INDEX					\
-"create index if not exists idx_hashes_inosub on hashes(fileid);"
-	ret = sqlite3_exec(db, CREATE_HASHES_INOSUB_INDEX, NULL, NULL, NULL);
+#define	CREATE_BLOCKS_INOSUB_INDEX					\
+"create index if not exists idx_blocks_inosub on blocks(fileid);"
+	ret = sqlite3_exec(db, CREATE_BLOCKS_INOSUB_INDEX, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
@@ -380,9 +380,9 @@ struct dbhandle *dbfile_open_handle(char *filename)
 	if (!result->db)
 		goto err;
 
-#define	INSERT_HASH							\
-"INSERT INTO hashes (fileid, loff, digest) VALUES (?1, ?2, ?3);"
-	dbfile_prepare_stmt(insert_hash, INSERT_HASH);
+#define	INSERT_BLOCK							\
+"INSERT INTO blocks (fileid, loff, digest) VALUES (?1, ?2, ?3);"
+	dbfile_prepare_stmt(insert_block, INSERT_BLOCK);
 
 #define	INSERT_EXTENTS							\
 "INSERT INTO extents (fileid, loff, poff, len, digest) "		\
@@ -394,13 +394,13 @@ struct dbhandle *dbfile_open_handle(char *filename)
 	dbfile_prepare_stmt(update_scanned_file, UPDATE_SCANNED_FILE);
 
 #define FIND_BLOCKS                                                     \
-"select files.filename, hashes.loff from files "			\
-"INNER JOIN hashes "							\
-"on hashes.digest = ?1 AND files.id = hashes.fileid;"
+"select files.filename, blocks.loff from files "			\
+"INNER JOIN blocks "							\
+"on blocks.digest = ?1 AND files.id = blocks.fileid;"
 	dbfile_prepare_stmt(find_blocks, FIND_BLOCKS);
 
 #define FIND_TOP_B_HASHES						\
-"select digest, count(digest) from hashes "				\
+"select digest, count(digest) from blocks "				\
 "group by digest having (count(digest) > 1) "				\
 "order by (count(digest)) desc;"
 	dbfile_prepare_stmt(find_top_b_hashes, FIND_TOP_B_HASHES);
@@ -413,8 +413,8 @@ struct dbhandle *dbfile_open_handle(char *filename)
 
 #define FIND_B_FILES_COUNT						\
 "select count (distinct files.filename) from files "			\
-"INNER JOIN hashes "							\
-"on hashes.digest = ?1 AND files.id = hashes.fileid;"
+"INNER JOIN blocks "							\
+"on blocks.digest = ?1 AND files.id = blocks.fileid;"
 	dbfile_prepare_stmt(find_b_files_count, FIND_B_FILES_COUNT);
 
 #define FIND_E_FILES_COUNT						\
@@ -435,7 +435,7 @@ struct dbhandle *dbfile_open_handle(char *filename)
 	dbfile_prepare_stmt(write_file, WRITE_FILE);
 
 #define REMOVE_BLOCK_HASHES						\
-"delete from hashes where fileid = (select id from files "		\
+"delete from blocks where fileid = (select id from files "		\
 "where ino = ?1 and subvol = ?2);"
 	dbfile_prepare_stmt(remove_block_hashes, REMOVE_BLOCK_HASHES);
 
@@ -448,22 +448,22 @@ struct dbhandle *dbfile_open_handle(char *filename)
 "select filename, size from files where ino = ?1 and subvol = ?2;"
 	dbfile_prepare_stmt(load_filerec, LOAD_FILEREC);
 
-#define GET_DUPLICATE_HASHES						\
-"WITH without_future_hashes as ("					\
-"	select * from hashes "						\
-"	join files on files.id = hashes.fileid "			\
+#define GET_DUPLICATE_BLOCKS						\
+"WITH without_future_blocks as ("					\
+"	select * from blocks "						\
+"	join files on files.id = blocks.fileid "			\
 "	and files.dedupe_seq <= ?1), "					\
-"current_hashes as ("							\
-"	select * from hashes "						\
-"	join files on files.id = hashes.fileid "			\
+"current_blocks as ("							\
+"	select * from blocks "						\
+"	join files on files.id = blocks.fileid "			\
 "	and files.dedupe_seq = ?1) "					\
-"SELECT without_future_hashes.digest, ino, subvol, loff "		\
-"FROM without_future_hashes "						\
-"JOIN (SELECT DISTINCT digest FROM current_hashes "			\
+"SELECT without_future_blocks.digest, ino, subvol, loff "		\
+"FROM without_future_blocks "						\
+"JOIN (SELECT DISTINCT digest FROM current_blocks "			\
 "GROUP BY digest "							\
-"HAVING count(*) > 1) AS duplicate_hashes "				\
-"on without_future_hashes.digest = duplicate_hashes.digest;"
-	dbfile_prepare_stmt(get_duplicate_hashes, GET_DUPLICATE_HASHES);
+"HAVING count(*) > 1) AS duplicate_blocks "				\
+"on without_future_blocks.digest = duplicate_blocks.digest;"
+	dbfile_prepare_stmt(get_duplicate_blocks, GET_DUPLICATE_BLOCKS);
 
 /*
  * We need to select on both digest and len, otherwise we
@@ -525,7 +525,7 @@ struct dbhandle *dbfile_open_handle(char *filename)
 "select mtime, size from files where ino = ?1 and subvol = ?2;"
 	dbfile_prepare_stmt(select_file_changes, SELECT_FILE_CHANGES);
 
-#define COUNT_B_HASHES "select COUNT(*) from hashes;"
+#define COUNT_B_HASHES "select COUNT(*) from blocks;"
 	dbfile_prepare_stmt(count_b_hashes, COUNT_B_HASHES);
 
 #define COUNT_E_HASHES "select COUNT(*) from extents;"
@@ -1074,7 +1074,7 @@ int dbfile_store_block_hashes(struct dbhandle *db, int64_t fileid,
 {
 	int ret;
 	uint64_t i;
-	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.insert_hash;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.insert_block;
 
 	for (i = 0; i < nb_hash; i++) {
 		ret = sqlite3_bind_int64(stmt, 1, fileid);
@@ -1243,7 +1243,7 @@ int dbfile_load_block_hashes(struct hash_tree *hash_tree, unsigned int seq)
 	if (!db)
 		return ENOENT;
 
-	stmt = db->stmts.get_duplicate_hashes;
+	stmt = db->stmts.get_duplicate_blocks;
 
 	ret = sqlite3_bind_int64(stmt, 1, seq);
 	if (ret) {
