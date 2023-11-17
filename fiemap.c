@@ -88,6 +88,7 @@ struct fiemap *do_fiemap(int fd)
 	err = ioctl(fd, FS_IOC_FIEMAP, fiemap);
 	if (err < 0) {
 		perror("fiemap");
+		free(fiemap);
 		return NULL;
 	}
 
