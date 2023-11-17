@@ -474,8 +474,8 @@ static int csum_blocks(struct csum_ctxt *data, struct running_checksum *csum,
 					break;
 			}
 
-			add_to_running_checksum(csum, DIGEST_LEN, data->block_digest);
-			add_to_running_checksum(file_csum, DIGEST_LEN, data->block_digest);
+			add_to_running_checksum(csum, data->block_digest, DIGEST_LEN);
+			add_to_running_checksum(file_csum, data->block_digest, DIGEST_LEN);
 		}
 
 		start += cmp_len;

@@ -39,7 +39,7 @@ void checksum_block(char *buf, int len, unsigned char *digest);
 struct running_checksum;
 struct running_checksum *start_running_checksum(void);
 void add_to_running_checksum(struct running_checksum *c,
-			     unsigned int len, unsigned char *buf);
+			     unsigned char *buf, unsigned int len);
 void finish_running_checksum(struct running_checksum *c, unsigned char *digest);
 
 #define	DECLARE_RUNNING_CSUM_CAST_FUNCS(_type)				\

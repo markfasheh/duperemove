@@ -128,7 +128,7 @@ int main(int argc, char **argv)
 			if (len < 0)
 				return errno;
 			if (len) {
-				add_to_running_checksum(csum, len, buf);
+				add_to_running_checksum(csum, buf, len);
 			} else
 				break; /* EOF */
 		}

@@ -58,7 +58,7 @@ struct running_checksum *start_running_checksum(void)
 }
 
 void add_to_running_checksum(struct running_checksum *_c,
-			     unsigned int len, unsigned char *buf)
+			     unsigned char *buf, unsigned int len)
 {
 	struct xxhash_running_checksum *c = rc_to_priv(_c);
 	XXH3_128bits_update(c->state, buf, len);

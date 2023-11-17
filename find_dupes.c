@@ -262,8 +262,8 @@ next_match:
 		end[0] = orig;
 		end[1] = block;
 
-		add_to_running_checksum(csum, DIGEST_LEN,
-					block->b_parent->dl_hash);
+		add_to_running_checksum(csum, block->b_parent->dl_hash,
+					DIGEST_LEN);
 
 		if (end_of_block_list(orig) || end_of_block_list(block)) {
 			matchmore = false;
