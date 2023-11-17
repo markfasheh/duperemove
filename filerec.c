@@ -329,10 +329,17 @@ int fiemap_scan_extent(struct extent *extent)
 		return ret;
 
 	fiemap = do_fiemap(extent->e_file->fd);
-	if (!fiemap)
+	if (!fiemap) {
+		filerec_close(extent->e_file);
 		return -1;
+	}
 
 	result = get_extent(fiemap, extent->e_loff, NULL);
+	if (!extent) {
+		filerec_close(extent->e_file);
+		return -1;
+	}
+
 	extent->e_poff = result->fe_physical;
 	filerec_close(extent->e_file);
 	return ret;
