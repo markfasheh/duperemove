@@ -1500,31 +1500,44 @@ int dbfile_describe_file(struct dbhandle *db, uint64_t inum, uint64_t subvolid,
 	int ret;
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.select_file_changes;
 
+	/* in-memory databases has no wal support,
+	 * so we must do the lock by ourselves
+	 */
+	if (!options.hashfile)
+		dbfile_lock();
+
 	ret = sqlite3_bind_int64(stmt, 1, inum);
 	if (ret) {
 		perror_sqlite(ret, "binding values");
-		return ret;
+		goto out;
 	}
 
 	ret = sqlite3_bind_int64(stmt, 2, subvolid);
 	if (ret) {
 		perror_sqlite(ret, "binding values");
-		return ret;
+		goto out;
 	}
 
 	ret = sqlite3_step(stmt);
-	if (ret == SQLITE_DONE)
-		return 0;
+	if (ret == SQLITE_DONE) {
+		ret = 0;
+		goto out;
+	}
 
 	if (ret != SQLITE_ROW) {
 		perror_sqlite(ret, "fetching a file");
-		return ret;
+		goto out;
 	}
 
 	*mtime = sqlite3_column_int64(stmt, 0);
 	*size = sqlite3_column_int64(stmt, 1);
 
-	return 0;
+	ret = 0;
+
+out:
+	if (!options.hashfile)
+		dbfile_unlock();
+	return ret;
 }
 
 int dbfile_load_same_files(struct results_tree *res, unsigned int seq)
