@@ -32,6 +32,7 @@
 
 #include "btrfs-util.h"
 #include "debug.h"
+#include "util.h"
 
 /* For some reason linux/btrfs.h doesn't define this. */
 #define	BTRFS_FIRST_FREE_OBJECTID	256ULL
@@ -97,7 +98,8 @@ static uint64_t get_btrfs_fsid(fsid_t in_statfs_fsid, uint64_t subvolid,
 int check_btrfs_get_fsid(char *name, uint64_t *ret_fsid)
 {
 	struct statfs fs;
-	int ret, fd;
+	int ret;
+	_cleanup_(closefd) int fd = -1;
 	uint64_t subvol;
 
 	*ret_fsid = 0;
@@ -122,7 +124,6 @@ int check_btrfs_get_fsid(char *name, uint64_t *ret_fsid)
 
 	*ret_fsid = get_btrfs_fsid(fs.f_fsid, subvol, NULL);
 
-	close(fd);
 out:
 	return ret;
 }

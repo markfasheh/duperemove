@@ -236,7 +236,7 @@ int scan_file(const char *path, struct dbhandle *db)
 	if (seq == 0)
 		seq = dedupe_seq + 1;
 
-	int fd = 0;
+	_cleanup_(closefd) int fd = -1;
 	uint64_t subvolid;
 	struct statfs fs;
 
@@ -316,7 +316,6 @@ int scan_file(const char *path, struct dbhandle *db)
 	if (ret) {
 		fprintf(stderr, "Error %d: %s while doing fs stat on \"%s\". "
 			"Skipping.\n", ret, strerror(ret), abspath);
-		close(fd);
 		return 0;
 	}
 
@@ -325,7 +324,6 @@ int scan_file(const char *path, struct dbhandle *db)
 	      fs.f_type != XFS_SB_MAGIC))) {
 		fprintf(stderr,	"\"%s\": Can only dedupe files on btrfs or xfs, "
 			"use -d -d to override\n", abspath);
-		close(fd);
 		return ENOSYS;
 	}
 
@@ -341,14 +339,11 @@ int scan_file(const char *path, struct dbhandle *db)
 				"Error %d: %s while finding subvolid for file "
 				"\"%s\". Skipping.\n", ret, strerror(ret),
 				abspath);
-			close(fd);
 			return 0;
 		}
 	} else {
 		subvolid = st.st_dev;
 	}
-
-	close(fd);
 
 	/*
 	 * Check the database to see if that file need rescan or not.
