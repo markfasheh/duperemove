@@ -2,6 +2,11 @@ PENDING
 ---
 
 **Notable changes**:
+
+Version 0.14
+---
+
+**Notable changes**:
  * Batching has been reimplemented on top of the dedupe\_seq.
  * The "scan" phase has been reimplemented (see 8264336ea2a3b78e3bdce162fc389d02338af326 for details).
  * Filesystem locking has been implemented. See f3947e9606f103417537974bc3dda4f6254c4503 for details.
