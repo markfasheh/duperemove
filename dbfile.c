@@ -900,13 +900,10 @@ static int get_config_text(sqlite3_stmt *stmt, const char *name, char *val, int 
 	return 0;
 }
 
-static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
-			       dev_t *onefs_dev, uint64_t *onefs_fsid,
-			       int *ver_major, int *ver_minor,
-			       char *db_hash_type, unsigned int *db_dedupe_seq)
+static int __dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg)
 {
 	int ret;
-	sqlite3_stmt *stmt = NULL;
+	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
 	unsigned int onefs_major = 0, onefs_minor = 0;
 
 #define SELECT_CONFIG "select keyval from config where keyname=?1;"
@@ -916,63 +913,49 @@ static int __dbfile_get_config(sqlite3 *db, unsigned int *block_size,
 		goto out;
 	}
 
-	ret = get_config_int(stmt, "block_size", (int *)block_size);
+	ret = get_config_int(stmt, "block_size", (int *)&cfg->blocksize);
 	if (ret)
 		goto out;
 
-	ret = get_config_text(stmt, "hash_type", db_hash_type, 8);
+	ret = get_config_text(stmt, "hash_type", cfg->hash_type, 8);
 	if (ret)
 		goto out;
 
-	ret = get_config_int(stmt, "version_major", ver_major);
+	ret = get_config_int(stmt, "version_major", &cfg->major);
 	if (ret)
 		goto out;
 
-	ret = get_config_int(stmt, "version_minor", ver_minor);
+	ret = get_config_int(stmt, "version_minor", &cfg->minor);
 	if (ret)
 		goto out;
 
-	if (onefs_dev) {
-		ret = get_config_int(stmt, "onefs_dev_major", (int *)&onefs_major);
-		if (ret)
-			goto out;
-
-		ret = get_config_int(stmt, "onefs_dev_minor", (int *)&onefs_minor);
-		if (ret)
-			goto out;
-
-		*onefs_dev = makedev(onefs_major, onefs_minor);
-	}
-
-	ret = get_config_int64(stmt, "onefs_fsid", onefs_fsid);
+	ret = get_config_int(stmt, "onefs_dev_major", (int *)&onefs_major);
 	if (ret)
 		goto out;
 
-	ret = get_config_int(stmt, "dedupe_sequence", (int *)db_dedupe_seq);
+	ret = get_config_int(stmt, "onefs_dev_minor", (int *)&onefs_minor);
+	if (ret)
+		goto out;
+	cfg->onefs_dev = makedev(onefs_major, onefs_minor);
+
+	ret = get_config_int64(stmt, "onefs_fsid", &cfg->onefs_fsid);
 	if (ret)
 		goto out;
 
-	sqlite3_finalize(stmt);
-	stmt = NULL;
+	ret = get_config_int(stmt, "dedupe_sequence", (int *)&cfg->dedupe_seq);
+	if (ret)
+		goto out;
 
 out:
-	if (stmt)
-		sqlite3_finalize(stmt);
+	if (ret != 0)
+		perror_sqlite(ret, "__dbfile_get_config");
 	return ret;
 }
 
 int dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg)
 {
-	int ret;
-
 	dbfile_config_defaults(cfg);
-
-	ret = __dbfile_get_config(db, &cfg->blocksize, &cfg->onefs_dev,
-				  &cfg->onefs_fsid, &cfg->major,
-				  &cfg->minor, cfg->hash_type,
-				  &cfg->dedupe_seq);
-
-	return ret;
+	return __dbfile_get_config(db, cfg);
 }
 
 /* Returns 0 on error, and the inserted rowid on success */
