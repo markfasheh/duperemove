@@ -534,7 +534,7 @@ static int __scan_file(char *path, struct dbhandle *db, struct stat *st)
 	struct file_to_scan *file;
 	int64_t fileid = 0;
 
-	uint64_t subvolid;
+	uint64_t subvolid = 0;
 
 	/*
 	 * The first call initializes the static variable
@@ -568,8 +568,6 @@ static int __scan_file(char *path, struct dbhandle *db, struct stat *st)
 				path);
 			return 0;
 		}
-	} else {
-		subvolid = 0;
 	}
 
 	/*
