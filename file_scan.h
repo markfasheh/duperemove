@@ -2,6 +2,8 @@
 #define	__FILE_SCAN_H__
 
 #include <sys/types.h>
+#include <uuid/uuid.h>
+
 #include "dbfile.h"
 
 #include "list.h"
@@ -15,11 +17,9 @@
 /*
  * Returns nonzero on fatal errors only
  */
-int scan_file(const char *name, struct dbhandle *db);
+int scan_file(char *name, struct dbhandle *db);
 
-/* Set/get onefs state, info is gathered from our config table */
-dev_t fs_onefs_dev(void);
-uint64_t fs_onefs_id(void);
+void fs_get_locked_uuid(uuid_t *uuid);
 
 /* For dbfile.c */
 struct block_csum {

@@ -25,7 +25,7 @@ The latest stable code can be found in [the release page](https://github.com/mar
 
 Kernel: Duperemove needs a kernel version equal to or greater than 3.13
 
-Libraries: Duperemove uses glib2 and sqlite3.
+Libraries: Duperemove uses glib2 and sqlite3. It also uses libuuid, libmount and libblkid from util-linux.
 
 
 # FAQ

@@ -275,7 +275,7 @@ static int scan_files_from_cmdline(int numfiles, char **files, struct dbhandle *
 	int i;
 
 	for (i = 0; i < numfiles; i++) {
-		const char *name = files[i];
+		char *name = files[i];
 
 		if (scan_file(name, db)) {
 			fprintf(stderr,
@@ -587,8 +587,6 @@ static void process_duplicates()
 			dedupe_seq++;
 			dbfile_cfg.dedupe_seq = dedupe_seq;
 			dbfile_cfg.blocksize = blocksize;
-			dbfile_cfg.onefs_dev = fs_onefs_dev();
-			dbfile_cfg.onefs_fsid = fs_onefs_id();
 			dbfile_sync_config(dbfile_get_handle(), &dbfile_cfg);
 		}
 	}
@@ -615,13 +613,9 @@ static int scan_files(int argc, char **argv, int filelist_idx, struct dbhandle *
 		return ret;
 
 	/*
-	 * Those fields are 0 by default, and are added by
-	 * the scan_files_from_cmdline call above. Let's sync them.
-	 * Useful only when dedup is not enabled, otherwise data would already
-	 * be written by process_duplicates().
+	 * Sync the locked filesystem informations in the hashfile
 	 */
-	dbfile_cfg.onefs_dev = fs_onefs_dev();
-	dbfile_cfg.onefs_fsid = fs_onefs_id();
+	fs_get_locked_uuid(&(dbfile_cfg.fs_uuid));
 	ret = dbfile_sync_config(db, &dbfile_cfg);
 	if (ret)
 		return ret;

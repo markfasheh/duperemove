@@ -42,6 +42,12 @@ glib_CFLAGS=$(shell $(PKG_CONFIG) --cflags glib-2.0)
 glib_LIBS=$(shell $(PKG_CONFIG) --libs glib-2.0)
 sqlite_CFLAGS=$(shell $(PKG_CONFIG) --cflags sqlite3)
 sqlite_LIBS=$(shell $(PKG_CONFIG) --libs sqlite3)
+blkid_CFLAGS=$(shell $(PKG_CONFIG) --cflags blkid)
+blkid_LIBS=$(shell $(PKG_CONFIG) --libs blkid)
+mount_CFLAGS=$(shell $(PKG_CONFIG) --cflags mount)
+mount_LIBS=$(shell $(PKG_CONFIG) --libs mount)
+uuid_CFLAGS=$(shell $(PKG_CONFIG) --cflags uuid)
+uuid_LIBS=$(shell $(PKG_CONFIG) --libs uuid)
 
 ifdef DEBUG
 	DEBUG_FLAGS = -ggdb3 -fsanitize=address -fno-omit-frame-pointer	-O0 \
@@ -53,9 +59,10 @@ endif
 
 override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(VERSION)\" \
 	$(glib_CFLAGS) $(sqlite_CFLAGS) -rdynamic $(DEBUG_FLAGS) \
+	$(blkid_CFLAGS) $(mount_CFLAGS) $(uuid_CFLAGS) \
 	-DIS_RELEASE=$(IS_RELEASE)
 LIBRARY_FLAGS += -Wl,--as-needed -latomic -lm
-LIBRARY_FLAGS += $(glib_LIBS) $(sqlite_LIBS)
+LIBRARY_FLAGS += $(glib_LIBS) $(sqlite_LIBS) $(blkid_LIBS) $(mount_LIBS) $(uuid_LIBS)
 
 # make C=1 to enable sparse
 ifdef C

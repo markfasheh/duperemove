@@ -6,6 +6,8 @@
 #include <sqlite3.h>
 #include <stdbool.h>
 #include <sys/types.h>
+#include <uuid/uuid.h>
+
 #include "util.h"
 
 struct filerec;
@@ -58,12 +60,11 @@ void dbfile_unlock();
 
 struct dbfile_config {
 	unsigned int	blocksize;
-	dev_t		onefs_dev;
-	uint64_t	onefs_fsid;
 	int		major;
 	int		minor;
 	char		hash_type[8];
 	unsigned int	dedupe_seq;
+	uuid_t		fs_uuid;
 };
 int dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg);
 int __dbfile_sync_config(sqlite3 *db, struct dbfile_config *cfg);

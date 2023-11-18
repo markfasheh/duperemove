@@ -37,6 +37,10 @@
 #include <linux/magic.h>
 #include <sys/statfs.h>
 #include <fnmatch.h>
+#include <blkid/blkid.h>
+#include <libmount/libmount.h>
+#include <sys/sysmacros.h>
+#include <uuid/uuid.h>
 
 #include <glib.h>
 
@@ -58,8 +62,7 @@
 #define	XFS_SB_MAGIC		0x58465342	/* 'XFSB' */
 #endif
 
-static dev_t one_fs_dev;
-static uint64_t one_fs_btrfs;
+static int __scan_file(char *path, struct dbhandle *db, struct stat *st);
 
 bool scan_files_completed = false;
 static unsigned long long total_files_count = 0;
@@ -112,6 +115,19 @@ struct scan_ctxt {
 	struct running_checksum *file_csum;
 	struct running_checksum *extent_csum;
 };
+
+/*
+ * Represents the filesystem we are working on
+ * Its UUID may be found in the hashfile
+ * The dev_t may change at each run, so we discover its
+ * value at runtime and use it to quicken the check on non-btrfs fs
+ */
+struct locked_fs {
+	uuid_t uuid;
+	dev_t dev;
+	bool is_btrfs;
+};
+struct locked_fs locked_fs = {0,};
 
 static bool allocate_hashes(struct hashes *hashes, struct scan_ctxt *ctxt)
 {
@@ -187,14 +203,213 @@ static struct dbhandle *get_db()
 	return db;
 }
 
-dev_t fs_onefs_dev(void)
+static int is_excluded(const char *name)
 {
-	return one_fs_dev;
+	struct exclude_file *exclude, *tmp;
+
+	list_for_each_entry_safe(exclude, tmp, &exclude_list, list) {
+		if (fnmatch(exclude->pattern, name, FNM_PATHNAME) == 0) {
+			vprintf("Excluding: %s (matches %s)\n", name,
+				exclude->pattern);
+			return 1;
+		}
+	}
+
+	return 0;
 }
 
-uint64_t fs_onefs_id(void)
+static inline void mnt_unref_table_cleanup(struct libmnt_table **tb)
 {
-	return one_fs_btrfs;
+	if (tb && *tb)
+		mnt_unref_table(*tb);
+}
+
+/* Get the UUID associated with the FS that stores path */
+int get_uuid(char *path, uuid_t *uuid)
+{
+	struct stat st;
+	int ret;
+	_cleanup_(mnt_unref_table_cleanup) struct libmnt_table *tb = NULL;
+	_cleanup_(closefd) int fd = open(path, O_RDONLY);
+	_cleanup_(freep) char *uuid_found = NULL;
+
+	struct libmnt_fs *dev = NULL;
+
+	if (fd == -1) {
+		fprintf(stderr, "Cannot open %s: %s\n", path, strerror(errno));
+		return 1;
+	}
+
+	if (is_btrfs(path)) {
+		dprintf("get_uuid: %s lives on btrfs\n", path);
+		ret = btrfs_get_fsuuid(fd, uuid);
+		if (ret) {
+			fprintf(stderr, "%s: btrfs_get_fsuuid failed\n",
+				path);
+			return 1;
+		}
+	} else {
+		dprintf("get_uuid: %s do not live on btrfs\n", path);
+
+		ret = lstat(path, &st);
+		if (ret) {
+			fprintf(stderr, "Failed to stat %s: %s\n",
+					path, strerror(errno));
+			return 1;
+		}
+
+		if (major(st.st_dev) == 0) {
+			fprintf(stderr, "%s lives on an unsupported "
+					"filesystem, please fill a bug\n",
+					path);
+			return 1;
+		}
+
+		tb = mnt_new_table_from_file("/proc/self/mountinfo");
+		if (!tb) {
+			perror("unable to read and parse /proc/self/mountinfo");
+			return 1;
+		}
+
+		dev = mnt_table_find_devno(tb, st.st_dev, MNT_ITER_FORWARD);
+		if (!dev) {
+			fprintf(stderr, "%s: unable to find the mount infos\n",
+					path);
+			return 1;
+		}
+
+		uuid_found = blkid_get_tag_value(NULL, "UUID", mnt_fs_get_source(dev));
+		if (!uuid_found) {
+			fprintf(stderr, "libblkid could not get uuid for "
+					"device %s. Run blkid as root to "
+					"populate the cache.",
+					mnt_fs_get_source(dev));
+			return 1;
+		}
+
+		uuid_parse(uuid_found, *uuid);
+	}
+	return 0;
+}
+
+/*
+ * Check if path lives on a filesystem that is supported, eg
+ * that is known to support deduplication.
+ */
+bool is_fs_supported(char *path)
+{
+	struct statfs fs;
+	int ret;
+
+	ret = statfs(path, &fs);
+	if (ret) {
+		fprintf(stderr, "Error %d: %s while check fs type on %s",
+			errno, strerror(errno), path);
+		return false;
+	}
+
+	return (fs.f_type == BTRFS_SUPER_MAGIC ||
+		fs.f_type == XFS_SB_MAGIC);
+}
+
+/* Check if path should be processed:
+ * - is path not excluded ?
+ * - is path a file or directory ?
+ * - is path not an empty file ?
+ * - does path lives on our locked filesystem ?
+ *   for files, we only do that check if the parent is not checked
+ *
+ * Returns true is the file is legit, false if not (or on error)
+ */
+bool check_file(struct dbhandle *db, char *path, struct stat *st, bool parent_checked)
+{
+	int ret;
+	struct dbfile_config cfg;
+	uuid_t uuid = {0,};
+
+	if (is_excluded(path))
+		return false;
+
+	if (!S_ISREG(st->st_mode) && !S_ISDIR(st->st_mode)) {
+		vprintf("Skipping non-regular/non-directory file %s\n", path);
+		return false;
+	}
+
+	if (S_ISREG(st->st_mode) && st->st_size == 0) {
+		vprintf("Skipping empty file %s\n", path);
+		return false;
+	}
+
+	/* There is no need to check if the file lives in our locked fs.
+	 * It is a regular file and we already check its parent.
+	 */
+	if (S_ISREG(st->st_mode) && parent_checked)
+		return true;
+
+	/* Locked-fs checks */
+	/* First, try to get uuid from the hashfile */
+	if (uuid_is_null(locked_fs.uuid)) {
+		dprintf("Looking our fs uuid from the hashfile\n");
+		ret = dbfile_get_config(db->db, &cfg);
+		if (ret)
+			return 1;
+
+		if (!uuid_is_null(cfg.fs_uuid))
+			uuid_copy(locked_fs.uuid, cfg.fs_uuid);
+	}
+
+	/* hashfile was empty. We lock on the file. */
+	if (uuid_is_null(locked_fs.uuid)) {
+		dprintf("Empty hashfile, locking on the current file\n");
+		ret = get_uuid(path, &locked_fs.uuid);
+		if (ret)
+			return false;
+
+		locked_fs.dev = st->st_dev;
+		locked_fs.is_btrfs = is_btrfs(path);
+
+		if (!is_fs_supported(path))
+			fprintf(stderr, "Warn: filesystem for %s is not known to "
+				"support deduplication.\n", path);
+
+		return true;
+	}
+
+	/* Hashfile was not empty */
+	/* We miss runtime data, check if our fille is in the valid fs
+	 * and store them for future calls
+	 */
+	if (locked_fs.dev == 0) {
+		ret = get_uuid(path, &uuid);
+		if (ret)
+			return false;
+
+		if (!uuid_compare(uuid, locked_fs.uuid)) {
+			fprintf(stderr, "%s lives on fs %s will we are locked on fs %s\n",
+				path, uuid, locked_fs.uuid);
+			return false;
+		}
+
+		locked_fs.dev = st->st_dev;
+		locked_fs.is_btrfs = is_btrfs(path);
+		return true;
+	}
+
+	if (!locked_fs.is_btrfs)
+		return locked_fs.dev == st->st_dev;
+
+	/* On btrfs, we must always fetch the UUID */
+	ret = get_uuid(path, &uuid);
+	if (ret)
+		return false;
+
+	return uuid_compare(uuid, locked_fs.uuid) == 0;
+}
+
+void fs_get_locked_uuid(uuid_t *uuid)
+{
+	if (uuid)
+		uuid_copy(*uuid, locked_fs.uuid);
 }
 
 static int get_dirent_type(struct dirent *entry, int fd, const char *path)
@@ -237,29 +452,18 @@ static int get_dirent_type(struct dirent *entry, int fd, const char *path)
 	return DT_UNKNOWN;
 }
 
-static int is_excluded(const char *name)
-{
-	struct exclude_file *exclude, *tmp;
-
-	list_for_each_entry_safe(exclude, tmp, &exclude_list, list) {
-		if (fnmatch(exclude->pattern, name, FNM_PATHNAME) == 0) {
-			vprintf("Excluding: %s (matches %s)\n", name,
-				exclude->pattern);
-			return 1;
-		}
-	}
-
-	return 0;
-}
-
+/*
+ * Returns nonzero on fatal errors only
+ */
 static int walk_dir(char *path, struct dbhandle *db)
 {
 	int ret = 0;
 	struct dirent *entry;
+	struct stat st;
 	_cleanup_(closedirectory) DIR *dirp = opendir(path);
 
 	/* Overallocate to peace the compiler. An abort will check the actual values. */
-	char child[PATH_MAX + 256] = { 0, };
+	char child[PATH_MAX + 257] = { 0, };
 
 	if (dirp == NULL) {
 		fprintf(stderr, "Error %d: %s while opening directory %s\n",
@@ -270,7 +474,7 @@ static int walk_dir(char *path, struct dbhandle *db)
 	while(true) {
 		errno = 0;
 		entry = readdir(dirp);
-		if (!entry) /* End of directory or error */
+		if (!entry && errno == 0) /* End of directory */
 			break;
 
 		if (errno != 0) {
@@ -285,53 +489,52 @@ static int walk_dir(char *path, struct dbhandle *db)
 
 		entry->d_type = get_dirent_type(entry, dirfd(dirp), path);
 
-		if (entry->d_type == DT_REG ||
-		    (options.recurse_dirs && entry->d_type == DT_DIR)) {
+		if (entry->d_type != DT_REG &&
+		    !(options.recurse_dirs && entry->d_type == DT_DIR))
+			continue;
 
-			/* This should never happen */
-			abort_on(strlen(path) + strlen(entry->d_name) > PATH_MAX);
+		/* This should never happen */
+		abort_on(strlen(path) + strlen(entry->d_name) > PATH_MAX);
 
-			sprintf(child, "%s/%s", path, entry->d_name);
-			ret = scan_file(child, db);
-			if (ret)
-				return ret;
+		sprintf(child, "%s/%s", path, entry->d_name);
+
+		ret = lstat(child, &st);
+		if (ret) {
+			fprintf(stderr, "Failed to stat %s: %s\n",
+					path, strerror(errno));
+			continue;
 		}
+
+		if (!check_file(db, child, &st, true))
+			continue;
+
+		if (entry->d_type == DT_REG)
+			ret = __scan_file(child, db, &st);
+		else
+			ret = walk_dir(child, db);
+		if (ret)
+			return ret;
 	}
 
 	return 0;
 }
 
-static bool will_cross_mountpoint(dev_t dev, uint64_t btrfs_fsid)
-{
-	abort_on(one_fs_dev && one_fs_btrfs);
-
-	if (!one_fs_dev && !one_fs_btrfs) {
-		if (btrfs_fsid)
-			one_fs_btrfs = btrfs_fsid;
-		else
-			one_fs_dev = dev;
-	}
-
-	if ((one_fs_dev && (one_fs_dev != dev)) ||
-	    (one_fs_btrfs && (btrfs_fsid != one_fs_btrfs)))
-		return true;
-
-	return false;
-}
-
 /*
  * Returns nonzero on fatal errors only
+ * This function schedules csum_whole_file()
+ * The caller must call check_file() before and must not call
+ * this if path is not a regular file.
  */
-int scan_file(const char *path, struct dbhandle *db)
+static int __scan_file(char *path, struct dbhandle *db, struct stat *st)
 {
 	int ret;
-	struct stat st;
-	char abspath[PATH_MAX];
 	uint64_t mtime = 0, size = 0;
 	static unsigned int seq = 0, counter = 0;
 	GError *err = NULL;
 	struct file_to_scan *file;
 	int64_t fileid = 0;
+
+	uint64_t subvolid;
 
 	/*
 	 * The first call initializes the static variable
@@ -341,98 +544,17 @@ int scan_file(const char *path, struct dbhandle *db)
 	if (seq == 0)
 		seq = dedupe_seq + 1;
 
-	_cleanup_(closefd) int fd = -1;
-	uint64_t subvolid;
-	struct statfs fs;
+	abort_on(!S_ISREG(st->st_mode));
 
-	/*
-	 * Sanitize the file name and get absolute path. This avoids:
-	 *
-	 * - needless filerec writes to the db when we have
-	 *   effectively the same filename but the components have extra '/'
-	 *
-	 * - Absolute path allows the user to re-run this hash from
-	 *   any directory.
-	 */
-	if (realpath(path, abspath) == NULL) {
-		fprintf(stderr, "Error %d: %s while getting path to file %s. "
-			"Skipping.\n",
-			errno, strerror(errno), path);
-		return 0;
-	}
-
-	if (is_excluded(abspath))
-		return 0;
-
-	ret = lstat(abspath, &st);
-	if (ret) {
-		fprintf(stderr, "Error %d: %s while stating file %s. "
-			"Skipping.\n",
-			errno, strerror(errno), abspath);
-		return 0;
-	}
-
-	if (st.st_size == 0) {
-		vprintf("Skipping empty file %s\n", abspath);
-		return 0;
-	}
-
-	if (S_ISDIR(st.st_mode)) {
-		uint64_t btrfs_fsid;
-		dev_t dev = st.st_dev;
-
-		/*
-		 * Device doesn't work for btrfs as it changes between
-		 * subvolumes. We know how to get a unique fsid though
-		 * so use that in the case where we are on btrfs.
-		 */
-		ret = check_btrfs_get_fsid(abspath, &btrfs_fsid);
-		if (ret) {
-			vprintf("Skipping directory %s due to error %d: %s\n",
-				abspath, ret, strerror(ret));
+	if (locked_fs.is_btrfs) {
+		_cleanup_(closefd) int fd;
+		fd = open(path, O_RDONLY);
+		if (fd == -1) {
+			fprintf(stderr, "Error %d: %s while opening file \"%s\". "
+				"Skipping.\n", errno, strerror(errno), path);
 			return 0;
 		}
 
-		/* Don't cross mount points since dedup doesn't work across */
-		if (will_cross_mountpoint(dev, btrfs_fsid)) {
-			vprintf("Mountpoint traversal disallowed: %s \n",
-				abspath);
-			return 0;
-		}
-
-		if (walk_dir(abspath, db))
-			return 1;
-		return 0;
-	}
-
-	if (!S_ISREG(st.st_mode)) {
-		vprintf("Skipping non-regular file %s\n", abspath);
-		return 0;
-	}
-
-	fd = open(abspath, O_RDONLY);
-	if (fd == -1) {
-		fprintf(stderr, "Error %d: %s while opening file \"%s\". "
-			"Skipping.\n", ret, strerror(ret), abspath);
-		return 0;
-	}
-
-	ret = fstatfs(fd, &fs);
-	if (ret) {
-		fprintf(stderr, "Error %d: %s while doing fs stat on \"%s\". "
-			"Skipping.\n", ret, strerror(ret), abspath);
-		return 0;
-	}
-
-	if (options.run_dedupe == 1 &&
-	    ((fs.f_type != BTRFS_SUPER_MAGIC &&
-	      fs.f_type != XFS_SB_MAGIC))) {
-		fprintf(stderr,	"\"%s\": Can only dedupe files on btrfs or xfs, "
-			"use -d -d to override\n", abspath);
-		return ENOSYS;
-	}
-
-	if (fs.f_type == BTRFS_SUPER_MAGIC) {
 		/*
 		 * Inodes between subvolumes on a btrfs file system
 		 * can have the same i_ino. Get the subvolume id of
@@ -443,24 +565,24 @@ int scan_file(const char *path, struct dbhandle *db)
 			fprintf(stderr,
 				"Error %d: %s while finding subvolid for file "
 				"\"%s\". Skipping.\n", ret, strerror(ret),
-				abspath);
+				path);
 			return 0;
 		}
 	} else {
-		subvolid = st.st_dev;
+		subvolid = 0;
 	}
 
 	/*
 	 * Check the database to see if that file need rescan or not.
 	 */
-	ret = dbfile_describe_file(db, st.st_ino, subvolid, &mtime, &size);
+	ret = dbfile_describe_file(db, st->st_ino, subvolid, &mtime, &size);
 	if (ret) {
 		vprintf("dbfile_describe_file failed\n");
 		return 0;
 	}
 
 	/* Database is up-to-date, nothing more to do */
-	if (mtime == timespec_to_nano(&(st.st_mtim)) && size == (uint64_t)st.st_size)
+	if (mtime == timespec_to_nano(&(st->st_mtim)) && size == (uint64_t)st->st_size)
 		return 0;
 
 	if (options.batch_size != 0) {
@@ -478,11 +600,11 @@ int scan_file(const char *path, struct dbhandle *db)
 		 * The file was scanned in a previous run.
 		 * We will rescan it, so let's remove old hashes
 		 */
-		dbfile_remove_hashes(db, st.st_ino, subvolid);
+		dbfile_remove_hashes(db, st->st_ino, subvolid);
 	}
 
 	/* Upsert the file record */
-	fileid = dbfile_store_file_info(db, st.st_ino, subvolid, abspath, st.st_size, timespec_to_nano(&(st.st_mtim)), seq);
+	fileid = dbfile_store_file_info(db, st->st_ino, subvolid, path, st->st_size, timespec_to_nano(&(st->st_mtim)), seq);
 	if (!fileid) {
 		dbfile_abort_trans(db->db);
 		dbfile_unlock();
@@ -495,9 +617,9 @@ int scan_file(const char *path, struct dbhandle *db)
 	/* Schedule the file for scan */
 	file = malloc(sizeof(struct file_to_scan)); /* Freed by csum_whole_file() */
 
-	file->path = strdup(abspath);
+	file->path = strdup(path);
 	file->fileid = fileid;
-	file->filesize = st.st_size;
+	file->filesize = st->st_size;
 
 	total_files_count++;
 	file->file_position = total_files_count;
@@ -510,6 +632,48 @@ int scan_file(const char *path, struct dbhandle *db)
 	}
 
 	return 0;
+}
+
+/* The entry point for files passed by the user */
+int scan_file(char *in_path, struct dbhandle *db)
+{
+	struct stat st;
+	char path[PATH_MAX];
+	int ret;
+
+	/*
+	 * Sanitize the file name and get absolute path. This avoids:
+	 *
+	 * - needless filerec writes to the db when we have
+	 *   effectively the same filename but the components have extra '/'
+	 *
+	 * - Absolute path allows the user to re-run this hash from
+	 *   any directory.
+	 */
+	if (realpath(in_path, path) == NULL) {
+		fprintf(stderr, "Error %d: %s while getting path to file %s. "
+			"Skipping.\n",
+			errno, strerror(errno), in_path);
+		return 0;
+	}
+
+	ret = lstat(path, &st);
+	if (ret) {
+		fprintf(stderr, "Error %d: %s while stating file %s. "
+			"Skipping.\n",
+			errno, strerror(errno), path);
+		return 0;
+	}
+
+	if (!check_file(db, path, &st, false)) {
+		printf("NEIN %s\n", path);
+		return 0;
+	}
+
+	if (S_ISREG(st.st_mode))
+		return __scan_file(path, db, &st);
+	else
+		return walk_dir(path, db);
 }
 
 /* Check if the block starting at buf is full of zeroes */

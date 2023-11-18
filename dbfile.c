@@ -700,31 +700,11 @@ out:
 	return ret;
 }
 
-static int sync_config_int64(sqlite3_stmt *stmt, const char *key, uint64_t val)
-{
-	int ret;
-
-	ret = sqlite3_bind_text(stmt, 1, key, -1, SQLITE_STATIC);
-	if (ret)
-		goto out;
-	ret = sqlite3_bind_int64(stmt, 2, val);
-	if (ret)
-		goto out;
-	ret = sqlite3_step(stmt);
-	if (ret != SQLITE_DONE)
-		goto out;
-	sqlite3_reset(stmt);
-
-	ret = 0;
-out:
-	return ret;
-}
-
 int __dbfile_sync_config(sqlite3 *db, struct dbfile_config *cfg)
 {
 	int ret = 0;
+	char uuid[37]; /* 36-bytes uuid + \0 */
 	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
-	unsigned int onefs_major, onefs_minor;
 
 	ret = sqlite3_prepare_v2(db,
 				 "insert or replace into config VALUES (?1, ?2)", -1,
@@ -742,25 +722,16 @@ int __dbfile_sync_config(sqlite3 *db, struct dbfile_config *cfg)
 	if (ret)
 		goto out;
 
-	onefs_major = major(cfg->onefs_dev);
-	ret = sync_config_int(stmt, "onefs_dev_major", onefs_major);
-	if (ret)
-		goto out;
-
-	onefs_minor = minor(cfg->onefs_dev);
-	ret = sync_config_int(stmt, "onefs_dev_minor", onefs_minor);
-	if (ret)
-		goto out;
-
-	ret = sync_config_int64(stmt, "onefs_fsid", cfg->onefs_fsid);
-	if (ret)
-		goto out;
-
 	ret = sync_config_int(stmt, "dedupe_sequence", cfg->dedupe_seq);
 	if (ret)
 		goto out;
 
 	ret = sync_config_int(stmt, "version_minor", cfg->minor);
+	if (ret)
+		goto out;
+
+	uuid_unparse(cfg->fs_uuid, uuid);
+	ret = sync_config_text(stmt, "fs_uuid", uuid, 36);
 	if (ret)
 		goto out;
 
@@ -845,32 +816,6 @@ static int get_config_int(sqlite3_stmt *stmt, const char *name, int *val)
 	return 0;
 }
 
-static int get_config_int64(sqlite3_stmt *stmt, const char *name, uint64_t *val)
-{
-	int ret;
-
-	if (!val)
-		return 0;
-
-	ret = sqlite3_bind_text(stmt, 1, name, -1, SQLITE_STATIC);
-	if (ret) {
-		perror_sqlite(ret, "retrieving row from config table (bind)");
-		return ret;
-	}
-
-	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
-		*val = sqlite3_column_int64(stmt, 0);
-	}
-	if (ret != SQLITE_DONE) {
-		perror_sqlite(ret, "retrieving row from config table (step)");
-		return ret;
-	}
-
-	sqlite3_reset(stmt);
-
-	return 0;
-}
-
 static int get_config_text(sqlite3_stmt *stmt, const char *name, char *val, int len)
 {
 	int ret;
@@ -903,8 +848,8 @@ static int get_config_text(sqlite3_stmt *stmt, const char *name, char *val, int 
 static int __dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg)
 {
 	int ret;
+	char uuid[37]; /* 36-bytes uuid + \0 */
 	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
-	unsigned int onefs_major = 0, onefs_minor = 0;
 
 #define SELECT_CONFIG "select keyval from config where keyname=?1;"
 	ret = sqlite3_prepare_v2(db, SELECT_CONFIG, -1, &stmt, NULL);
@@ -929,22 +874,15 @@ static int __dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg)
 	if (ret)
 		goto out;
 
-	ret = get_config_int(stmt, "onefs_dev_major", (int *)&onefs_major);
-	if (ret)
-		goto out;
-
-	ret = get_config_int(stmt, "onefs_dev_minor", (int *)&onefs_minor);
-	if (ret)
-		goto out;
-	cfg->onefs_dev = makedev(onefs_major, onefs_minor);
-
-	ret = get_config_int64(stmt, "onefs_fsid", &cfg->onefs_fsid);
-	if (ret)
-		goto out;
-
 	ret = get_config_int(stmt, "dedupe_sequence", (int *)&cfg->dedupe_seq);
 	if (ret)
 		goto out;
+
+	ret = get_config_text(stmt, "fs_uuid", uuid, 36);
+	if (ret)
+		goto out;
+
+	uuid_parse(uuid, cfg->fs_uuid);
 
 out:
 	if (ret != 0)

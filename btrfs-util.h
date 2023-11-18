@@ -16,13 +16,10 @@
 #ifndef	__BTRFS_UTIL__
 #define	__BTRFS_UTIL__
 
-int lookup_btrfs_subvolid(int fd, uint64_t *rootid);
-/*
- * Figure out if we're btrfs. If we are, get the fsid. Otherwise
- * put 0 in *ret_fsid.
- *
- * Returns nonzero on error.
- */
-int check_btrfs_get_fsid(char *name, uint64_t *ret_fsid);
+#include <stdint.h>
+#include <uuid/uuid.h>
 
+int lookup_btrfs_subvolid(int fd, uint64_t *rootid);
+int is_btrfs(char *path);
+int btrfs_get_fsuuid(int fd, uuid_t *uuid);
 #endif	/* __BTRFS_UTIL__ */
