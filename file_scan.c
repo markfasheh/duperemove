@@ -282,7 +282,7 @@ int get_uuid(char *path, uuid_t *uuid)
 		if (!uuid_found) {
 			fprintf(stderr, "libblkid could not get uuid for "
 					"device %s. Run blkid as root to "
-					"populate the cache.",
+					"populate the cache.\n",
 					mnt_fs_get_source(dev));
 			return 1;
 		}
@@ -663,10 +663,8 @@ int scan_file(char *in_path, struct dbhandle *db)
 		return 0;
 	}
 
-	if (!check_file(db, path, &st, false)) {
-		printf("NEIN %s\n", path);
+	if (!check_file(db, path, &st, false))
 		return 0;
-	}
 
 	if (S_ISREG(st.st_mode))
 		return __scan_file(path, db, &st);
