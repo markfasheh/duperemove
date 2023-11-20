@@ -337,5 +337,5 @@ void debug_print_uuid(FILE *stream, uuid_t uuid)
 {
 	char buf[37];
 	uuid_unparse(uuid, buf);
-	fprintf(stream, buf);
+	fputs(buf, stream);
 }
