@@ -499,7 +499,10 @@ static int walk_dir(char *path, struct dbhandle *db)
 		/* This should never happen */
 		abort_on(strlen(path) + strlen(entry->d_name) > PATH_MAX);
 
-		sprintf(child, "%s/%s", path, entry->d_name);
+		if (strcmp(path, "/") == 0)
+			sprintf(child, "/%s", entry->d_name);
+		else
+			sprintf(child, "%s/%s", path, entry->d_name);
 
 		ret = lstat(child, &st);
 		if (ret) {
