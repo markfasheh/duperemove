@@ -384,9 +384,12 @@ bool check_file(struct dbhandle *db, char *path, struct stat *st, bool parent_ch
 		if (ret)
 			return false;
 
-		if (!uuid_compare(uuid, locked_fs.uuid)) {
-			fprintf(stderr, "%s lives on fs %s will we are locked on fs %s\n",
-				path, uuid, locked_fs.uuid);
+		if (uuid_compare(uuid, locked_fs.uuid) != 0) {
+			fprintf(stderr, "%s lives on fs ", path);
+			debug_print_uuid(stderr, uuid);
+			fprintf(stderr, " will we are locked on fs ");
+			debug_print_uuid(stderr, locked_fs.uuid);
+			fprintf(stderr, ".\n");
 			return false;
 		}
 

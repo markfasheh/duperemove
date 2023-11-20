@@ -23,6 +23,7 @@
 #include <stdint.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <uuid/uuid.h>
 
 /* controlled by user options, turns pretty print on if true. */
 extern int human_readable;
@@ -76,5 +77,7 @@ static inline void closefd(int *fd)
 	if (*fd >= 0)
 		close(*fd);
 }
+
+void debug_print_uuid(FILE *stream, uuid_t uuid);
 
 #endif	/* __UTIL_H__ */
