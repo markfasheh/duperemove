@@ -259,8 +259,8 @@ int get_uuid(char *path, uuid_t *uuid)
 		}
 
 		if (major(st.st_dev) == 0) {
-			fprintf(stderr, "%s lives on an unsupported "
-					"filesystem, please fill a bug\n",
+			dprintf("%s lives on an unsupported filesystem, skipping. "
+				"Please fill a bug if you think this is a mistake.\n",
 					path);
 			return 1;
 		}
@@ -998,7 +998,7 @@ static void csum_whole_file(struct file_to_scan *file)
 	ctxt.fd = open(file->path, O_RDONLY);
 	if (ctxt.fd == -1) {
 		fprintf(stderr, "csum_whole_file: Error %d: %s while opening file \"%s\". "
-			"Skipping.\n", ret, strerror(ret), file->path);
+			"Skipping.\n", errno, strerror(errno), file->path);
 		return;
 	}
 
