@@ -191,6 +191,11 @@ static void free_scan_ctxt(struct scan_ctxt *ctxt)
 		finish_running_checksum(ctxt->extent_csum, NULL);
 }
 
+static void cleanup_dbhandle(void *db)
+{
+	dbfile_close_handle(db);
+}
+
 static struct dbhandle *get_db()
 {
 	struct dbhandle *db;
@@ -199,7 +204,7 @@ static struct dbhandle *get_db()
 	db = dbfile_open_handle(options.hashfile);
 	dbfile_unlock();
 	if (db)
-		register_cleanup(&scan_pool, (void*)&dbfile_close_handle, db);
+		register_cleanup(&scan_pool, (void*)&cleanup_dbhandle, db);
 	return db;
 }
 
