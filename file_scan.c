@@ -643,6 +643,7 @@ static int __scan_file(char *path, struct dbhandle *db, struct stat *st)
 		g_error_free(err);
 		err = NULL;
 		free(file);
+		return 1;
 	}
 
 	return 0;
