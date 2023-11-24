@@ -61,7 +61,7 @@ endif
 override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(VERSION)\" \
 	$(glib_CFLAGS) $(sqlite_CFLAGS) -rdynamic $(DEBUG_FLAGS) \
 	$(blkid_CFLAGS) $(mount_CFLAGS) $(uuid_CFLAGS) \
-	-DIS_RELEASE=$(IS_RELEASE)
+	-DIS_RELEASE=$(IS_RELEASE) -D_GNU_SOURCE
 LIBRARY_FLAGS += -Wl,--as-needed -latomic -lm
 LIBRARY_FLAGS += $(glib_LIBS) $(sqlite_LIBS) $(blkid_LIBS) $(mount_LIBS) $(uuid_LIBS)
 

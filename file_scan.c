@@ -62,7 +62,7 @@
 #define	XFS_SB_MAGIC		0x58465342	/* 'XFSB' */
 #endif
 
-static int __scan_file(char *path, struct dbhandle *db, struct stat *st);
+static int __scan_file(char *path, struct dbhandle *db, struct statx *st);
 
 bool scan_files_completed = false;
 static unsigned long long total_files_count = 0;
@@ -229,10 +229,15 @@ static inline void mnt_unref_table_cleanup(struct libmnt_table **tb)
 		mnt_unref_table(*tb);
 }
 
+static inline dev_t stx_to_dev(struct statx *stx)
+{
+	return makedev(stx->stx_dev_major, stx->stx_dev_minor);
+}
+
 /* Get the UUID associated with the FS that stores path */
 int get_uuid(char *path, uuid_t *uuid)
 {
-	struct stat st;
+	struct statx st;
 	int ret;
 	_cleanup_(mnt_unref_table_cleanup) struct libmnt_table *tb = NULL;
 	_cleanup_(closefd) int fd = open(path, O_RDONLY);
@@ -256,14 +261,14 @@ int get_uuid(char *path, uuid_t *uuid)
 	} else {
 		dprintf("get_uuid: %s do not live on btrfs\n", path);
 
-		ret = lstat(path, &st);
+		ret = statx(0, path, 0, STATX_BASIC_STATS, &st);
 		if (ret) {
 			fprintf(stderr, "Failed to stat %s: %s\n",
 					path, strerror(errno));
 			return 1;
 		}
 
-		if (major(st.st_dev) == 0) {
+		if (st.stx_dev_major == 0) {
 			dprintf("%s lives on an unsupported filesystem, skipping. "
 				"Please fill a bug if you think this is a mistake.\n",
 					path);
@@ -276,7 +281,7 @@ int get_uuid(char *path, uuid_t *uuid)
 			return 1;
 		}
 
-		dev = mnt_table_find_devno(tb, st.st_dev, MNT_ITER_FORWARD);
+		dev = mnt_table_find_devno(tb, stx_to_dev(&st), MNT_ITER_FORWARD);
 		if (!dev) {
 			fprintf(stderr, "%s: unable to find the mount infos\n",
 					path);
@@ -297,9 +302,9 @@ int get_uuid(char *path, uuid_t *uuid)
 	return 0;
 }
 
-static inline uint64_t timespec_to_nano(struct timespec *t)
+static inline uint64_t timestamp_to_nano(struct statx_timestamp t)
 {
-	return t->tv_sec * 1000000000 + t->tv_nsec;
+	return t.tv_sec * 1000000000 + t.tv_nsec;
 }
 
 /*
@@ -331,7 +336,7 @@ bool is_fs_supported(char *path)
  *
  * Returns true is the file is legit, false if not (or on error)
  */
-bool check_file(struct dbhandle *db, char *path, struct stat *st, bool parent_checked)
+bool check_file(struct dbhandle *db, char *path, struct statx *st, bool parent_checked)
 {
 	int ret;
 	struct dbfile_config cfg;
@@ -340,12 +345,12 @@ bool check_file(struct dbhandle *db, char *path, struct stat *st, bool parent_ch
 	if (is_excluded(path))
 		return false;
 
-	if (!S_ISREG(st->st_mode) && !S_ISDIR(st->st_mode)) {
+	if (!S_ISREG(st->stx_mode) && !S_ISDIR(st->stx_mode)) {
 		vprintf("Skipping non-regular/non-directory file %s\n", path);
 		return false;
 	}
 
-	if (S_ISREG(st->st_mode) && st->st_size == 0) {
+	if (S_ISREG(st->stx_mode) && st->stx_size == 0) {
 		vprintf("Skipping empty file %s\n", path);
 		return false;
 	}
@@ -353,7 +358,7 @@ bool check_file(struct dbhandle *db, char *path, struct stat *st, bool parent_ch
 	/* There is no need to check if the file lives in our locked fs.
 	 * It is a regular file and we already check its parent.
 	 */
-	if (S_ISREG(st->st_mode) && parent_checked)
+	if (S_ISREG(st->stx_mode) && parent_checked)
 		return true;
 
 	/* Locked-fs checks */
@@ -375,7 +380,7 @@ bool check_file(struct dbhandle *db, char *path, struct stat *st, bool parent_ch
 		if (ret)
 			return false;
 
-		locked_fs.dev = st->st_dev;
+		locked_fs.dev = stx_to_dev(st);
 		locked_fs.is_btrfs = is_btrfs(path);
 
 		if (!is_fs_supported(path))
@@ -403,13 +408,13 @@ bool check_file(struct dbhandle *db, char *path, struct stat *st, bool parent_ch
 			return false;
 		}
 
-		locked_fs.dev = st->st_dev;
+		locked_fs.dev = stx_to_dev(st);
 		locked_fs.is_btrfs = is_btrfs(path);
 		return true;
 	}
 
 	if (!locked_fs.is_btrfs)
-		return locked_fs.dev == st->st_dev;
+		return locked_fs.dev == stx_to_dev(st);
 
 	/* On btrfs, we must always fetch the UUID */
 	ret = get_uuid(path, &uuid);
@@ -428,7 +433,7 @@ void fs_get_locked_uuid(uuid_t *uuid)
 static int get_dirent_type(struct dirent *entry, int fd, const char *path)
 {
 	int ret;
-	struct stat st;
+	struct statx st;
 
 	if (entry->d_type != DT_UNKNOWN)
 		return entry->d_type;
@@ -438,8 +443,8 @@ static int get_dirent_type(struct dirent *entry, int fd, const char *path)
 	 * fashioned way. We translate mode to DT_* for the
 	 * convenience of the caller.
 	 */
-	ret = fstatat(fd, entry->d_name, &st, AT_SYMLINK_NOFOLLOW);
-	if (ret) {
+	ret = statx(fd, entry->d_name, AT_SYMLINK_NOFOLLOW, STATX_BASIC_STATS, &st);
+	if (ret || !(st.stx_mask & STATX_BASIC_STATS)) {
 		fprintf(stderr,
 			"Error %d: %s while getting type of file %s/%s. "
 			"Skipping.\n",
@@ -447,19 +452,19 @@ static int get_dirent_type(struct dirent *entry, int fd, const char *path)
 		return DT_UNKNOWN;
 	}
 
-	if (S_ISREG(st.st_mode))
+	if (S_ISREG(st.stx_mode))
 		return DT_REG;
-	if (S_ISDIR(st.st_mode))
+	if (S_ISDIR(st.stx_mode))
 		return DT_DIR;
-	if (S_ISBLK(st.st_mode))
+	if (S_ISBLK(st.stx_mode))
 		return DT_BLK;
-	if (S_ISCHR(st.st_mode))
+	if (S_ISCHR(st.stx_mode))
 		return DT_CHR;
-	if (S_ISFIFO(st.st_mode))
+	if (S_ISFIFO(st.stx_mode))
 		return DT_FIFO;
-	if (S_ISLNK(st.st_mode))
+	if (S_ISLNK(st.stx_mode))
 		return DT_LNK;
-	if (S_ISSOCK(st.st_mode))
+	if (S_ISSOCK(st.stx_mode))
 		return DT_SOCK;
 
 	return DT_UNKNOWN;
@@ -472,7 +477,7 @@ static int walk_dir(char *path, struct dbhandle *db)
 {
 	int ret = 0;
 	struct dirent *entry;
-	struct stat st;
+	struct statx st;
 	_cleanup_(closedirectory) DIR *dirp = opendir(path);
 
 	/* Overallocate to peace the compiler. An abort will check the actual values. */
@@ -514,8 +519,8 @@ static int walk_dir(char *path, struct dbhandle *db)
 		else
 			sprintf(child, "%s/%s", path, entry->d_name);
 
-		ret = lstat(child, &st);
-		if (ret) {
+		ret = statx(0, child, 0, STATX_BASIC_STATS, &st);
+		if (ret || !(st.stx_mask | STATX_BASIC_STATS)) {
 			fprintf(stderr, "Failed to stat %s: %s\n",
 					path, strerror(errno));
 			continue;
@@ -558,7 +563,7 @@ static inline bool is_file_renamed(char *path_in_db, char *path)
  * The caller must call check_file() before and must not call
  * this if path is not a regular file.
  */
-static int __scan_file(char *path, struct dbhandle *db, struct stat *st)
+static int __scan_file(char *path, struct dbhandle *db, struct statx *st)
 {
 	int ret;
 	uint64_t mtime = 0, size = 0;
@@ -581,7 +586,7 @@ static int __scan_file(char *path, struct dbhandle *db, struct stat *st)
 	if (seq == 0)
 		seq = dedupe_seq + 1;
 
-	abort_on(!S_ISREG(st->st_mode));
+	abort_on(!S_ISREG(st->stx_mode));
 
 	if (locked_fs.is_btrfs) {
 		_cleanup_(closefd) int fd;
@@ -610,7 +615,7 @@ static int __scan_file(char *path, struct dbhandle *db, struct stat *st)
 	/*
 	 * Check the database to see if that file need rescan or not.
 	 */
-	ret = dbfile_describe_file(db, st->st_ino, subvolid, &mtime, &size, path_in_db);
+	ret = dbfile_describe_file(db, st->stx_ino, subvolid, &mtime, &size, path_in_db);
 	if (ret) {
 		vprintf("dbfile_describe_file failed\n");
 		return 0;
@@ -619,8 +624,8 @@ static int __scan_file(char *path, struct dbhandle *db, struct stat *st)
 	file_renamed = is_file_renamed(path_in_db, path);
 
 	/* Database is up-to-date, nothing more to do */
-	if (mtime == timespec_to_nano(&(st->st_mtim))
-	    && size == (uint64_t)st->st_size && !file_renamed)
+	if (mtime == timestamp_to_nano(st->stx_mtime)
+	    && size == st->stx_size && !file_renamed)
 		return 0;
 
 	if (options.batch_size != 0) {
@@ -635,7 +640,7 @@ static int __scan_file(char *path, struct dbhandle *db, struct stat *st)
 	dbfile_begin_trans(db->db);
 
 	if (file_renamed) {
-		ret = dbfile_rename_file(db, st->st_ino, subvolid, path);
+		ret = dbfile_rename_file(db, st->stx_ino, subvolid, path);
 		if (ret) {
 			vprintf("dbfile_rename_file failed\n");
 			return 0;
@@ -647,11 +652,11 @@ static int __scan_file(char *path, struct dbhandle *db, struct stat *st)
 		 * The file was scanned in a previous run.
 		 * We will rescan it, so let's remove old hashes
 		 */
-		dbfile_remove_hashes(db, st->st_ino, subvolid);
+		dbfile_remove_hashes(db, st->stx_ino, subvolid);
 	}
 
 	/* Upsert the file record */
-	fileid = dbfile_store_file_info(db, st->st_ino, subvolid, path, st->st_size, timespec_to_nano(&(st->st_mtim)), seq);
+	fileid = dbfile_store_file_info(db, st->stx_ino, subvolid, path, st->stx_size, timestamp_to_nano(st->stx_mtime), seq);
 	if (!fileid) {
 		dbfile_abort_trans(db->db);
 		dbfile_unlock();
@@ -666,7 +671,7 @@ static int __scan_file(char *path, struct dbhandle *db, struct stat *st)
 
 	file->path = strdup(path);
 	file->fileid = fileid;
-	file->filesize = st->st_size;
+	file->filesize = st->stx_size;
 
 	total_files_count++;
 	file->file_position = total_files_count;
@@ -685,7 +690,7 @@ static int __scan_file(char *path, struct dbhandle *db, struct stat *st)
 /* The entry point for files passed by the user */
 int scan_file(char *in_path, struct dbhandle *db)
 {
-	struct stat st;
+	struct statx st;
 	char path[PATH_MAX];
 	int ret;
 
@@ -705,8 +710,8 @@ int scan_file(char *in_path, struct dbhandle *db)
 		return 0;
 	}
 
-	ret = lstat(path, &st);
-	if (ret) {
+	ret = statx(0, path, 0, STATX_BASIC_STATS, &st);
+	if (ret || !(st.stx_mask & STATX_BASIC_STATS)) {
 		fprintf(stderr, "Error %d: %s while stating file %s. "
 			"Skipping.\n",
 			errno, strerror(errno), path);
@@ -716,7 +721,7 @@ int scan_file(char *in_path, struct dbhandle *db)
 	if (!check_file(db, path, &st, false))
 		return 0;
 
-	if (S_ISREG(st.st_mode))
+	if (S_ISREG(st.stx_mode))
 		return __scan_file(path, db, &st);
 	else
 		return walk_dir(path, db);
@@ -1226,7 +1231,13 @@ void filescan_free_pool()
 
 void add_file_fdupes(char *path)
 {
-	struct stat st;
-	lstat(path, &st);
-	filerec_new(path, st.st_ino, 0, st.st_size);
+	struct statx st;
+	int ret;
+
+	ret = statx(0, path, 0, STATX_BASIC_STATS, &st);
+	if (ret || !(st.stx_mask & STATX_BASIC_STATS)) {
+		fprintf(stderr, "statx on %s: %s\n", path, strerror(errno));
+		return;
+	}
+	filerec_new(path, st.stx_ino, 0, st.stx_size);
 }
