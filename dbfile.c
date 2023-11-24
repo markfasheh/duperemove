@@ -523,7 +523,7 @@ struct dbhandle *dbfile_open_handle(char *filename)
 	dbfile_prepare_stmt(delete_file, DELETE_FILE);
 
 #define SELECT_FILE_CHANGES						\
-"select mtime, size from files where ino = ?1 and subvol = ?2;"
+"select mtime, size, filename from files where ino = ?1 and subvol = ?2;"
 	dbfile_prepare_stmt(select_file_changes, SELECT_FILE_CHANGES);
 
 #define COUNT_B_HASHES "select COUNT(*) from blocks;"
@@ -540,6 +540,10 @@ struct dbhandle *dbfile_open_handle(char *filename)
 
 #define DELETE_UNSCANNED_FILES "delete from files where digest is NULL;"
 	dbfile_prepare_stmt(delete_unscanned_files, DELETE_UNSCANNED_FILES);
+
+#define RENAME_FILE							\
+"update files set filename = ?1 where ino = ?2 and subvol = ?3;"
+	dbfile_prepare_stmt(rename_file, RENAME_FILE);
 	return result;
 
 err:
@@ -1424,9 +1428,10 @@ void dbfile_list_files(struct dbhandle *db, int (*callback)(void*, int, char**, 
  * Returns true if not, or if there is not data found, or on error.
  */
 int dbfile_describe_file(struct dbhandle *db, uint64_t inum, uint64_t subvolid,
-				uint64_t *mtime, uint64_t *size)
+				uint64_t *mtime, uint64_t *size, char *path)
 {
 	int ret;
+	char *buf;
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.select_file_changes;
 
 	/* in-memory databases has no wal support,
@@ -1460,6 +1465,9 @@ int dbfile_describe_file(struct dbhandle *db, uint64_t inum, uint64_t subvolid,
 
 	*mtime = sqlite3_column_int64(stmt, 0);
 	*size = sqlite3_column_int64(stmt, 1);
+
+	buf = (char *)sqlite3_column_text(stmt, 2);
+	strncpy(path, buf, PATH_MAX);
 
 	ret = 0;
 
@@ -1513,6 +1521,39 @@ int dbfile_load_same_files(struct results_tree *res, unsigned int seq)
 	}
 	if (ret != SQLITE_DONE) {
 		perror_sqlite(ret, "looking up hash");
+		return ret;
+	}
+
+	return 0;
+}
+
+int dbfile_rename_file(struct dbhandle *db, uint64_t ino, uint64_t subvol,
+		       char *path)
+{
+	int ret;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.rename_file;
+
+	ret = sqlite3_bind_text(stmt, 1, path, -1, SQLITE_STATIC);
+	if (ret) {
+		perror_sqlite(ret, "binding values");
+		return ret;
+	}
+
+	ret = sqlite3_bind_int64(stmt, 2, ino);
+	if (ret) {
+		perror_sqlite(ret, "binding values");
+		return ret;
+	}
+
+	ret = sqlite3_bind_int64(stmt, 3, subvol);
+	if (ret) {
+		perror_sqlite(ret, "binding values");
+		return ret;
+	}
+
+	ret = sqlite3_step(stmt);
+	if (ret != SQLITE_DONE) {
+		perror_sqlite(ret, "renaming a file");
 		return ret;
 	}
 

@@ -535,6 +535,23 @@ static int walk_dir(char *path, struct dbhandle *db)
 	return 0;
 }
 
+static inline bool is_file_renamed(char *path_in_db, char *path)
+{
+	struct stat st;
+
+	if (strlen(path_in_db) == 0)
+		return true;
+
+	if (strcmp(path_in_db, path) == 0)
+		return false;
+
+	/*
+	 * Old path and new paths differs. Could be hardlink,
+	 * so we check if the old still exists.
+	 */
+	return true ? lstat(path_in_db, &st) : false;
+}
+
 /*
  * Returns nonzero on fatal errors only
  * This function schedules csum_whole_file()
@@ -549,8 +566,12 @@ static int __scan_file(char *path, struct dbhandle *db, struct stat *st)
 	GError *err = NULL;
 	struct file_to_scan *file;
 	int64_t fileid = 0;
+	bool file_renamed;
 
 	uint64_t subvolid = 0;
+
+	/* The file path stored in the hashfile. Used to detect file rename. */
+	char path_in_db[PATH_MAX] = {0,};
 
 	/*
 	 * The first call initializes the static variable
@@ -589,14 +610,17 @@ static int __scan_file(char *path, struct dbhandle *db, struct stat *st)
 	/*
 	 * Check the database to see if that file need rescan or not.
 	 */
-	ret = dbfile_describe_file(db, st->st_ino, subvolid, &mtime, &size);
+	ret = dbfile_describe_file(db, st->st_ino, subvolid, &mtime, &size, path_in_db);
 	if (ret) {
 		vprintf("dbfile_describe_file failed\n");
 		return 0;
 	}
 
+	file_renamed = is_file_renamed(path_in_db, path);
+
 	/* Database is up-to-date, nothing more to do */
-	if (mtime == timespec_to_nano(&(st->st_mtim)) && size == (uint64_t)st->st_size)
+	if (mtime == timespec_to_nano(&(st->st_mtim))
+	    && size == (uint64_t)st->st_size && !file_renamed)
 		return 0;
 
 	if (options.batch_size != 0) {
@@ -609,6 +633,15 @@ static int __scan_file(char *path, struct dbhandle *db, struct stat *st)
 
 	dbfile_lock();
 	dbfile_begin_trans(db->db);
+
+	if (file_renamed) {
+		ret = dbfile_rename_file(db, st->st_ino, subvolid, path);
+		if (ret) {
+			vprintf("dbfile_rename_file failed\n");
+			return 0;
+		}
+	}
+
 	if (mtime != 0 || size != 0) {
 		/*
 		 * The file was scanned in a previous run.

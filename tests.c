@@ -22,6 +22,7 @@
 
 
 unsigned int blocksize = DEFAULT_BLOCKSIZE;
+static char *exec_path;
 
 MU_TEST(test_is_block_zeroed) {
 	blocksize = 100;
@@ -74,12 +75,30 @@ MU_TEST(test_block_len) {
 	mu_check(block_len(&block) == 0);
 }
 
+MU_TEST(test_is_file_renamed) {
+	char *new_path = "/tmp/somefile";
+	char *path_in_db = "/tmp/somefile";
+
+	mu_check(is_file_renamed(path_in_db, new_path) == false);
+
+	path_in_db = "/tmp/anotherfile";
+	mu_check(is_file_renamed(path_in_db, new_path) == true);
+
+	/*
+	 * Diffents path but the old one still exists.
+	 * We use our own file to simulate a hard link
+	 */
+	mu_check(is_file_renamed(exec_path, new_path) == false);
+}
+
 MU_TEST_SUITE(test_suite) {
 	MU_RUN_TEST(test_is_block_zeroed);
 	MU_RUN_TEST(test_block_len);
+	MU_RUN_TEST(test_is_file_renamed);
 }
 
-int main() {
+int main(int argc [[maybe_unused]], char *argv[]) {
+	exec_path = argv[0];
 	MU_RUN_SUITE(test_suite);
 	MU_REPORT();
 	return MU_EXIT_CODE;

@@ -45,6 +45,7 @@ struct stmts {
 	sqlite3_stmt *count_files;
 	sqlite3_stmt *get_max_dedupe_seq;
 	sqlite3_stmt *delete_unscanned_files;
+	sqlite3_stmt *rename_file;
 };
 
 struct dbhandle {
@@ -138,8 +139,11 @@ int dbfile_remove_file(struct dbhandle *db, const char *filename);
 void dbfile_list_files(struct dbhandle *db, int (*callback)(void*, int, char**, char**));
 
 int dbfile_describe_file(struct dbhandle *db, uint64_t inum, uint64_t subvolid,
-				uint64_t *mtime, uint64_t *size);
+				uint64_t *mtime, uint64_t *size, char *path);
 int dbfile_load_same_files(struct results_tree *res, unsigned int seq);
+
+int dbfile_rename_file(struct dbhandle *db, uint64_t ino, uint64_t subvol,
+		       char *path);
 
 static inline void sqlite3_stmt_cleanup(void *p)
 {
