@@ -335,7 +335,7 @@ int fiemap_scan_extent(struct extent *extent)
 	}
 
 	result = get_extent(fiemap, extent->e_loff, NULL);
-	if (!extent) {
+	if (!result) {
 		filerec_close(extent->e_file);
 		return -1;
 	}
