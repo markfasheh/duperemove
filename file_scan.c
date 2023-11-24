@@ -1035,6 +1035,7 @@ static void csum_whole_file(struct file_to_scan *file)
 	 * until we reach the expected EOF, based on the expected filesize
 	 */
 	while (ctxt.off < ctxt.filesize) {
+		printf("%s: %05.2f%% bytes processed\n", file->path, 100 * (double)ctxt.off / (double)ctxt.filesize);
 		/* In the buffer, how much bytes are processed as blocks
 		 * Extents processing and file processing will not consumme
 		 * more than that amount of bytes
