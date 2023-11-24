@@ -297,6 +297,11 @@ int get_uuid(char *path, uuid_t *uuid)
 	return 0;
 }
 
+static inline uint64_t timespec_to_nano(struct timespec *t)
+{
+	return t->tv_sec * 1000000000 + t->tv_nsec;
+}
+
 /*
  * Check if path lives on a filesystem that is supported, eg
  * that is known to support deduplication.

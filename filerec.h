@@ -81,11 +81,5 @@ void insert_filerec_token_rb(struct rb_root *root,
 void filerec_token_free(struct filerec_token *token);
 struct filerec_token *filerec_token_new(struct filerec *file);
 
-#define	NANOSECONDS	1000000000
-static inline uint64_t timespec_to_nano(struct timespec *t)
-{
-	return (uint64_t)t->tv_nsec + t->tv_sec * NANOSECONDS;
-}
-
 int fiemap_scan_extent(struct extent *extent);
 #endif /* __FILEREC__ */
