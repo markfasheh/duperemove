@@ -112,7 +112,7 @@ int dbfile_load_one_filerec(struct dbhandle *db, uint64_t ino, uint64_t subvol,
  */
 struct dbhandle *dbfile_get_handle(void);
 
-uint64_t dbfile_store_file_info(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
+int64_t dbfile_store_file_info(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
 			char *path, uint64_t size, uint64_t mtime, unsigned int dedupe_seq);
 int dbfile_store_block_hashes(struct dbhandle *db, int64_t fileid,
 				uint64_t nb_hash, struct block_csum *hashes);

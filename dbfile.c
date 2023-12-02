@@ -902,7 +902,7 @@ int dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg)
 }
 
 /* Returns 0 on error, and the inserted rowid on success */
-uint64_t dbfile_store_file_info(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
+int64_t dbfile_store_file_info(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
 				char *path, uint64_t size, uint64_t mtime,
 				unsigned int dedupe_seq)
 {
