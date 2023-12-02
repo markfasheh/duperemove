@@ -2,6 +2,7 @@ PENDING
 ---
 
 **Notable changes**:
+ * Files are no longer invalidated when renamed.
 
 Version 0.14
 ---
