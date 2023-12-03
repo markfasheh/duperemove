@@ -597,10 +597,10 @@ static int __scan_file(char *path, struct dbhandle *db, struct statx *st)
 		 * can have the same i_ino. Get the subvolume id of
 		 * our file so hard link detection works.
 		 */
-		ret = lookup_btrfs_subvolid(fd, &(dbfile.subvol));
+		ret = lookup_btrfs_subvol(fd, &(dbfile.subvol));
 		if (ret) {
 			fprintf(stderr,
-				"Error %d: %s while finding subvolid for file "
+				"Error %d: %s while finding subvol for file "
 				"\"%s\". Skipping.\n", ret, strerror(ret),
 				path);
 			return 0;

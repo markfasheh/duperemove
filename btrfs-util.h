@@ -19,7 +19,7 @@
 #include <stdint.h>
 #include <uuid/uuid.h>
 
-int lookup_btrfs_subvolid(int fd, uint64_t *rootid);
+int lookup_btrfs_subvol(int fd, uint64_t *rootid);
 int is_btrfs(char *path);
 int btrfs_get_fsuuid(int fd, uuid_t *uuid);
 #endif	/* __BTRFS_UTIL__ */

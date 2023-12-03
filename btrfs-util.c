@@ -45,7 +45,7 @@
  * - BTRFS_EMPTY_SUBVOL_DIR_OBJECTID (directory with ino == 2) the result is
  *   undefined and function returns -1
  */
-int lookup_btrfs_subvolid(int fd, uint64_t *subvolid)
+int lookup_btrfs_subvol(int fd, uint64_t *subvol)
 {
 	int ret;
 	struct btrfs_ioctl_ino_lookup_args args;
@@ -57,7 +57,7 @@ int lookup_btrfs_subvolid(int fd, uint64_t *subvolid)
 	if (ret)
 		return errno;
 
-	*subvolid = args.treeid;
+	*subvol = args.treeid;
 
 	return 0;
 }

@@ -1381,7 +1381,7 @@ void dbfile_list_files(struct dbhandle *db, int (*callback)(void*, int, char**, 
  * Returns false only if they match.
  * Returns true if not, or if there is not data found, or on error.
  */
-int dbfile_describe_file(struct dbhandle *db, uint64_t inum, uint64_t subvolid,
+int dbfile_describe_file(struct dbhandle *db, uint64_t ino, uint64_t subvol,
 				struct file *dbfile)
 {
 	int ret;
@@ -1394,13 +1394,13 @@ int dbfile_describe_file(struct dbhandle *db, uint64_t inum, uint64_t subvolid,
 	if (!options.hashfile)
 		dbfile_lock();
 
-	ret = sqlite3_bind_int64(stmt, 1, inum);
+	ret = sqlite3_bind_int64(stmt, 1, ino);
 	if (ret) {
 		perror_sqlite(ret, "binding values");
 		goto out;
 	}
 
-	ret = sqlite3_bind_int64(stmt, 2, subvolid);
+	ret = sqlite3_bind_int64(stmt, 2, subvol);
 	if (ret) {
 		perror_sqlite(ret, "binding values");
 		goto out;

@@ -151,7 +151,7 @@ int dbfile_remove_file(struct dbhandle *db, const char *filename);
 
 void dbfile_list_files(struct dbhandle *db, int (*callback)(void*, int, char**, char**));
 
-int dbfile_describe_file(struct dbhandle *db, uint64_t inum, uint64_t subvolid,
+int dbfile_describe_file(struct dbhandle *db, uint64_t ino, uint64_t subvol,
 				struct file *dbfile);
 int dbfile_load_same_files(struct dbhandle *db, struct results_tree *res,
 			   unsigned int seq);
