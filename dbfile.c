@@ -902,34 +902,32 @@ int dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg)
 }
 
 /* Returns 0 on error, and the inserted rowid on success */
-int64_t dbfile_store_file_info(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
-				char *path, uint64_t size, uint64_t mtime,
-				unsigned int dedupe_seq)
+int64_t dbfile_store_file_info(struct dbhandle *db, struct file *dbfile)
 {
 	int ret;
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.write_file;
 
-	ret = sqlite3_bind_int64(stmt, 1, ino);
+	ret = sqlite3_bind_int64(stmt, 1, dbfile->ino);
 	if (ret)
 		goto bind_error;
 
-	ret = sqlite3_bind_int64(stmt, 2, subvolid);
+	ret = sqlite3_bind_int64(stmt, 2, dbfile->subvol);
 	if (ret)
 		goto bind_error;
 
-	ret = sqlite3_bind_text(stmt, 3, path, -1, SQLITE_STATIC);
+	ret = sqlite3_bind_text(stmt, 3, dbfile->filename, -1, SQLITE_STATIC);
 	if (ret)
 		goto bind_error;
 
-	ret = sqlite3_bind_int64(stmt, 4, size);
+	ret = sqlite3_bind_int64(stmt, 4, dbfile->size);
 	if (ret)
 		goto bind_error;
 
-	ret = sqlite3_bind_int64(stmt, 5, mtime);
+	ret = sqlite3_bind_int64(stmt, 5, dbfile->mtime);
 	if (ret)
 		goto bind_error;
 
-	ret = sqlite3_bind_int(stmt, 6, dedupe_seq);
+	ret = sqlite3_bind_int(stmt, 6, dbfile->dedupe_seq);
 	if (ret)
 		goto bind_error;
 
@@ -1428,7 +1426,7 @@ void dbfile_list_files(struct dbhandle *db, int (*callback)(void*, int, char**, 
  * Returns true if not, or if there is not data found, or on error.
  */
 int dbfile_describe_file(struct dbhandle *db, uint64_t inum, uint64_t subvolid,
-				uint64_t *mtime, uint64_t *size, char *path)
+				struct file *dbfile)
 {
 	int ret;
 	char *buf;
@@ -1463,11 +1461,11 @@ int dbfile_describe_file(struct dbhandle *db, uint64_t inum, uint64_t subvolid,
 		goto out;
 	}
 
-	*mtime = sqlite3_column_int64(stmt, 0);
-	*size = sqlite3_column_int64(stmt, 1);
+	dbfile->mtime = sqlite3_column_int64(stmt, 0);
+	dbfile->size = sqlite3_column_int64(stmt, 1);
 
 	buf = (char *)sqlite3_column_text(stmt, 2);
-	strncpy(path, buf, PATH_MAX);
+	strncpy(dbfile->filename, buf, PATH_MAX);
 
 	ret = 0;
 

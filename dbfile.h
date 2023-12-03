@@ -9,6 +9,7 @@
 #include <uuid/uuid.h>
 
 #include "util.h"
+#include "csum.h"
 
 struct filerec;
 struct block_csum;
@@ -51,6 +52,19 @@ struct stmts {
 struct dbhandle {
 	sqlite3 *db;
 	struct stmts stmts;
+};
+
+struct file {
+	int64_t		id;
+	char		filename[PATH_MAX + 1];
+	uint64_t	ino;
+	uint64_t	subvol;
+	size_t		size;
+	uint64_t	blocks;
+	uint64_t	mtime;
+	unsigned int	dedupe_seq;
+	char		digest[DIGEST_LEN];
+	unsigned int	flags;
 };
 
 struct dbhandle *dbfile_open_handle(char *filename);
@@ -112,8 +126,7 @@ int dbfile_load_one_filerec(struct dbhandle *db, uint64_t ino, uint64_t subvol,
  */
 struct dbhandle *dbfile_get_handle(void);
 
-int64_t dbfile_store_file_info(struct dbhandle *db, uint64_t ino, uint64_t subvolid,
-			char *path, uint64_t size, uint64_t mtime, unsigned int dedupe_seq);
+int64_t dbfile_store_file_info(struct dbhandle *db, struct file *dbfile);
 int dbfile_store_block_hashes(struct dbhandle *db, int64_t fileid,
 				uint64_t nb_hash, struct block_csum *hashes);
 int dbfile_store_extent_hashes(struct dbhandle *db, int64_t fileid,
@@ -139,7 +152,7 @@ int dbfile_remove_file(struct dbhandle *db, const char *filename);
 void dbfile_list_files(struct dbhandle *db, int (*callback)(void*, int, char**, char**));
 
 int dbfile_describe_file(struct dbhandle *db, uint64_t inum, uint64_t subvolid,
-				uint64_t *mtime, uint64_t *size, char *path);
+				struct file *dbfile);
 int dbfile_load_same_files(struct results_tree *res, unsigned int seq);
 
 int dbfile_rename_file(struct dbhandle *db, uint64_t ino, uint64_t subvol,

@@ -566,17 +566,12 @@ static inline bool is_file_renamed(char *path_in_db, char *path)
 static int __scan_file(char *path, struct dbhandle *db, struct statx *st)
 {
 	int ret;
-	uint64_t mtime = 0, size = 0;
+	struct file dbfile = {0,};
 	static unsigned int seq = 0, counter = 0;
 	GError *err = NULL;
 	struct file_to_scan *file;
 	int64_t fileid = 0;
 	bool file_renamed;
-
-	uint64_t subvolid = 0;
-
-	/* The file path stored in the hashfile. Used to detect file rename. */
-	char path_in_db[PATH_MAX] = {0,};
 
 	/*
 	 * The first call initializes the static variable
@@ -602,7 +597,7 @@ static int __scan_file(char *path, struct dbhandle *db, struct statx *st)
 		 * can have the same i_ino. Get the subvolume id of
 		 * our file so hard link detection works.
 		 */
-		ret = lookup_btrfs_subvolid(fd, &subvolid);
+		ret = lookup_btrfs_subvolid(fd, &(dbfile.subvol));
 		if (ret) {
 			fprintf(stderr,
 				"Error %d: %s while finding subvolid for file "
@@ -615,17 +610,17 @@ static int __scan_file(char *path, struct dbhandle *db, struct statx *st)
 	/*
 	 * Check the database to see if that file need rescan or not.
 	 */
-	ret = dbfile_describe_file(db, st->stx_ino, subvolid, &mtime, &size, path_in_db);
+	ret = dbfile_describe_file(db, st->stx_ino, dbfile.subvol, &dbfile);
 	if (ret) {
 		vprintf("dbfile_describe_file failed\n");
 		return 0;
 	}
 
-	file_renamed = is_file_renamed(path_in_db, path);
+	file_renamed = is_file_renamed(dbfile.filename, path);
 
 	/* Database is up-to-date, nothing more to do */
-	if (mtime == timestamp_to_nano(st->stx_mtime)
-	    && size == st->stx_size && !file_renamed)
+	if (dbfile.mtime == timestamp_to_nano(st->stx_mtime)
+	    && dbfile.size == st->stx_size && !file_renamed)
 		return 0;
 
 	if (options.batch_size != 0) {
@@ -636,27 +631,33 @@ static int __scan_file(char *path, struct dbhandle *db, struct statx *st)
 		}
 	}
 
+	dbfile.ino = st->stx_ino;
+	dbfile.size = st->stx_size;
+	strncpy(dbfile.filename, path, PATH_MAX);
+	dbfile.mtime = timestamp_to_nano(st->stx_mtime);
+	dbfile.dedupe_seq = seq;
+
 	dbfile_lock();
 	dbfile_begin_trans(db->db);
 
 	if (file_renamed) {
-		ret = dbfile_rename_file(db, st->stx_ino, subvolid, path);
+		ret = dbfile_rename_file(db, st->stx_ino, dbfile.subvol, path);
 		if (ret) {
 			vprintf("dbfile_rename_file failed\n");
 			return 0;
 		}
 	}
 
-	if (mtime != 0 || size != 0) {
+	if (dbfile.mtime != 0 || dbfile.size != 0) {
 		/*
 		 * The file was scanned in a previous run.
 		 * We will rescan it, so let's remove old hashes
 		 */
-		dbfile_remove_hashes(db, st->stx_ino, subvolid);
+		dbfile_remove_hashes(db, st->stx_ino, dbfile.subvol);
 	}
 
 	/* Upsert the file record */
-	fileid = dbfile_store_file_info(db, st->stx_ino, subvolid, path, st->stx_size, timestamp_to_nano(st->stx_mtime), seq);
+	fileid = dbfile_store_file_info(db, &dbfile);
 	if (!fileid) {
 		dbfile_abort_trans(db->db);
 		dbfile_unlock();
