@@ -641,7 +641,7 @@ static int __scan_file(char *path, struct dbhandle *db, struct statx *st)
 	dbfile_begin_trans(db->db);
 
 	if (file_renamed) {
-		ret = dbfile_rename_file(db, st->stx_ino, dbfile.subvol, path);
+		ret = dbfile_rename_file(db, dbfile.id, path);
 		if (ret) {
 			vprintf("dbfile_rename_file failed\n");
 			return 0;

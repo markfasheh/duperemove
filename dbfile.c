@@ -523,7 +523,7 @@ struct dbhandle *dbfile_open_handle(char *filename)
 	dbfile_prepare_stmt(delete_file, DELETE_FILE);
 
 #define SELECT_FILE_CHANGES						\
-"select mtime, size, filename from files where ino = ?1 and subvol = ?2;"
+"select mtime, size, filename, id from files where ino = ?1 and subvol = ?2;"
 	dbfile_prepare_stmt(select_file_changes, SELECT_FILE_CHANGES);
 
 #define COUNT_B_HASHES "select COUNT(*) from blocks;"
@@ -542,7 +542,7 @@ struct dbhandle *dbfile_open_handle(char *filename)
 	dbfile_prepare_stmt(delete_unscanned_files, DELETE_UNSCANNED_FILES);
 
 #define RENAME_FILE							\
-"update files set filename = ?1 where ino = ?2 and subvol = ?3;"
+"update files set filename = ?1 where id = ?2;"
 	dbfile_prepare_stmt(rename_file, RENAME_FILE);
 	return result;
 
@@ -1455,6 +1455,8 @@ int dbfile_describe_file(struct dbhandle *db, uint64_t inum, uint64_t subvolid,
 	buf = (char *)sqlite3_column_text(stmt, 2);
 	strncpy(dbfile->filename, buf, PATH_MAX);
 
+	dbfile->id = sqlite3_column_int64(stmt, 3);
+
 	ret = 0;
 
 out:
@@ -1507,8 +1509,7 @@ int dbfile_load_same_files(struct dbhandle *db, struct results_tree *res,
 	return 0;
 }
 
-int dbfile_rename_file(struct dbhandle *db, uint64_t ino, uint64_t subvol,
-		       char *path)
+int dbfile_rename_file(struct dbhandle *db, int64_t fileid, char *path)
 {
 	int ret;
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.rename_file;
@@ -1519,13 +1520,7 @@ int dbfile_rename_file(struct dbhandle *db, uint64_t ino, uint64_t subvol,
 		return ret;
 	}
 
-	ret = sqlite3_bind_int64(stmt, 2, ino);
-	if (ret) {
-		perror_sqlite(ret, "binding values");
-		return ret;
-	}
-
-	ret = sqlite3_bind_int64(stmt, 3, subvol);
+	ret = sqlite3_bind_int64(stmt, 2, fileid);
 	if (ret) {
 		perror_sqlite(ret, "binding values");
 		return ret;
