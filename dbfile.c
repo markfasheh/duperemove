@@ -539,7 +539,7 @@ struct dbhandle *dbfile_open_handle(char *filename)
 	dbfile_prepare_stmt(delete_unscanned_files, DELETE_UNSCANNED_FILES);
 
 #define RENAME_FILE							\
-"update files set filename = ?1 where id = ?2;"
+"update or replace files set filename = ?1 where id = ?2;"
 	dbfile_prepare_stmt(rename_file, RENAME_FILE);
 	return result;
 
