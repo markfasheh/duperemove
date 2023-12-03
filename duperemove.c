@@ -515,7 +515,7 @@ static void print_header(void)
 	qprintf("Gathering file list...\n");
 }
 
-static void __process_duplicates(unsigned int seq)
+static void __process_duplicates(struct dbhandle *db, unsigned int seq)
 {
 	int ret;
 	struct results_tree res;
@@ -525,7 +525,7 @@ static void __process_duplicates(unsigned int seq)
 	init_hash_tree(&dups_tree);
 
 	qprintf("Loading only identical files from hashfile.\n");
-	ret = dbfile_load_same_files(&res, seq + 1);
+	ret = dbfile_load_same_files(db, &res, seq + 1);
 	if (ret)
 		goto out;
 
@@ -542,13 +542,13 @@ static void __process_duplicates(unsigned int seq)
 
 		qprintf("Loading only duplicated hashes from hashfile.\n");
 
-		ret = dbfile_load_extent_hashes(&res, seq + 1);
+		ret = dbfile_load_extent_hashes(db, &res, seq + 1);
 		if (ret)
 			goto out;
 
 		printf("Found %llu identical extents.\n", res.num_extents);
 		if (options.do_block_hash) {
-			ret = dbfile_load_block_hashes(&dups_tree, seq + 1);
+			ret = dbfile_load_block_hashes(db, &dups_tree, seq + 1);
 			if (ret)
 				goto out;
 
@@ -568,16 +568,16 @@ out:
 	free_hash_tree(&dups_tree);
 }
 
-static void process_duplicates()
+static void process_duplicates(struct dbhandle *db)
 {
-	unsigned int max = get_max_dedupe_seq(dbfile_get_handle());
+	unsigned int max = get_max_dedupe_seq(db);
 
 	for (unsigned int i = dedupe_seq; i < max; i++) {
 		/* Drop all filerecs from the previous iteration. Needed filerecs will be
 		 * recreated by __process_duplicates()
 		 */
 		free_all_filerecs();
-		__process_duplicates(i);
+		__process_duplicates(db, i);
 
 		if (options.run_dedupe) {
 			/*
@@ -587,7 +587,7 @@ static void process_duplicates()
 			dedupe_seq++;
 			dbfile_cfg.dedupe_seq = dedupe_seq;
 			dbfile_cfg.blocksize = blocksize;
-			dbfile_sync_config(dbfile_get_handle(), &dbfile_cfg);
+			dbfile_sync_config(db, &dbfile_cfg);
 		}
 	}
 }
@@ -688,7 +688,7 @@ int main(int argc, char **argv)
 	}
 
 	if (use_hashfile == H_READ || use_hashfile == H_UPDATE)
-		process_duplicates();
+		process_duplicates(db);
 
 out:
 	free_all_filerecs();

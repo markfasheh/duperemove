@@ -1161,20 +1161,14 @@ int dbfile_load_one_filerec(struct dbhandle *db, uint64_t ino, uint64_t subvol,
 	return 0;
 }
 
-int dbfile_load_block_hashes(struct hash_tree *hash_tree, unsigned int seq)
+int dbfile_load_block_hashes(struct dbhandle *db, struct hash_tree *hash_tree,
+			     unsigned int seq)
 {
 	int ret;
-	struct dbhandle *db;
-	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = NULL;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.get_duplicate_blocks;
 	uint64_t subvol, ino, loff;
 	unsigned char *digest;
 	struct filerec *file;
-
-	db = dbfile_get_handle();
-	if (!db)
-		return ENOENT;
-
-	stmt = db->stmts.get_duplicate_blocks;
 
 	ret = sqlite3_bind_int64(stmt, 1, seq);
 	if (ret) {
@@ -1213,20 +1207,14 @@ int dbfile_load_block_hashes(struct hash_tree *hash_tree, unsigned int seq)
 	return 0;
 }
 
-int dbfile_load_extent_hashes(struct results_tree *res, unsigned int seq)
+int dbfile_load_extent_hashes(struct dbhandle *db, struct results_tree *res,
+			      unsigned int seq)
 {
 	int ret;
-	struct dbhandle *db;
-	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = NULL;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.get_duplicate_extents;
 	uint64_t subvol, ino, loff, poff, len;
 	unsigned char *digest;
 	struct filerec *file;
-
-	db = dbfile_get_handle();
-	if (!db)
-		return ENOENT;
-
-	stmt = db->stmts.get_duplicate_extents;
 
 	ret = sqlite3_bind_int64(stmt, 1, seq);
 	if (ret) {
@@ -1475,20 +1463,14 @@ out:
 	return ret;
 }
 
-int dbfile_load_same_files(struct results_tree *res, unsigned int seq)
+int dbfile_load_same_files(struct dbhandle *db, struct results_tree *res,
+			   unsigned int seq)
 {
 	int ret;
-	struct dbhandle *db;
-	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = NULL;
+	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.get_duplicate_files;
 	uint64_t subvol, ino, len;
 	unsigned char *digest;
 	struct filerec *file;
-
-	db = dbfile_get_handle();
-	if (!db)
-		return ENOENT;
-
-	stmt = db->stmts.get_duplicate_files;
 
 	ret = sqlite3_bind_int64(stmt, 1, seq);
 	if (ret) {
