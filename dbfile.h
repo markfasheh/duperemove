@@ -96,8 +96,6 @@ uint64_t count_file_by_digest(struct dbhandle *db, unsigned char *digest,
 				bool show_block_hashes);
 
 struct hash_tree;
-struct hash_file_header;
-struct rb_root;
 
 /*
  * Load hashes into hash_tree only if they have a duplicate in the db.
