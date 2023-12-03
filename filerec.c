@@ -32,7 +32,7 @@
 
 static GMutex filerec_fd_mutex;
 struct list_head filerec_list;
-static struct rb_root filerec_by_inum = RB_ROOT;
+static struct rb_root filerec_by_fileid = RB_ROOT;
 unsigned long long num_filerecs = 0ULL;
 unsigned int dedupe_seq = 0;
 
@@ -110,16 +110,11 @@ struct filerec_token *filerec_token_new(struct filerec *file)
 	return token;
 }
 
-static int cmp_filerecs(struct filerec *file1, uint64_t file2_inum,
-			uint64_t file2_subvolid)
+static int cmp_filerecs(struct filerec *file1, int64_t file2_fileid)
 {
-	if (file1->inum < file2_inum)
+	if (file1->fileid < file2_fileid)
 		return -1;
-	else if (file1->inum > file2_inum)
-		return 1;
-	if (file1->subvolid < file2_subvolid)
-		return -1;
-	if (file1->subvolid > file2_subvolid)
+	else if (file1->fileid > file2_fileid)
 		return 1;
 	return 0;
 }
@@ -127,16 +122,16 @@ static int cmp_filerecs(struct filerec *file1, uint64_t file2_inum,
 static void insert_filerec(struct filerec *file)
 {
 	int c;
-	struct rb_node **p = &filerec_by_inum.rb_node;
+	struct rb_node **p = &filerec_by_fileid.rb_node;
 	struct rb_node *parent = NULL;
 	struct filerec *tmp;
 
 	while (*p) {
 		parent = *p;
 
-		tmp = rb_entry(parent, struct filerec, inum_node);
+		tmp = rb_entry(parent, struct filerec, fileid_node);
 
-		c = cmp_filerecs(tmp, file->inum, file->subvolid);
+		c = cmp_filerecs(tmp, file->fileid);
 		if (c < 0)
 			p = &(*p)->rb_left;
 		else if (c > 0)
@@ -145,21 +140,21 @@ static void insert_filerec(struct filerec *file)
 			abort_lineno(); /* We should never find a duplicate */
 	}
 
-	rb_link_node(&file->inum_node, parent, p);
-	rb_insert_color(&file->inum_node, &filerec_by_inum);
+	rb_link_node(&file->fileid_node, parent, p);
+	rb_insert_color(&file->fileid_node, &filerec_by_fileid);
 	return;
 }
 
-struct filerec *filerec_find(uint64_t inum, uint64_t subvolid)
+struct filerec *filerec_find(int64_t fileid)
 {
 	int c;
-	struct rb_node *n = filerec_by_inum.rb_node;
+	struct rb_node *n = filerec_by_fileid.rb_node;
 	struct filerec *file;
 
 	while (n) {
-		file = rb_entry(n, struct filerec, inum_node);
+		file = rb_entry(n, struct filerec, fileid_node);
 
-		c = cmp_filerecs(file, inum, subvolid);
+		c = cmp_filerecs(file, fileid);
 		if (c < 0)
 			n = n->rb_left;
 		else if (c > 0)
@@ -171,7 +166,7 @@ struct filerec *filerec_find(uint64_t inum, uint64_t subvolid)
 }
 
 static struct filerec *filerec_alloc_insert(const char *filename,
-					    uint64_t inum, uint64_t subvolid,
+					    int64_t fileid,
 					    uint64_t size)
 {
 	struct filerec *file = calloc_filerec(1);
@@ -187,9 +182,8 @@ static struct filerec *filerec_alloc_insert(const char *filename,
 
 	file->fd = -1;
 	file->block_tree = RB_ROOT;
-	rb_init_node(&file->inum_node);
-	file->inum = inum;
-	file->subvolid = subvolid;
+	rb_init_node(&file->fileid_node);
+	file->fileid = fileid;
 	file->size = size;
 
 	insert_filerec(file);
@@ -199,11 +193,11 @@ static struct filerec *filerec_alloc_insert(const char *filename,
 	return file;
 }
 
-struct filerec *filerec_new(const char *filename, uint64_t inum,
-			    uint64_t subvolid, uint64_t size)
+struct filerec *filerec_new(const char *filename, int64_t fileid,
+			    uint64_t size)
 {
 	struct filerec *file;
-	file = filerec_alloc_insert(filename, inum, subvolid, size);
+	file = filerec_alloc_insert(filename, fileid, size);
 	return file;
 }
 
@@ -219,8 +213,8 @@ void filerec_free(struct filerec *file)
 //		abort_on(!RB_EMPTY_ROOT(&file->block_tree));
 		list_del(&file->rec_list);
 
-		if (!RB_EMPTY_NODE(&file->inum_node))
-			rb_erase(&file->inum_node, &filerec_by_inum);
+		if (!RB_EMPTY_NODE(&file->fileid_node))
+			rb_erase(&file->fileid_node, &filerec_by_fileid);
 		free_filerec(file);
 		num_filerecs--;
 	}

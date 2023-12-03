@@ -512,12 +512,12 @@ static int extent_dedupe_worker(struct dupe_extents *dext,
 			 * the new extents mapping as well as their new hashes
 			 * This may cause dbfile_load_one_file_extent() to raise an error.
 			 */
-			dbfile_remove_extent_hashes(db, extent->e_file->inum, extent->e_file->subvolid);
+			dbfile_remove_extent_hashes(db, extent->e_file->fileid);
 		} else {
 			/* Rescan physical offset and update the hashfile accordingly */
 			ret = fiemap_scan_extent(extent);
 			if (!ret)
-				dbfile_update_extent_poff(db, extent->e_file->inum, extent->e_file->subvolid, extent->e_loff, extent->e_poff);
+				dbfile_update_extent_poff(db, extent->e_file->fileid, extent->e_loff, extent->e_poff);
 		}
 	}
 	dbfile_unlock();

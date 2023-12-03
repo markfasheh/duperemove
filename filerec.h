@@ -32,10 +32,9 @@ struct filerec {
 	unsigned int	fd_refs;			/* fd refcount */
 
 	char	*filename;		/* path to file */
-	uint64_t subvolid;
+	int64_t fileid;
 
-	uint64_t		inum;
-	struct rb_node		inum_node;
+	struct rb_node		fileid_node;
 
 	uint64_t		size;
 	struct rb_root		block_tree;	/* root for hash blocks tree */
@@ -46,9 +45,9 @@ struct filerec {
 void init_filerec(void);
 void free_all_filerecs(void);
 
-struct filerec *filerec_new(const char *filename, uint64_t inum,
-			    uint64_t subvolid, uint64_t size);
-struct filerec *filerec_find(uint64_t inum, uint64_t subvolid);
+struct filerec *filerec_new(const char *filename, int64_t fileid,
+			    uint64_t size);
+struct filerec *filerec_find(int64_t fileid);
 
 void filerec_free(struct filerec *file);
 int filerec_open(struct filerec *file, bool quiet);

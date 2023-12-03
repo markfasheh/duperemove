@@ -653,7 +653,7 @@ static int __scan_file(char *path, struct dbhandle *db, struct statx *st)
 		 * The file was scanned in a previous run.
 		 * We will rescan it, so let's remove old hashes
 		 */
-		dbfile_remove_hashes(db, st->stx_ino, dbfile.subvol);
+		dbfile_remove_hashes(db, dbfile.id);
 	}
 
 	/* Upsert the file record */
@@ -1240,5 +1240,5 @@ void add_file_fdupes(char *path)
 		fprintf(stderr, "statx on %s: %s\n", path, strerror(errno));
 		return;
 	}
-	filerec_new(path, st.stx_ino, 0, st.stx_size);
+	filerec_new(path, st.stx_ino, st.stx_size);
 }

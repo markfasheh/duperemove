@@ -117,7 +117,7 @@ int dbfile_load_nondupe_file_extents(struct dbhandle *db, struct filerec *file,
 int dbfile_load_one_file_extent(struct dbhandle *db, struct filerec *file,
 				uint64_t loff, struct file_extent *extent);
 
-int dbfile_load_one_filerec(struct dbhandle *db, uint64_t ino, uint64_t subvol,
+int dbfile_load_one_filerec(struct dbhandle *db, int64_t fileid,
 				struct filerec **file);
 
 /*
@@ -136,7 +136,7 @@ int dbfile_update_scanned_file(struct dbhandle *db, int64_t fileid,
 int dbfile_begin_trans(sqlite3 *db);
 int dbfile_commit_trans(sqlite3 *db);
 int dbfile_abort_trans(sqlite3 *db);
-int dbfile_update_extent_poff(struct dbhandle *db, uint64_t ino, uint64_t subvol,
+int dbfile_update_extent_poff(struct dbhandle *db, int64_t fileid,
 				uint64_t loff, uint64_t poff);
 
 /*
@@ -146,7 +146,7 @@ int dbfile_update_extent_poff(struct dbhandle *db, uint64_t ino, uint64_t subvol
 typedef void (*iter_files_func)(char *filename, char *ino, char *subvol);
 int dbfile_iter_files(struct dbhandle *db, iter_files_func func);
 
-int dbfile_remove_extent_hashes(struct dbhandle *db, uint64_t ino, uint64_t subvolid);
+int dbfile_remove_extent_hashes(struct dbhandle *db, int64_t fileid);
 int dbfile_remove_file(struct dbhandle *db, const char *filename);
 
 void dbfile_list_files(struct dbhandle *db, int (*callback)(void*, int, char**, char**));
@@ -174,7 +174,7 @@ static inline void sqlite3_reset_stmt(sqlite3_stmt **stmt)
 }
 
 void dbfile_set_gdb(struct dbhandle *db);
-int dbfile_remove_hashes(struct dbhandle *db, uint64_t ino, uint64_t subvolid);
+int dbfile_remove_hashes(struct dbhandle *db, int64_t fileid);
 
 unsigned int get_max_dedupe_seq(struct dbhandle *db);
 int dbfile_prune_unscanned_files(struct dbhandle *db);
