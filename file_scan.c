@@ -544,10 +544,7 @@ static inline bool is_file_renamed(char *path_in_db, char *path)
 {
 	struct stat st;
 
-	if (strlen(path_in_db) == 0)
-		return true;
-
-	if (strcmp(path_in_db, path) == 0)
+	if (strlen(path_in_db) == 0 || strcmp(path_in_db, path) == 0)
 		return false;
 
 	/*
