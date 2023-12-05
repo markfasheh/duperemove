@@ -1019,6 +1019,9 @@ static void csum_whole_file(struct file_to_scan *file)
 	 */
 	bool eof_reached = false;
 
+	/* Prevent close on fd 0 if, somehow, an error occurs before we open */
+	ctxt.fd = -1;
+
 	print_progress(file->file_position, file->path);
 
 	if (!(buffer.buf)) {
