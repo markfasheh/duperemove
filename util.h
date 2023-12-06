@@ -78,6 +78,6 @@ static inline void closefd(int *fd)
 		close(*fd);
 }
 
-void debug_print_uuid(FILE *stream, uuid_t uuid);
+void debug_print_uuid(uuid_t uuid);
 
 #endif	/* __UTIL_H__ */

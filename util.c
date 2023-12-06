@@ -333,9 +333,9 @@ int increase_limits(void) {
 	return 0;
 }
 
-void debug_print_uuid(FILE *stream, uuid_t uuid)
+void debug_print_uuid(uuid_t uuid)
 {
 	char buf[37];
 	uuid_unparse(uuid, buf);
-	fputs(buf, stream);
+	puts(buf);
 }

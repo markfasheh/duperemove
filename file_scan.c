@@ -401,9 +401,9 @@ bool check_file(struct dbhandle *db, char *path, struct statx *st, bool parent_c
 
 		if (uuid_compare(uuid, locked_fs.uuid) != 0) {
 			fprintf(stderr, "%s lives on fs ", path);
-			debug_print_uuid(stderr, uuid);
+			debug_print_uuid(uuid);
 			fprintf(stderr, " will we are locked on fs ");
-			debug_print_uuid(stderr, locked_fs.uuid);
+			debug_print_uuid(locked_fs.uuid);
 			fprintf(stderr, ".\n");
 			return false;
 		}
