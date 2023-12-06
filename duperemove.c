@@ -40,7 +40,6 @@
 #include "dbfile.h"
 #include "memstats.h"
 #include "debug.h"
-
 #include "file_scan.h"
 #include "find_dupes.h"
 #include "run_dedupe.h"
@@ -74,7 +73,7 @@ static int list_db_files(char *filename)
 
 	_cleanup_(sqlite3_close_cleanup) struct dbhandle *db = dbfile_open_handle(filename);
 	if (!db) {
-		fprintf(stderr, "Error: Could not open \"%s\"\n", filename);
+		eprintf("Error: Could not open \"%s\"\n", filename);
 		return -1;
 	}
 
@@ -97,7 +96,7 @@ static void rm_db_files_from_stdin(struct dbhandle *db)
 		}
 
 		if (readlen > PATH_MAX - 1) {
-			fprintf(stderr, "Path max exceeded: %s\n", path);
+			eprintf("Path max exceeded: %s\n", path);
 			continue;
 		}
 
@@ -110,7 +109,7 @@ static int rm_db_files(int numfiles, char **files)
 	int i, ret;
 	_cleanup_(sqlite3_close_cleanup) struct dbhandle *db = dbfile_open_handle(options.hashfile);
 	if (!db) {
-		fprintf(stderr, "Error: Could not open \"%s\"\n", options.hashfile);
+		eprintf("Error: Could not open \"%s\"\n", options.hashfile);
 		return -1;
 	}
 
@@ -178,7 +177,7 @@ static int parse_dedupe_opts(const char *raw_opts)
 	}
 
 	if (print_usage) {
-		fprintf(stderr, "Bad dedupe options specified. Valid dedupe "
+		eprintf("Bad dedupe options specified. Valid dedupe "
 			"options are:\n"
 			"\t[no]same\n"
 			"\t[no]only_whole_files\n"
@@ -230,7 +229,7 @@ static int process_fdupes()
 		}
 
 		if (readlen > PATH_MAX - 1) {
-			fprintf(stderr, "Path max exceeded: %s\n", path);
+			eprintf("Path max exceeded: %s\n", path);
 			continue;
 		}
 
@@ -255,13 +254,12 @@ static int add_files_from_stdin(struct dbhandle *db)
 		}
 
 		if (readlen > PATH_MAX - 1) {
-			fprintf(stderr, "Path max exceeded: %s\n", path);
+			eprintf("Path max exceeded: %s\n", path);
 			continue;
 		}
 
 		if (scan_file(path, db)) {
-			fprintf(stderr,
-				"Error: cannot add %s into the lookup list\n",
+			eprintf("Error: cannot add %s into the lookup list\n",
 				path);
 			return 1;
 		}
@@ -278,9 +276,7 @@ static int scan_files_from_cmdline(int numfiles, char **files, struct dbhandle *
 		char *name = files[i];
 
 		if (scan_file(name, db)) {
-			fprintf(stderr,
-				"Error: cannot scan %s\n",
-				name);
+			eprintf("Error: cannot scan %s\n", name);
 			return 1;
 		}
 	}
@@ -333,7 +329,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			blocksize = parse_size(optarg);
 			if (blocksize < MIN_BLOCKSIZE ||
 			    blocksize > MAX_BLOCKSIZE){
-				fprintf(stderr, "Error: Blocksize is bounded by %u and %u, %u found\n",
+				eprintf("Error: Blocksize is bounded by %u and %u, %u found\n",
 					MIN_BLOCKSIZE, MAX_BLOCKSIZE, blocksize);
 				return EINVAL;
 			}
@@ -373,7 +369,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		case IO_THREADS_OPTION:
 			options.io_threads = strtoul(optarg, NULL, 10);
 			if (!options.io_threads){
-				fprintf(stderr, "Error: --io-threads must be "
+				eprintf("Error: --io-threads must be "
 					"an integer, %s found\n", optarg);
 				return EINVAL;
 			}
@@ -381,7 +377,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		case CPU_THREADS_OPTION:
 			options.cpu_threads = strtoul(optarg, NULL, 10);
 			if (!options.cpu_threads){
-				fprintf(stderr, "Error: --cpu-threads must be "
+				eprintf("Error: --cpu-threads must be "
 					"an integer, %s found\n", optarg);
 				return EINVAL;
 			}
@@ -408,7 +404,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 			break;
 		case EXCLUDE_OPTION:
 			if (add_exclude_pattern(optarg))
-				fprintf(stderr, "Error: cannot exclude %s\n", optarg);
+				eprintf("Error: cannot exclude %s\n", optarg);
 			break;
 		case BATCH_SIZE_OPTION:
 		case 'B':
@@ -426,14 +422,14 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 	numfiles = argc - optind;
 
 	if (options.only_whole_files && options.do_block_hash) {
-		fprintf(stderr, "Error: using both only_whole_files and partial "
+		eprintf("Error: using both only_whole_files and partial "
 			"options have no meaning\n");
 		return 1;
 	}
 
 	/* Filter out option combinations that don't make sense. */
 	if ((write_hashes + read_hashes + update_hashes) > 1) {
-		fprintf(stderr, "Error: Specify only one hashfile option.\n");
+		eprintf("Error: Specify only one hashfile option.\n");
 		return 1;
 	}
 
@@ -446,8 +442,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 
 	if (read_hashes) {
 		if (numfiles) {
-			fprintf(stderr,
-				"Error: --read-hashes option does not take a "
+			eprintf("Error: --read-hashes option does not take a "
 				"file list argument\n");
 			return 1;
 		}
@@ -456,15 +451,13 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 
 	if (options.fdupes_mode) {
 		if (read_hashes || write_hashes || update_hashes) {
-			fprintf(stderr,
-				"Error: cannot mix hashfile option with "
+			eprintf("Error: cannot mix hashfile option with "
 				"--fdupes option\n");
 			return 1;
 		}
 
 		if (numfiles) {
-			fprintf(stderr,
-				"Error: fdupes option does not take a file "
+			eprintf("Error: fdupes option does not take a file "
 				"list argument\n");
 			return 1;
 		}
@@ -477,19 +470,19 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		stdin_filelist = 1;
 
 	if (list_only_opt && rm_only_opt) {
-		fprintf(stderr, "Error: Can not mix '-L' and '-R' options.\n");
+		eprintf("Error: Can not mix '-L' and '-R' options.\n");
 		return 1;
 	}
 
 	if (list_only_opt || rm_only_opt) {
 		if (!options.hashfile || use_hashfile == H_WRITE) {
-			fprintf(stderr,	"Error: --hashfile= option is required "
+			eprintf("Error: --hashfile= option is required "
 				"with '-L' or -R.\n");
 			return 1;
 		}
 
 		if (list_only_opt && numfiles) {
-			fprintf(stderr, "Error: -L option do not take "
+			eprintf("Error: -L option do not take "
 				"a file list argument\n");
 			return 1;
 		}
@@ -497,7 +490,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 
 	if (!(options.fdupes_mode || list_only_opt)
 			&& numfiles == 0) {
-		fprintf(stderr, "Error: a file list argument is required.\n");
+		eprintf("Error: a file list argument is required.\n");
 		return 1;
 	}
 
@@ -675,7 +668,7 @@ int main(int argc, char **argv)
 	if (use_hashfile == H_WRITE || use_hashfile == H_UPDATE) {
 		ret = dbfile_prune_unscanned_files(db);
 		if (ret) {
-			fprintf(stderr, "Unable to prune unscanned files\n");
+			eprintf("Unable to prune unscanned files\n");
 			goto out;
 		}
 

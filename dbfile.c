@@ -31,16 +31,16 @@ static GMutex io_mutex; /* Locks db writes */
 
 #if (SQLITE_VERSION_NUMBER < 3007015)
 #define	perror_sqlite(_err, _why)					\
-	fprintf(stderr, "%s(): Database error %d while %s: %s\n",	\
+	eprintf("%s(): Database error %d while %s: %s\n",	\
 		__FUNCTION__, _err, _why, "[sqlite3_errstr() unavailable]")
 #else
 #define	perror_sqlite(_err, _why)					\
-	fprintf(stderr, "%s()/%ld: Database error %d while %s: %s\n",	\
+	eprintf("%s()/%ld: Database error %d while %s: %s\n",	\
 		__FUNCTION__, syscall(SYS_gettid), _err, _why, sqlite3_errstr(_err))
 #endif
 
 #define	perror_sqlite_open(_ptr, _filename)				\
-	fprintf(stderr, "Error opening db \"%s\": %s\n", _filename,	\
+	eprintf("Error opening db \"%s\": %s\n", _filename,	\
 		sqlite3_errmsg(_ptr))
 
 struct dbhandle *dbfile_get_handle(void)
@@ -104,8 +104,7 @@ static int dbfile_check(sqlite3 *db, struct dbfile_config *cfg)
 	char path[PATH_MAX + 1];
 
 	if (cfg->major != DB_FILE_MAJOR || cfg->minor != DB_FILE_MINOR) {
-		fprintf(stderr,
-			"Hash db version mismatch (mine: %d.%d, file: %d.%d)\n",
+		eprintf("Hash db version mismatch (mine: %d.%d, file: %d.%d)\n",
 			DB_FILE_MAJOR, DB_FILE_MINOR, cfg->major, cfg->minor);
 		return EIO;
 	}
@@ -113,8 +112,7 @@ static int dbfile_check(sqlite3 *db, struct dbfile_config *cfg)
 	dbfile_get_dbpath(db, path);
 
 	if (strncasecmp(cfg->hash_type, HASH_TYPE, 8)) {
-		fprintf(stderr,
-			"Error: Hashfile %s uses \"%.*s\" for checksums "
+		eprintf("Error: Hashfile %s uses \"%.*s\" for checksums "
 			"but we are using %.*s.\nYou are probably "
 			"using a hashfile generated from an old version, "
 			"which cannot be read anymore.\n", path, 8,
@@ -285,12 +283,12 @@ static int dbfile_prepare(sqlite3 *db)
 
 	ret = dbfile_check(db, &cfg);
 	if (ret && strcmp("(null)", dbpath) != 0) {
-		fprintf(stderr, "Recreating hashfile ..\n");
+		eprintf("Recreating hashfile ..\n");
 		sqlite3_close(db);
 		ret = unlink(dbpath);
 		if ( ret && errno != ENOENT) {
 			ret = errno;
-			fprintf(stderr, "Error %d while unlinking old "
+			eprintf("Error %d while unlinking old "
 				"db file \"%s\" : %s\n", ret, dbpath,
 				strerror(ret));
 			return ret;
@@ -580,14 +578,14 @@ uint64_t count_file_by_digest(struct dbhandle *db, unsigned char *digest,
 
 	ret = sqlite3_bind_blob(stmt, 1, digest, DIGEST_LEN, SQLITE_STATIC);
 	if (ret) {
-		fprintf(stderr, "Error %d binding digest: %s\n", ret,
+		eprintf("Error %d binding digest: %s\n", ret,
 			sqlite3_errstr(ret));
 		return 0;
 	}
 
 	ret = sqlite3_step(stmt);
 	if (ret != SQLITE_ROW && ret != SQLITE_DONE) {
-		fprintf(stderr, "error %d, file count search: %s\n",
+		eprintf("error %d, file count search: %s\n",
 			ret, sqlite3_errstr(ret));
 		return 0;
 	}
@@ -1166,7 +1164,7 @@ int dbfile_load_block_hashes(struct dbhandle *db, struct hash_tree *hash_tree,
 		if (!file) {
 			ret = dbfile_load_one_filerec(db, fileid, &file);
 			if (ret) {
-				fprintf(stderr, "Error loading filerec (%"
+				eprintf("Error loading filerec (%"
 					PRIu64") from db\n",
 					fileid);
 				return ret;
@@ -1214,7 +1212,7 @@ int dbfile_load_extent_hashes(struct dbhandle *db, struct results_tree *res,
 		if (!file) {
 			ret = dbfile_load_one_filerec(db, fileid, &file);
 			if (ret) {
-				fprintf(stderr, "Error loading filerec (%"
+				eprintf("Error loading filerec (%"
 					PRIu64") from db\n",
 					fileid);
 				return ret;
@@ -1370,7 +1368,7 @@ void dbfile_list_files(struct dbhandle *db, int (*callback)(void*, int, char**, 
 
 	ret = sqlite3_exec(db->db, LIST_FILERECS, callback, NULL, &err);
 	if (ret) {
-		fprintf(stderr, "error %d, executing file search: %s\n", ret,
+		eprintf("error %d, executing file search: %s\n", ret,
 			err);
 		return;
 	}
@@ -1458,7 +1456,7 @@ int dbfile_load_same_files(struct dbhandle *db, struct results_tree *res,
 		if (!file) {
 			ret = dbfile_load_one_filerec(db, fileid, &file);
 			if (ret) {
-				fprintf(stderr, "Error loading filerec (%"
+				eprintf("Error loading filerec (%"
 					PRIu64") from db\n",
 					fileid);
 				return ret;
@@ -1514,7 +1512,7 @@ unsigned int get_max_dedupe_seq(struct dbhandle *db)
 
 	int ret = sqlite3_step(stmt);
 	if (ret != SQLITE_ROW) {
-		fprintf(stderr, "error %d, get max dedupe seq: %s\n",
+		eprintf("error %d, get max dedupe seq: %s\n",
 			ret, sqlite3_errstr(ret));
 		return 0;
 	}

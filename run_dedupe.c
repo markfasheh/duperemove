@@ -332,7 +332,7 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 				dbfile_remove_file(dbfile_get_handle(), extent->e_file->filename);
 				dbfile_unlock();
 			}
-			fprintf(stderr, "%s: Skipping dedupe.\n",
+			eprintf("%s: Skipping dedupe.\n",
 				extent->e_file->filename);
 			/*
 			 * If this was our last duplicate extent in
@@ -367,7 +367,7 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 					       tgt_extent->e_loff, len,
 					       tgt_extent->e_file);
 			if (ctxt == NULL) {
-				fprintf(stderr, "Out of memory while "
+				eprintf("Out of memory while "
 					"allocating dedupe context.\n");
 				ret = ENOMEM;
 				goto out;
@@ -387,7 +387,7 @@ static int dedupe_extent_list(struct dupe_extents *dext, uint64_t *fiemap_bytes,
 		if (rc) {
 			if (rc < 0) {
 				/* This can only be ENOMEM. */
-				fprintf(stderr, "%s: Request not queued.\n",
+				eprintf("%s: Request not queued.\n",
 					extent->e_file->filename);
 				ret = ENOMEM;
 				goto out;
@@ -422,8 +422,7 @@ run_dedupe:
 				process_dedupe_results(ctxt, kern_bytes);
 			} else {
 				ret = errno;
-				fprintf(stderr,
-					"FAILURE: Dedupe ioctl returns %d: %s\n",
+				eprintf("FAILURE: Dedupe ioctl returns %d: %s\n",
 					ret, strerror(ret));
 			}
 		}
@@ -437,8 +436,7 @@ close_files:
 			ret = filerec_open_once(tgt_extent->e_file,
 						&open_files);
 			if (ret) {
-				fprintf(stderr,
-					"%s: Could not re-open as target.\n",
+				eprintf("%s: Could not re-open as target.\n",
 					extent->e_file->filename);
 				break;
 			}
@@ -570,7 +568,7 @@ static int push_extents(struct results_tree *res)
 
 		g_thread_pool_push(dedupe_pool, dext, &err);
 		if (err) {
-			fprintf(stderr, "Fatal error while deduping: %s\n",
+			eprintf("Fatal error while deduping: %s\n",
 				err->message);
 			g_error_free(err);
 			return 1;
@@ -606,7 +604,7 @@ void dedupe_results(struct results_tree *res, bool whole_file)
 	dedupe_pool = g_thread_pool_new((GFunc) dedupe_worker, &counts,
 					options.io_threads, TRUE, &err);
 	if (err) {
-		fprintf(stderr, "Unable to create dedupe thread pool: %s\n",
+		eprintf("Unable to create dedupe thread pool: %s\n",
 			err->message);
 		g_error_free(err);
 		return;
@@ -616,8 +614,7 @@ void dedupe_results(struct results_tree *res, bool whole_file)
 	leading_spaces = num_digits(total_dedupe_passes);
 	ret = push_extents(res);
 	if (ret) {
-		fprintf(stderr, "Fatal error while deduping: %s\n",
-			err->message);
+		eprintf("Fatal error while deduping: %s\n", err->message);
 		g_error_free(err);
 	}
 
@@ -643,8 +640,7 @@ int fdupes_dedupe(void)
 	list_for_each_entry(file, &filerec_list, rec_list) {
 		ret = filerec_open_once(file, &open_files);
 		if (ret) {
-			fprintf(stderr, "%s: Skipping dedupe.\n",
-				file->filename);
+			eprintf("%s: Skipping dedupe.\n", file->filename);
 			continue;
 		}
 
@@ -654,7 +650,7 @@ int fdupes_dedupe(void)
 			ctxt = new_dedupe_ctxt(MAX_DEDUPES_PER_IOCTL,
 					       0, file->size, file);
 			if (ctxt == NULL) {
-				fprintf(stderr, "Out of memory while "
+				eprintf("Out of memory while "
 					"allocating dedupe context.\n");
 				ret = ENOMEM;
 				goto out;
@@ -664,8 +660,7 @@ int fdupes_dedupe(void)
 
 		ret = add_extent_to_dedupe(ctxt, 0, file);
 		if (ret < 0) {
-			fprintf(stderr, "%s: Request not queued.\n",
-				file->filename);
+			eprintf("%s: Request not queued.\n", file->filename);
 			ret = ENOMEM;
 			goto out;
 		} else if (ret == 0 ||
@@ -673,8 +668,7 @@ int fdupes_dedupe(void)
 			ret = dedupe_extents(ctxt);
 			if (ret) {
 				ret = errno;
-				fprintf(stderr,
-					"FAILURE: Dedupe ioctl returns %d: %s\n",
+				eprintf("FAILURE: Dedupe ioctl returns %d: %s\n",
 					ret, strerror(ret));
 				goto out;
 			}

@@ -172,7 +172,7 @@ static void record_match(struct results_tree *res, unsigned char *digest,
 	ret = insert_result(res, digest, recs, soff, eoff);
 	if (ret) {
 		abort_on(ret != ENOMEM); /* Only error possible here. */
-		fprintf(stderr, "Out of memory while processing results\n");
+		eprintf("Out of memory while processing results\n");
 		print_mem_stats();
 		exit(ENOMEM);
 	}
@@ -406,7 +406,7 @@ static void search_file_extents(struct filerec *file, struct results_tree *dupe_
 	db = dbfile_open_handle(options.hashfile);
 	dbfile_unlock();
 	if (!db) {
-		fprintf(stderr, "ERROR: Couldn't open db file %s\n",
+		eprintf("ERROR: Couldn't open db file %s\n",
 			options.hashfile == NULL ? "(null)" : options.hashfile);
 		return;
 	}
@@ -480,8 +480,7 @@ int find_additional_dedupe(struct results_tree *dupe_extents)
 	pool = g_thread_pool_new((GFunc) find_dupes_thread, NULL,
 				 options.cpu_threads, TRUE, &err);
 	if (err) {
-		fprintf(stderr,
-			"Unable to create find file dupes thread pool: %s\n",
+		eprintf("Unable to create find file dupes thread pool: %s\n",
 			err->message);
 		g_error_free(err);
 		return ENOMEM;
@@ -509,8 +508,7 @@ int find_additional_dedupe(struct results_tree *dupe_extents)
 
 		g_thread_pool_push(pool, ctxt, &err);
 		if (err) {
-			fprintf(stderr,
-				"Error from thread pool: %s\n ",
+			eprintf("Error from thread pool: %s\n ",
 				err->message);
 			g_error_free(err);
 			return ENOMEM;

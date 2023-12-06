@@ -31,6 +31,7 @@ extern int quiet;
 #define dprintf(args...)	if (debug) printf(args)
 #define vprintf(args...)	if (verbose) printf(args)
 #define qprintf(args...)	if (!quiet) printf(args)
+#define eprintf(args...)	fprintf(stderr, args)
 void print_stack_trace(void);/* defined in util.c */
 #define	abort_lineno()	do {						\
 		printf("ERROR: %s:%d\n", __FILE__, __LINE__);		\

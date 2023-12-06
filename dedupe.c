@@ -60,8 +60,7 @@ static void free_dedupe_req(struct dedupe_req *req)
 		if (!list_empty(&req->req_list)) {
 			struct filerec *file = req->req_file;
 
-			fprintf(stderr,
-				"%s: freeing request with nonempty list\n",
+			eprintf("%s: freeing request with nonempty list\n",
 				file ? file->filename : "(null)");
 			list_del(&req->req_list);
 		}
@@ -149,7 +148,7 @@ static unsigned int get_fs_blocksize(struct filerec *file)
 	ret = fstatfs(file->fd, &fs);
 	if (ret) {
 		if (!bsize_warned) {
-			fprintf(stderr, "Error %d (\"%s\") while getting fs "
+			eprintf("Error %d (\"%s\") while getting fs "
 				"blocksize, defaulting to 4096 bytes for this "
 				"dedupe.\n", errno, strerror(errno));
 			bsize_warned = 1;

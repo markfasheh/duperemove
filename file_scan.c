@@ -169,7 +169,7 @@ static int prepare_buffer(struct buffer *buffer)
 	return 0;
 
 err:
-	fprintf(stderr, "prepare_buffer failed\n");
+	eprintf("prepare_buffer failed\n");
 	return 1;
 }
 
@@ -246,7 +246,7 @@ int get_uuid(char *path, uuid_t *uuid)
 	struct libmnt_fs *dev = NULL;
 
 	if (fd == -1) {
-		fprintf(stderr, "Cannot open %s: %s\n", path, strerror(errno));
+		eprintf("Cannot open %s: %s\n", path, strerror(errno));
 		return 1;
 	}
 
@@ -254,7 +254,7 @@ int get_uuid(char *path, uuid_t *uuid)
 		dprintf("get_uuid: %s lives on btrfs\n", path);
 		ret = btrfs_get_fsuuid(fd, uuid);
 		if (ret) {
-			fprintf(stderr, "%s: btrfs_get_fsuuid failed\n",
+			eprintf("%s: btrfs_get_fsuuid failed\n",
 				path);
 			return 1;
 		}
@@ -263,7 +263,7 @@ int get_uuid(char *path, uuid_t *uuid)
 
 		ret = statx(0, path, 0, STATX_BASIC_STATS, &st);
 		if (ret) {
-			fprintf(stderr, "Failed to stat %s: %s\n",
+			eprintf("Failed to stat %s: %s\n",
 					path, strerror(errno));
 			return 1;
 		}
@@ -283,14 +283,14 @@ int get_uuid(char *path, uuid_t *uuid)
 
 		dev = mnt_table_find_devno(tb, stx_to_dev(&st), MNT_ITER_FORWARD);
 		if (!dev) {
-			fprintf(stderr, "%s: unable to find the mount infos\n",
+			eprintf("%s: unable to find the mount infos\n",
 					path);
 			return 1;
 		}
 
 		uuid_found = blkid_get_tag_value(NULL, "UUID", mnt_fs_get_source(dev));
 		if (!uuid_found) {
-			fprintf(stderr, "libblkid could not get uuid for "
+			eprintf("libblkid could not get uuid for "
 					"device %s. Run blkid as root to "
 					"populate the cache.\n",
 					mnt_fs_get_source(dev));
@@ -318,7 +318,7 @@ bool is_fs_supported(char *path)
 
 	ret = statfs(path, &fs);
 	if (ret) {
-		fprintf(stderr, "Error %d: %s while check fs type on %s",
+		eprintf("Error %d: %s while check fs type on %s",
 			errno, strerror(errno), path);
 		return false;
 	}
@@ -384,7 +384,7 @@ bool check_file(struct dbhandle *db, char *path, struct statx *st, bool parent_c
 		locked_fs.is_btrfs = is_btrfs(path);
 
 		if (!is_fs_supported(path))
-			fprintf(stderr, "Warn: filesystem for %s is not known to "
+			eprintf("Warn: filesystem for %s is not known to "
 				"support deduplication.\n", path);
 
 		return true;
@@ -400,11 +400,11 @@ bool check_file(struct dbhandle *db, char *path, struct statx *st, bool parent_c
 			return false;
 
 		if (uuid_compare(uuid, locked_fs.uuid) != 0) {
-			fprintf(stderr, "%s lives on fs ", path);
+			eprintf("%s lives on fs ", path);
 			debug_print_uuid(uuid);
-			fprintf(stderr, " will we are locked on fs ");
+			eprintf(" will we are locked on fs ");
 			debug_print_uuid(locked_fs.uuid);
-			fprintf(stderr, ".\n");
+			eprintf(".\n");
 			return false;
 		}
 
@@ -445,8 +445,7 @@ static int get_dirent_type(struct dirent *entry, int fd, const char *path)
 	 */
 	ret = statx(fd, entry->d_name, AT_SYMLINK_NOFOLLOW, STATX_BASIC_STATS, &st);
 	if (ret || !(st.stx_mask & STATX_BASIC_STATS)) {
-		fprintf(stderr,
-			"Error %d: %s while getting type of file %s/%s. "
+		eprintf("Error %d: %s while getting type of file %s/%s. "
 			"Skipping.\n",
 			errno, strerror(errno), path, entry->d_name);
 		return DT_UNKNOWN;
@@ -484,7 +483,7 @@ static int walk_dir(char *path, struct dbhandle *db)
 	char child[PATH_MAX + 257] = { 0, };
 
 	if (dirp == NULL) {
-		fprintf(stderr, "Error %d: %s while opening directory %s\n",
+		eprintf("Error %d: %s while opening directory %s\n",
 			errno, strerror(errno), path);
 		return 0;
 	}
@@ -496,7 +495,7 @@ static int walk_dir(char *path, struct dbhandle *db)
 			break;
 
 		if (errno != 0) {
-			fprintf(stderr, "Error %d: %s while reading directory %s\n",
+			eprintf("Error %d: %s while reading directory %s\n",
 				errno, strerror(errno), path);
 			return 0;
 		}
@@ -521,7 +520,7 @@ static int walk_dir(char *path, struct dbhandle *db)
 
 		ret = statx(0, child, 0, STATX_BASIC_STATS, &st);
 		if (ret || !(st.stx_mask | STATX_BASIC_STATS)) {
-			fprintf(stderr, "Failed to stat %s: %s\n",
+			eprintf("Failed to stat %s: %s\n",
 					path, strerror(errno));
 			continue;
 		}
@@ -584,7 +583,7 @@ static int __scan_file(char *path, struct dbhandle *db, struct statx *st)
 		_cleanup_(closefd) int fd;
 		fd = open(path, O_RDONLY);
 		if (fd == -1) {
-			fprintf(stderr, "Error %d: %s while opening file \"%s\". "
+			eprintf("Error %d: %s while opening file \"%s\". "
 				"Skipping.\n", errno, strerror(errno), path);
 			return 0;
 		}
@@ -596,8 +595,7 @@ static int __scan_file(char *path, struct dbhandle *db, struct statx *st)
 		 */
 		ret = lookup_btrfs_subvol(fd, &(dbfile.subvol));
 		if (ret) {
-			fprintf(stderr,
-				"Error %d: %s while finding subvol for file "
+			eprintf("Error %d: %s while finding subvol for file "
 				"\"%s\". Skipping.\n", ret, strerror(ret),
 				path);
 			return 0;
@@ -675,7 +673,7 @@ static int __scan_file(char *path, struct dbhandle *db, struct statx *st)
 	file->file_position = total_files_count;
 
 	if(!g_thread_pool_push(scan_pool.pool, file, &err)) {
-		fprintf(stderr, "g_thread_pool_push: %s\n", err->message);
+		eprintf("g_thread_pool_push: %s\n", err->message);
 		g_error_free(err);
 		err = NULL;
 		free(file);
@@ -702,7 +700,7 @@ int scan_file(char *in_path, struct dbhandle *db)
 	 *   any directory.
 	 */
 	if (realpath(in_path, path) == NULL) {
-		fprintf(stderr, "Error %d: %s while getting path to file %s. "
+		eprintf("Error %d: %s while getting path to file %s. "
 			"Skipping.\n",
 			errno, strerror(errno), in_path);
 		return 0;
@@ -710,7 +708,7 @@ int scan_file(char *in_path, struct dbhandle *db)
 
 	ret = statx(0, path, 0, STATX_BASIC_STATS, &st);
 	if (ret || !(st.stx_mask & STATX_BASIC_STATS)) {
-		fprintf(stderr, "Error %d: %s while stating file %s. "
+		eprintf("Error %d: %s while stating file %s. "
 			"Skipping.\n",
 			errno, strerror(errno), path);
 		return 0;
@@ -885,7 +883,7 @@ static int process_extents(struct scan_ctxt *ctxt, struct buffer *buffer,
 	while (file_off < ctxt->off + bytes) {
 		extent = get_extent(ctxt->fiemap, file_off, NULL);
 		if (!extent) {
-			fprintf(stderr, "process_extents: unable to get extent\n");
+			eprintf("process_extents: unable to get extent\n");
 
 			/* Cleanup the partial checksum and skip
 			 * the rest of the buffer
@@ -1027,7 +1025,7 @@ static void csum_whole_file(struct file_to_scan *file)
 	if (!(buffer.buf)) {
 		ret = prepare_buffer(&buffer);
 		if (ret) {
-			fprintf(stderr, "unable to prepare our read buffer\n");
+			eprintf("unable to prepare our read buffer\n");
 			return;
 		}
 	} else {
@@ -1039,7 +1037,7 @@ static void csum_whole_file(struct file_to_scan *file)
 	if (!db)
 		db = get_db();
 	if (!db) {
-		fprintf(stderr, "csum_whole_file: unable to connect to the database\n");
+		eprintf("csum_whole_file: unable to connect to the database\n");
 		return;
 	}
 
@@ -1050,7 +1048,7 @@ static void csum_whole_file(struct file_to_scan *file)
 
 	ctxt.fd = open(file->path, O_RDONLY);
 	if (ctxt.fd == -1) {
-		fprintf(stderr, "csum_whole_file: Error %d: %s while opening file \"%s\". "
+		eprintf("csum_whole_file: Error %d: %s while opening file \"%s\". "
 			"Skipping.\n", errno, strerror(errno), file->path);
 		return;
 	}
@@ -1060,7 +1058,7 @@ static void csum_whole_file(struct file_to_scan *file)
 		return;
 
 	if (!allocate_hashes(&hashes, &ctxt)) {
-		fprintf(stderr, "allocate_hashes failed\n");
+		eprintf("allocate_hashes failed\n");
 		return;
 	}
 
@@ -1083,7 +1081,7 @@ static void csum_whole_file(struct file_to_scan *file)
 		ret = fill_buffer(&ctxt, &buffer);
 		if (ret < 0) {
 			ret = errno;
-			fprintf(stderr, "Unable to read file %s: %s\n",
+			eprintf("Unable to read file %s: %s\n",
 				file->path, strerror(ret));
 			return;
 		}
@@ -1093,7 +1091,7 @@ static void csum_whole_file(struct file_to_scan *file)
 
 		bytes_processed = process_blocks(&ctxt, &buffer, &hashes);
 		if (bytes_processed < 0) {
-			fprintf(stderr, "process_blocks failed somehow\n");
+			eprintf("process_blocks failed somehow\n");
 			return;
 		}
 
@@ -1104,7 +1102,7 @@ static void csum_whole_file(struct file_to_scan *file)
 					    ctxt.off + bytes_processed,
 					    &hashes);
 			if (ret) {
-				fprintf(stderr, "Unable to process %s's last block\n", file->path);
+				eprintf("Unable to process %s's last block\n", file->path);
 				return;
 			}
 
@@ -1131,7 +1129,7 @@ static void csum_whole_file(struct file_to_scan *file)
 	}
 
 	if (ctxt.off != ctxt.filesize) {
-		fprintf(stderr, "file %s changed\n", file->path);
+		eprintf("file %s changed\n", file->path);
 		return;
 	}
 
@@ -1204,7 +1202,7 @@ int add_exclude_pattern(const char *pattern)
 		getcwd(cwd, PATH_MAX);
 
 		if (strlen(cwd) + strlen(pattern) > PATH_MAX) {
-			fprintf(stderr, "Error: cannot prepend cwd to %s\n", pattern);
+			eprintf("Error: cannot prepend cwd to %s\n", pattern);
 			return 1;
 		}
 
@@ -1212,7 +1210,7 @@ int add_exclude_pattern(const char *pattern)
 		exclude->pattern = strdup(exp_pattern);
 	}
 
-	printf("Adding exclude pattern: %s\n", exclude->pattern);
+	vprintf("Adding exclude pattern: %s\n", exclude->pattern);
 
 	list_add_tail(&exclude->list, &exclude_list);
 	return 0;
@@ -1237,7 +1235,7 @@ void add_file_fdupes(char *path)
 
 	ret = statx(0, path, 0, STATX_BASIC_STATS, &st);
 	if (ret || !(st.stx_mask & STATX_BASIC_STATS)) {
-		fprintf(stderr, "statx on %s: %s\n", path, strerror(errno));
+		eprintf("statx on %s: %s\n", path, strerror(errno));
 		return;
 	}
 	filerec_new(path, st.stx_ino, st.stx_size);

@@ -13,6 +13,7 @@
  */
 
 #include "threads.h"
+#include "debug.h"
 
 void setup_pool(struct threads_pool *pool, void *function, void *arg)
 {
@@ -23,8 +24,7 @@ void setup_pool(struct threads_pool *pool, void *function, void *arg)
 	pool->pool = g_thread_pool_new((GFunc) function, arg, options.io_threads, FALSE,
 					&err);
 	if (err != NULL) {
-		fprintf(stderr, "Unable to create thread pool: %s\n",
-			err->message);
+		eprintf("Unable to create thread pool: %s\n", err->message);
 		g_error_free(err);
 		pool->pool = NULL;
 	}

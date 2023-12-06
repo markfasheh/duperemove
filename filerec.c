@@ -243,7 +243,7 @@ int filerec_open(struct filerec *file, bool quiet)
 		if (fd == -1) {
 			ret = errno;
 			if (ret != ENOENT || !quiet)
-				fprintf(stderr, "Error %d: %s while opening \"%s\"\n",
+				eprintf("Error %d: %s while opening \"%s\"\n",
 					ret, strerror(ret), file->filename);
 			goto out_unlock;
 		}

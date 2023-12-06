@@ -49,7 +49,7 @@ uint64_t parse_size(char *s)
 
 	for (i = 0; s && s[i] && isdigit(s[i]); i++) ;
 	if (!i) {
-		fprintf(stderr, "ERROR: size value is empty\n");
+		eprintf("ERROR: size value is empty\n");
 		exit(50);
 	}
 
@@ -80,13 +80,13 @@ uint64_t parse_size(char *s)
 		case 'b':
 			break;
 		default:
-			fprintf(stderr, "ERROR: Unknown size descriptor "
+			eprintf("ERROR: Unknown size descriptor "
 				"'%c'\n", c);
 			exit(1);
 		}
 	}
 	if (s[i] && s[i+1]) {
-		fprintf(stderr, "ERROR: Illegal suffix contains "
+		eprintf("ERROR: Illegal suffix contains "
 			"character '%c' in wrong position\n",
 			s[i+1]);
 		exit(51);
@@ -257,7 +257,7 @@ int get_core_count(unsigned int *nr_phys, unsigned int *nr_log)
 
 	FILE *fp = popen("lscpu -p", "r");
 	if (fp == NULL) {
-		fprintf(stderr, "ERROR: Can't start lscpu\n");
+		eprintf("ERROR: Can't start lscpu\n");
 		return -EINVAL;
 	}
 
@@ -337,5 +337,5 @@ void debug_print_uuid(uuid_t uuid)
 {
 	char buf[37];
 	uuid_unparse(uuid, buf);
-	puts(buf);
+	eprintf("%s", buf);
 }
