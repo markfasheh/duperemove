@@ -19,6 +19,7 @@
 #include "find_dupes.c"
 #include "memstats.c"
 #include "fiemap.c"
+#include "progress.c"
 
 
 unsigned int blocksize = DEFAULT_BLOCKSIZE;

@@ -11,11 +11,12 @@ ZSH_COMPLETION=completion/zsh/_duperemove
 HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
 	ioctl.h filerec.h btrfs-util.h debug.h util.h \
 	memstats.h file_scan.h find_dupes.h run_dedupe.h xxhash.h \
-	dbfile.h rbtree_augmented.h list_sort.h opt.h threads.h fiemap.h
+	dbfile.h rbtree_augmented.h list_sort.h opt.h threads.h fiemap.h \
+	progress.h
 CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
 	btrfs-util.c util.c memstats.c file_scan.c find_dupes.c run_dedupe.c \
 	csum.c dbfile.c list_sort.c debug.c opt.c threads.c \
-	fiemap.c
+	fiemap.c progress.c
 
 hashstats_CFILES=hashstats.c
 btrfs_extent_same_CFILES=btrfs-extent-same.c
@@ -33,8 +34,8 @@ objects = $(CFILES:.c=.o)
 
 hashstats_obj = rbtree.o hash-tree.o filerec.o util.o opt.o \
 	results-tree.o csum.o dbfile.o list_sort.o debug.o file_scan.o btrfs-util.o \
-	threads.o fiemap.o
-csum_test_obj = util.o csum.o debug.o
+	threads.o fiemap.o progress.o
+csum_test_obj = util.o csum.o debug.o progress.o opt.o
 
 install_progs = duperemove hashstats btrfs-extent-same
 progs = $(install_progs) csum-test

@@ -40,6 +40,7 @@
 #include "dbfile.h"
 #include "memstats.h"
 #include "debug.h"
+#include "progress.h"
 #include "file_scan.h"
 #include "find_dupes.h"
 #include "run_dedupe.h"
@@ -589,8 +590,9 @@ static int scan_files(int argc, char **argv, int filelist_idx, struct dbhandle *
 {
 	int ret;
 
-	extern bool scan_files_completed;
 	filescan_prepare_pool();
+	if (!quiet)
+		pscan_run();
 
 	if (stdin_filelist)
 		ret = add_files_from_stdin(db);
@@ -598,9 +600,10 @@ static int scan_files(int argc, char **argv, int filelist_idx, struct dbhandle *
 		ret = scan_files_from_cmdline(argc - filelist_idx,
 					     &argv[filelist_idx], db);
 
-	scan_files_completed = true; /* Used to modify the output and print percentages */
-
+	pscan_finish_listing();
 	filescan_free_pool();
+	if (!quiet)
+		pscan_join();
 
 	if (ret)
 		return ret;

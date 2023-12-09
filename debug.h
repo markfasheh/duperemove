@@ -21,6 +21,8 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
+#include "progress.h"
+
 extern int verbose;
 extern int debug;
 extern int quiet;
@@ -28,10 +30,18 @@ extern int quiet;
 #define likely(x)	__builtin_expect(!!(x), 1)
 #define unlikely(x)	__builtin_expect(!!(x), 0)
 
-#define dprintf(args...)	if (debug) printf(args)
-#define vprintf(args...)	if (verbose) printf(args)
-#define qprintf(args...)	if (!quiet) printf(args)
-#define eprintf(args...)	fprintf(stderr, args)
+#define progress_print(stream, format, ...) do {			\
+	if (is_pscan_running())						\
+		pscan_printf(format, ##__VA_ARGS__);			\
+	else								\
+		fprintf(stream, format, ##__VA_ARGS__);         	\
+} while (0)
+
+#define dprintf(format, ...) if (debug) progress_print(stdout, format, ##__VA_ARGS__)
+#define vprintf(format, ...) if (verbose) progress_print(stdout, format, ##__VA_ARGS__)
+#define qprintf(format, ...) if (!quiet) progress_print(stdout, format, ##__VA_ARGS__)
+#define eprintf(format, ...) progress_print(stderr, format, ##__VA_ARGS__)
+
 void print_stack_trace(void);/* defined in util.c */
 #define	abort_lineno()	do {						\
 		printf("ERROR: %s:%d\n", __FILE__, __LINE__);		\

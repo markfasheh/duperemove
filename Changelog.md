@@ -3,6 +3,7 @@ PENDING
 
 **Notable changes**:
  * Files are no longer invalidated when renamed.
+ * The scan phase now reports both files and bytes in its progress, which is especially useful when processing large files.
 
 Version 0.14
 ---

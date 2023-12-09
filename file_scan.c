@@ -56,6 +56,7 @@
 #include "opt.h"
 #include "threads.h"
 #include "fiemap.h"
+#include "progress.h"
 
 /* This is not in linux/magic.h */
 #ifndef	XFS_SB_MAGIC
@@ -63,9 +64,6 @@
 #endif
 
 static int __scan_file(char *path, struct dbhandle *db, struct statx *st);
-
-bool scan_files_completed = false;
-static unsigned long long total_files_count = 0;
 
 static struct threads_pool scan_pool;
 
@@ -568,6 +566,7 @@ static int __scan_file(char *path, struct dbhandle *db, struct statx *st)
 	struct file_to_scan *file;
 	int64_t fileid = 0;
 	bool file_renamed;
+	static uint64_t position = 0;
 
 	/*
 	 * The first call initializes the static variable
@@ -669,8 +668,9 @@ static int __scan_file(char *path, struct dbhandle *db, struct statx *st)
 	file->fileid = fileid;
 	file->filesize = st->stx_size;
 
-	total_files_count++;
-	file->file_position = total_files_count;
+	pscan_set_progress(1, st->stx_size);
+	position++;
+	file->file_position = position;
 
 	if(!g_thread_pool_push(scan_pool.pool, file, &err)) {
 		eprintf("g_thread_pool_push: %s\n", err->message);
@@ -747,26 +747,6 @@ static int add_block_hash(struct hashes *hashes,
 	memcpy(hashes->blocks[hashes->blocks_index].digest, digest, DIGEST_LEN);
 	hashes->blocks_index++;
 	return 0;
-}
-
-static void print_progress(unsigned long long pos, char* path)
-{
-	unsigned int leading_space = num_digits(total_files_count);
-
-	/*
-	 * We do not print the percentage unless all files are actually
-	 * pushed into the thread queue
-	 */
-	if (scan_files_completed) {
-		qprintf("[%0*llu/%llu] (%05.2f%%) csum: %s\n",
-			leading_space, pos, total_files_count,
-			(double)pos / (double)total_files_count * 100,
-			path);
-	} else {
-		qprintf("[%0*llu/%llu] csum: %s\n",
-			leading_space, pos, total_files_count,
-			path);
-	}
 }
 
 /*
@@ -1007,8 +987,10 @@ static void csum_whole_file(struct file_to_scan *file)
 	 */
 	static struct dbhandle *db = NULL;
 	static __thread struct buffer buffer = {0,};
+	static __thread struct pscan_thread *tls_progress = NULL;
 
 	/* Dummy variables used to trigger the cleanup code */
+	_cleanup_(pscan_reset_thread) struct pscan_thread *tprogress = tls_progress;
 	_cleanup_(freep) char *path = file->path;
 	_cleanup_(freep) struct file_to_scan *clean_file = file;
 
@@ -1019,8 +1001,6 @@ static void csum_whole_file(struct file_to_scan *file)
 
 	/* Prevent close on fd 0 if, somehow, an error occurs before we open */
 	ctxt.fd = -1;
-
-	print_progress(file->file_position, file->path);
 
 	if (!(buffer.buf)) {
 		ret = prepare_buffer(&buffer);
@@ -1040,6 +1020,17 @@ static void csum_whole_file(struct file_to_scan *file)
 		eprintf("csum_whole_file: unable to connect to the database\n");
 		return;
 	}
+
+	if (!tls_progress) {
+		tls_progress = pscan_register_thread(gettid());
+		abort_on(!tls_progress);
+		tprogress = tls_progress;
+	}
+
+	tprogress->status = thread_scanning;
+	tprogress->file_scanned_bytes = 0;
+	tprogress->file_total_bytes = file->filesize;
+	strncpy(tprogress->file_path, file->path, PATH_MAX);
 
 	ctxt.filesize = file->filesize;
 	ctxt.file_csum = start_running_checksum();
@@ -1095,6 +1086,9 @@ static void csum_whole_file(struct file_to_scan *file)
 			return;
 		}
 
+		tprogress->file_scanned_bytes += bytes_processed;
+		tprogress->total_scanned_bytes += bytes_processed;
+
 		/* Process the last partial block */
 		if (eof_reached && (size_t)bytes_processed < buffer.dl_len) {
 			ret = process_block(buffer.buf + bytes_processed,
@@ -1136,7 +1130,9 @@ static void csum_whole_file(struct file_to_scan *file)
 	finish_running_checksum(ctxt.file_csum, file_digest);
 	ctxt.file_csum = NULL;
 
+	tprogress->status = thread_waiting_lock;
 	dbfile_lock();
+	tprogress->status = thread_committing;
 	ret = dbfile_begin_trans(db->db);
 	if (ret) {
 		dbfile_unlock();
