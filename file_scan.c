@@ -211,7 +211,7 @@ static int is_excluded(const char *name)
 	struct exclude_file *exclude, *tmp;
 
 	list_for_each_entry_safe(exclude, tmp, &exclude_list, list) {
-		if (fnmatch(exclude->pattern, name, FNM_PATHNAME) == 0) {
+		if (fnmatch(exclude->pattern, name, 0) == 0) {
 			vprintf("Excluding: %s (matches %s)\n", name,
 				exclude->pattern);
 			return 1;
