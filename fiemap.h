@@ -26,5 +26,5 @@ struct fiemap *do_fiemap(int fd);
 /*
  * Count how much of the area between start_off and end_off is shared.
  */
-int fiemap_count_shared(int fd, size_t start_off, size_t end_off, size_t *shared);
+int fiemap_count_shared(int fd, size_t start_off, size_t end_off, uint64_t *shared);
 #endif	/* __FIEMAP_H__ */

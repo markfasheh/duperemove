@@ -98,7 +98,7 @@ struct fiemap *do_fiemap(int fd)
 	return fiemap;
 }
 
-int fiemap_count_shared(int fd, size_t start_off, size_t end_off, size_t *shared)
+int fiemap_count_shared(int fd, size_t start_off, size_t end_off, uint64_t *shared)
 {
 	_cleanup_(freep) struct fiemap *fiemap = NULL;
 	struct fiemap_extent *extent;
