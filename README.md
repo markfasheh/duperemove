@@ -23,10 +23,14 @@ See [the duperemove man page](http://markfasheh.github.io/duperemove/duperemove.
 
 The latest stable code can be found in [the release page](https://github.com/markfasheh/duperemove/releases)
 
-Kernel: Duperemove needs a kernel version equal to or greater than 3.13
+- Linux kernel 3.13 or later
+- GNU make
+- pkg-config
+- glib2
+- sqlite3
+- util-linux (for libuuid, libmount, libblkid)
 
-Libraries: Duperemove uses glib2 and sqlite3. It also uses libuuid, libmount and libblkid from util-linux.
-
+Then to build Duperemove run `make`.
 
 # FAQ
 
