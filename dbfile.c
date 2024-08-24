@@ -485,6 +485,11 @@ struct dbhandle *dbfile_open_handle(char *filename)
 "AND without_future_extents.len = duplicate_extents.len;"
 	dbfile_prepare_stmt(get_duplicate_extents, GET_DUPLICATE_EXTENTS);
 
+/*
+ * Select duplicates, excluding future files.
+ * Then, only keep duplicates if at least one entry lives is related
+ * to the current batch.
+ */
 #define GET_DUPLICATE_FILES						\
 "WITH without_future_files as ( "					\
 "	select * from files where dedupe_seq <= ?1 "			\
@@ -492,13 +497,14 @@ struct dbhandle *dbfile_open_handle(char *filename)
 "current_files as ( "							\
 "	select * from files where dedupe_seq = ?1 "			\
 "	and not (flags & 1)) "						\
-"SELECT id, without_future_files.size, "				\
-"without_future_files.digest FROM without_future_files "		\
-"JOIN (SELECT digest, size FROM current_files "				\
-"GROUP BY digest, size HAVING count(*) > 1) "				\
-"AS duplicate_files "							\
-"ON without_future_files.digest = duplicate_files.digest "		\
-"AND without_future_files.size = duplicate_files.size;"
+"select id, size, digest from without_future_files "			\
+"where (digest, size) in ( "						\
+"	select digest, size from current_files "			\
+"	where (digest, size) in ( "					\
+"		select digest, size from without_future_files "		\
+"		group by digest, size having count(*) > 1 "		\
+"	) "								\
+");"
 	dbfile_prepare_stmt(get_duplicate_files, GET_DUPLICATE_FILES);
 
 #define GET_FILE_EXTENT							\
