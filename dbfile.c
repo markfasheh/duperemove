@@ -144,7 +144,7 @@ static int create_tables(sqlite3 *db)
 #define	CREATE_TABLE_FILES						\
 "CREATE TABLE IF NOT EXISTS files(id INTEGER PRIMARY KEY NOT NULL, "	\
 "filename TEXT NOT NULL, "						\
-"ino INTEGER, subvol INTEGER, size INTEGER, blocks INTEGER, "		\
+"ino INTEGER, subvol INTEGER, size INTEGER, "				\
 "mtime INTEGER, dedupe_seq INTEGER, digest BLOB, "			\
 "flags INTEGER, UNIQUE(ino, subvol), UNIQUE(filename));"
 	ret = sqlite3_exec(db, CREATE_TABLE_FILES, NULL, NULL, NULL);
@@ -178,33 +178,45 @@ static int create_indexes(sqlite3 *db)
 {
 	int ret;
 
-#define	CREATE_BLOCKS_DIGEST_INDEX					\
-"create index if not exists idx_digest on blocks(digest);"
+#define CREATE_BLOCKS_DIGEST_INDEX					\
+"create index if not exists idx_blocks_digest on blocks(digest);"
 	ret = sqlite3_exec(db, CREATE_BLOCKS_DIGEST_INDEX, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
-#define	CREATE_BLOCKS_INOSUB_INDEX					\
-"create index if not exists idx_blocks_inosub on blocks(fileid);"
-	ret = sqlite3_exec(db, CREATE_BLOCKS_INOSUB_INDEX, NULL, NULL, NULL);
+#define CREATE_BLOCKS_FILEID_INDEX					\
+"create index if not exists idx_blocks_fileid on blocks(fileid);"
+	ret = sqlite3_exec(db, CREATE_BLOCKS_FILEID_INDEX, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
-#define	CREATE_EXTENTS_DIGEST_INDEX					\
-"create index if not exists idx_extent_digest on extents(digest);"
-	ret = sqlite3_exec(db, CREATE_EXTENTS_DIGEST_INDEX, NULL, NULL, NULL);
+#define CREATE_EXTENTS_DIGEST_LEN_INDEX					\
+"create index if not exists idx_extents_digest_len on extents(digest, len);"
+	ret = sqlite3_exec(db, CREATE_EXTENTS_DIGEST_LEN_INDEX, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
 #define CREATE_EXTENTS_FILEID_INDEX					\
-"create index if not exists idx_extents_inosub on extents(fileid);"
+"create index if not exists idx_extents_fileid on extents(fileid);"
 	ret = sqlite3_exec(db, CREATE_EXTENTS_FILEID_INDEX, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
-#define	CREATE_FILES_INOSUB_INDEX					\
-"create index if not exists idx_files_inosub on files(ino, subvol);"
-	ret = sqlite3_exec(db, CREATE_FILES_INOSUB_INDEX, NULL, NULL, NULL);
+#define CREATE_FILES_INO_SUBVOL_INDEX					\
+"create index if not exists idx_files_ino_subvol on files(ino, subvol);"
+	ret = sqlite3_exec(db, CREATE_FILES_INO_SUBVOL_INDEX, NULL, NULL, NULL);
+	if (ret)
+		goto out;
+
+#define CREATE_FILES_DEDUPESEQ_INDEX					\
+"create index if not exists idx_files_dedupeseq on files(dedupe_seq);"
+	ret = sqlite3_exec(db, CREATE_FILES_DEDUPESEQ_INDEX, NULL, NULL, NULL);
+	if (ret)
+		goto out;
+
+#define CREATE_FILES_DIGEST_SIZE_INDEX					\
+"create index if not exists idx_files_digest_size on files(digest, size);"
+	ret = sqlite3_exec(db, CREATE_FILES_DIGEST_SIZE_INDEX, NULL, NULL, NULL);
 	if (ret)
 		goto out;
 
@@ -444,20 +456,16 @@ struct dbhandle *dbfile_open_handle(char *filename)
 	dbfile_prepare_stmt(load_filerec, LOAD_FILEREC);
 
 #define GET_DUPLICATE_BLOCKS						\
-"WITH without_future_blocks as ("					\
-"	select * from blocks "						\
-"	join files on files.id = blocks.fileid "			\
-"	and files.dedupe_seq <= ?1), "					\
-"current_blocks as ("							\
-"	select * from blocks "						\
-"	join files on files.id = blocks.fileid "			\
-"	and files.dedupe_seq = ?1) "					\
-"SELECT without_future_blocks.digest, fileid, loff "			\
-"FROM without_future_blocks "						\
-"JOIN (SELECT DISTINCT digest FROM current_blocks "			\
-"GROUP BY digest "							\
-"HAVING count(*) > 1) AS duplicate_blocks "				\
-"on without_future_blocks.digest = duplicate_blocks.digest;"
+"select blocks.digest, fileid, loff from blocks "			\
+"join files on fileid = id "						\
+"where dedupe_seq <= ?1 and blocks.digest in ( "			\
+"	select blocks.digest from blocks "				\
+"	join files on fileid = id "					\
+"	where dedupe_seq <= ?1 and blocks.digest in ( "			\
+"		select blocks.digest from blocks "			\
+"		join files on fileid = id "				\
+"		where dedupe_seq = ?1) "				\
+"	group by blocks.digest having count(*) > 1);"
 	dbfile_prepare_stmt(get_duplicate_blocks, GET_DUPLICATE_BLOCKS);
 
 /*
@@ -468,21 +476,16 @@ struct dbhandle *dbfile_open_handle(char *filename)
  * result of only one extent.
  */
 #define GET_DUPLICATE_EXTENTS						\
-"WITH without_future_extents as ("					\
-"	select * from extents "						\
-"	join files on files.id = extents.fileid "			\
-"	and files.dedupe_seq <= ?1), "					\
-"current_extents as ("							\
-"	select * from extents "						\
-"	join files on files.id = extents.fileid "			\
-"	and files.dedupe_seq = ?1) "					\
-"SELECT without_future_extents.digest, fileid, loff, "			\
-"without_future_extents.len, poff "					\
-"FROM without_future_extents "						\
-"JOIN (SELECT digest, len FROM current_extents "			\
-"GROUP BY digest, len HAVING count(*) > 1) AS duplicate_extents "	\
-"on without_future_extents.digest = duplicate_extents.digest "		\
-"AND without_future_extents.len = duplicate_extents.len;"
+"select extents.digest, fileid, loff, len, poff from extents "		\
+"join files on fileid = id "						\
+"where dedupe_seq <= ?1 and (extents.digest, len) in ( "		\
+"	select extents.digest, len from extents "			\
+"	join files on fileid = id "					\
+"	where dedupe_seq <= ?1 and (extents.digest, len) in ( "		\
+"		select extents.digest, len from extents "		\
+"		join files on fileid = id "				\
+"		where dedupe_seq = ?1) "				\
+"	group by extents.digest, len having count(*) > 1);"
 	dbfile_prepare_stmt(get_duplicate_extents, GET_DUPLICATE_EXTENTS);
 
 /*
@@ -490,21 +493,14 @@ struct dbhandle *dbfile_open_handle(char *filename)
  * Then, only keep duplicates if at least one entry lives is related
  * to the current batch.
  */
-#define GET_DUPLICATE_FILES						\
-"WITH without_future_files as ( "					\
-"	select * from files where dedupe_seq <= ?1 "			\
-"	and not (flags & 1)), "						\
-"current_files as ( "							\
-"	select * from files where dedupe_seq = ?1 "			\
-"	and not (flags & 1)) "						\
-"select id, size, digest from without_future_files "			\
-"where (digest, size) in ( "						\
-"	select digest, size from current_files "			\
-"	where (digest, size) in ( "					\
-"		select digest, size from without_future_files "		\
-"		group by digest, size having count(*) > 1 "		\
-"	) "								\
-");"
+#define GET_DUPLICATE_FILES							\
+"select id, size, digest from files "						\
+"where dedupe_seq <= ?1 and not (flags & 1) and (digest, size) in ( "		\
+"	select digest, size from files "					\
+"	where dedupe_seq <= ?1 and not (flags & 1) and (digest, size) in ( "	\
+"		select digest, size from files "				\
+"		where dedupe_seq = ?1 and not (flags & 1)) "			\
+"	group by digest, size having count(*) > 1);"
 	dbfile_prepare_stmt(get_duplicate_files, GET_DUPLICATE_FILES);
 
 #define GET_FILE_EXTENT							\
@@ -1370,7 +1366,7 @@ void dbfile_list_files(struct dbhandle *db, int (*callback)(void*, int, char**, 
 	char *err;
 
 #define LIST_FILERECS							\
-"select ino, subvol, blocks, size, filename from files;"
+"select ino, subvol, size, filename from files;"
 
 	ret = sqlite3_exec(db->db, LIST_FILERECS, callback, NULL, &err);
 	if (ret) {
