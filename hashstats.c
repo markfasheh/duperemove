@@ -248,7 +248,7 @@ int main(int argc, char **argv)
 		print_by_size(db);
 
 	if (print_file_list) {
-		printf("Showing %"PRIu64" files.\nInode\tSubvol ID\tBlocks Stored\tSize\tFilename\n",
+		printf("Showing %"PRIu64" files.\nInode\tSubvol ID\tSize\tFilename\n",
 			dbfile_stats.num_files);
 		dbfile_list_files(db, print_files_cb);
 	}
