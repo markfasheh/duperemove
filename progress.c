@@ -261,6 +261,12 @@ void pscan_reset_thread(struct pscan_thread **progress)
 	if (scanned < total)
 		(*progress)->total_scanned_bytes += total - scanned;
 
+	/*
+	 * Also, the file may have grow.
+	 */
+	if (scanned > total)
+		(*progress)->total_scanned_bytes -= scanned - total;
+
 	(*progress)->total_scanned_files++;
 	(*progress)->file_path[0] = '\0';
 }
