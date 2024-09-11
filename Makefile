@@ -40,16 +40,8 @@ csum_test_obj = util.o csum.o debug.o progress.o opt.o
 install_progs = duperemove hashstats btrfs-extent-same
 progs = $(install_progs) csum-test
 
-glib_CFLAGS=$(shell $(PKG_CONFIG) --cflags glib-2.0)
-glib_LIBS=$(shell $(PKG_CONFIG) --libs glib-2.0)
-sqlite_CFLAGS=$(shell $(PKG_CONFIG) --cflags sqlite3)
-sqlite_LIBS=$(shell $(PKG_CONFIG) --libs sqlite3)
-blkid_CFLAGS=$(shell $(PKG_CONFIG) --cflags blkid)
-blkid_LIBS=$(shell $(PKG_CONFIG) --libs blkid)
-mount_CFLAGS=$(shell $(PKG_CONFIG) --cflags mount)
-mount_LIBS=$(shell $(PKG_CONFIG) --libs mount)
-uuid_CFLAGS=$(shell $(PKG_CONFIG) --cflags uuid)
-uuid_LIBS=$(shell $(PKG_CONFIG) --libs uuid)
+EXTRA_CFLAGS=$(shell $(PKG_CONFIG) --cflags glib-2.0,sqlite3,blkid,mount,uuid)
+EXTRA_LIBS=$(shell $(PKG_CONFIG) --libs glib-2.0,sqlite3,blkid,mount,uuid)
 
 ifdef DEBUG
 	DEBUG_FLAGS = -ggdb3 -fsanitize=address -fno-omit-frame-pointer	-O0 \
@@ -60,11 +52,9 @@ else
 endif
 
 override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(VERSION)\" \
-	$(glib_CFLAGS) $(sqlite_CFLAGS) -rdynamic $(DEBUG_FLAGS) \
-	$(blkid_CFLAGS) $(mount_CFLAGS) $(uuid_CFLAGS) \
+	$(EXTRA_CFLAGS) $(DEBUG_FLAGS) \
 	-DIS_RELEASE=$(IS_RELEASE) -D_GNU_SOURCE
-LIBRARY_FLAGS += -Wl,--as-needed -latomic -lm
-LIBRARY_FLAGS += $(glib_LIBS) $(sqlite_LIBS) $(blkid_LIBS) $(mount_LIBS) $(uuid_LIBS)
+LIBRARY_FLAGS += -Wl,--as-needed -latomic -lm $(EXTRA_LIBS)
 
 # make C=1 to enable sparse
 ifdef C
@@ -99,16 +89,21 @@ $(MANPAGES): %.8: markdown/%.md
 #TODO: Replace this with an auto-dependency
 $(objects): $(HEADERS)
 duperemove: $(objects)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(objects) -o duperemove $(LIBRARY_FLAGS)
-
-tarball: clean $(DIST_SOURCES)
-	mkdir -p $(TEMP_INSTALL_DIR)/$(DIST)
-	cp $(DIST_SOURCES) $(TEMP_INSTALL_DIR)/$(DIST)
-	tar -C $(TEMP_INSTALL_DIR) -zcf $(DIST_TARBALL) $(DIST)
-	rm -fr $(TEMP_INSTALL_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(objects) -o $@ $(LIBRARY_FLAGS)
 
 btrfs-extent-same: btrfs-extent-same.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o btrfs-extent-same btrfs-extent-same.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $@.c
+
+csum-test: $(csum_test_obj) csum-test.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(csum_test_obj) -o $@ $@.c  $(LIBRARY_FLAGS)
+
+hashstats: $(hashstats_obj) hashstats.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(hashstats_obj) $@.c -o $@ $(LIBRARY_FLAGS)
+
+.PHONY: test
+test:
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) tests.c -o $@ $(LIBRARY_FLAGS)
+	./test
 
 install: $(install_progs) $(MANPAGES) $(ZSH_COMPLETION)
 	mkdir -p -m 0755 $(DESTDIR)$(BINDIR)
@@ -135,19 +130,14 @@ uninstall:
 		rm -f $(DESTDIR)$(SHAREDIR)/zsh/site-functions/$${completion##*/}; \
 	done
 
-csum-test: $(csum_test_obj) csum-test.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(csum_test_obj) -o csum-test csum-test.c  $(LIBRARY_FLAGS)
-
-hashstats: $(hashstats_obj) hashstats.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(hashstats_obj) hashstats.c -o hashstats $(LIBRARY_FLAGS)
-
-.PHONY: test
-test:
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) tests.c -o test $(LIBRARY_FLAGS)
-	./test
+tarball: clean $(DIST_SOURCES)
+	mkdir -p $(TEMP_INSTALL_DIR)/$(DIST)
+	cp $(DIST_SOURCES) $(TEMP_INSTALL_DIR)/$(DIST)
+	tar -C $(TEMP_INSTALL_DIR) -zcf $(DIST_TARBALL) $(DIST)
+	rm -fr $(TEMP_INSTALL_DIR)
 
 clean:
-	rm -fr $(objects) $(progs) $(DIST_TARBALL) btrfs-extent-same filerec-test hashstats csum-*.o *~
+	rm -fr $(objects) $(progs) $(DIST_TARBALL) *~
 
 doc: $(MANPAGES)
 
