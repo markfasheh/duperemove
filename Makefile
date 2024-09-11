@@ -2,7 +2,7 @@ VERSION ?= $(shell git describe --abbrev=4 --dirty --always --tags;)
 IS_RELEASE ?= $(if $(filter $(shell git rev-list $(shell git describe --abbrev=0 --tags --exclude '*dev';)..HEAD --count;),0),1,0)
 
 CC ?= gcc
-CFLAGS ?= -Wall -ggdb
+CFLAGS ?= -Wall -ggdb --std=c23
 PKG_CONFIG ?= pkg-config
 
 MANPAGES=duperemove.8 btrfs-extent-same.8 hashstats.8 show-shared-extents.8
@@ -56,7 +56,7 @@ ifdef DEBUG
 			-DDEBUG_BUILD -DSQLITE_DEBUG -DSQLITE_MEMDEBUG \
 			-DSQLITE_ENABLE_EXPLAIN_COMMENTS -fsanitize-address-use-after-scope
 else
-	CFLAGS += -O2 --std=c23
+	CFLAGS += -O2
 endif
 
 override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(VERSION)\" \
