@@ -62,10 +62,10 @@ unsigned int w_col;
 /* Sums of the per-thread stats */
 static uint64_t files_scanned, bytes_scanned;
 
-#define s_save_pos() if (tty) printf("\e[s");
-#define s_restore_pos() if (tty) printf("\e[u");
-#define s_clear() if (tty) printf("\e[J");
-#define s_printf(args...) do { if (tty) printf("\e[K"); printf(args); } while (0)
+#define s_save_pos() if (tty) printf("\33[s");
+#define s_restore_pos() if (tty) printf("\33[u");
+#define s_clear() if (tty) printf("\33[J");
+#define s_printf(args...) do { if (tty) printf("\33[K"); printf(args); } while (0)
 
 #define percent(val1, val2) ((double) val1 / (double) val2 * 100)
 
@@ -143,7 +143,7 @@ static void prepare_screen_area()
 		s_printf("\n");
 
 	/* Go back to the first line */
-	printf("\e[%iA", options.io_threads + 3);
+	printf("\33[%iA", options.io_threads + 3);
 
 	/*
 	 * Save the cursor position.
@@ -215,7 +215,7 @@ void pscan_run()
 
 	if (tty) {
 		/* hide the cursor */
-		printf("\e[?25l");
+		printf("\33[?25l");
 
 		prepare_screen_area();
 	}
@@ -229,7 +229,7 @@ void pscan_join()
 	g_thread_join(printer);
 
 	/* Show the cursor again */
-	printf("\e[?25h");
+	printf("\33[?25h");
 
 	/* Clear the screen from all thread-progress */
 	s_restore_pos();
