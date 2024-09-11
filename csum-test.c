@@ -49,6 +49,7 @@ static unsigned int buf_len = 4096;
 static unsigned char *buf = NULL;
 
 static unsigned char digest[DIGEST_LEN] = { 0, };
+unsigned int blocksize;
 
 static int parse_opts(int argc, char **argv, char **fname)
 {

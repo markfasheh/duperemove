@@ -4,3 +4,4 @@ btrfs-extent-same
 csum-test
 hashstats
 *~
+*.d

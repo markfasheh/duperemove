@@ -28,6 +28,8 @@
 #include <sys/ioctl.h>
 #include "ioctl.h"
 
+unsigned int blocksize;
+
 static void usage(const char *prog)
 {
 	printf("Usage: %s len file1 loff1 file2 loff2\n", prog);

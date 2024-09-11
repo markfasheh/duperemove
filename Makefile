@@ -2,43 +2,26 @@ VERSION ?= $(shell git describe --abbrev=4 --dirty --always --tags;)
 IS_RELEASE ?= $(if $(filter $(shell git rev-list $(shell git describe --abbrev=0 --tags --exclude '*dev';)..HEAD --count;),0),1,0)
 
 CC ?= gcc
-CFLAGS ?= -Wall -ggdb --std=c23
+CFLAGS ?= -Wall -ggdb --std=c23 -MMD
 PKG_CONFIG ?= pkg-config
 
 MANPAGES=duperemove.8 btrfs-extent-same.8 hashstats.8 show-shared-extents.8
 ZSH_COMPLETION=completion/zsh/_duperemove
 
-HEADERS=csum.h hash-tree.h results-tree.h kernel.h list.h rbtree.h dedupe.h \
-	ioctl.h filerec.h btrfs-util.h debug.h util.h \
-	memstats.h file_scan.h find_dupes.h run_dedupe.h xxhash.h \
-	dbfile.h rbtree_augmented.h list_sort.h opt.h threads.h fiemap.h \
-	progress.h
-CFILES=duperemove.c hash-tree.c results-tree.c rbtree.c dedupe.c filerec.c \
-	btrfs-util.c util.c memstats.c file_scan.c find_dupes.c run_dedupe.c \
-	csum.c dbfile.c list_sort.c debug.c opt.c threads.c \
-	fiemap.c progress.c
+# tests.c is ulgy: it includes lots of c files, to get access to inlined code
+CFILES = $(filter-out tests.c,$(wildcard *.c))
+DEPENDS := $(CFILES:.c=.d)
+OBJECTS := $(CFILES:.c=.o)
+install_progs = duperemove hashstats btrfs-extent-same
+progs = $(install_progs) csum-test
+PROGS_OBJECTS := $(addsuffix .o,$(basename $(progs)))
+SHARED_OBJECTS := $(filter-out $(PROGS_OBJECTS),$(OBJECTS))
 
-hashstats_CFILES=hashstats.c
-btrfs_extent_same_CFILES=btrfs-extent-same.c
-csum_test_CFILES=csum-test.c
-
-DIST_CFILES:=$(CFILES) $(hashstats_CFILES) $(btrfs_extent_same_CFILES) \
-	$(csum_test_CFILES)
-DIST_SOURCES:=$(DIST_CFILES) $(HEADERS) LICENSE LICENSE.xxhash Makefile \
+DIST_SOURCES:=$(CFILES) $(wildcard *.h) LICENSE LICENSE.xxhash Makefile \
 	rbtree.txt README.md $(MANPAGES) SubmittingPatches docs/duperemove.html
 DIST=duperemove-$(VERSION)
 DIST_TARBALL=$(VERSION).tar.gz
 TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
-
-objects = $(CFILES:.c=.o)
-
-hashstats_obj = rbtree.o hash-tree.o filerec.o util.o opt.o \
-	results-tree.o csum.o dbfile.o list_sort.o debug.o file_scan.o btrfs-util.o \
-	threads.o fiemap.o progress.o
-csum_test_obj = util.o csum.o debug.o progress.o opt.o
-
-install_progs = duperemove hashstats btrfs-extent-same
-progs = $(install_progs) csum-test
 
 EXTRA_CFLAGS=$(shell $(PKG_CONFIG) --cflags glib-2.0,sqlite3,blkid,mount,uuid)
 EXTRA_LIBS=$(shell $(PKG_CONFIG) --libs glib-2.0,sqlite3,blkid,mount,uuid)
@@ -58,10 +41,8 @@ LIBRARY_FLAGS += -Wl,--as-needed -latomic -lm $(EXTRA_LIBS)
 
 # make C=1 to enable sparse
 ifdef C
-	check = sparse -D__CHECKER__ -D__CHECK_ENDIAN__ -Wbitwise \
+	CC = sparse -D__CHECKER__ -D__CHECK_ENDIAN__ -Wbitwise \
 		-Wuninitialized -Wshadow -Wundef
-else
-	check = @true
 endif
 
 DESTDIR ?= /
@@ -69,14 +50,6 @@ PREFIX ?= /usr/local
 SHAREDIR = $(PREFIX)/share
 BINDIR = $(PREFIX)/bin
 MANDIR = $(SHAREDIR)/man
-
-%.c.i: FORCE
-	$(check) $(CPPFLAGS) $(CFLAGS) -c $(subst .i,,$@) -o $@ $(LIBRARY_FLAGS)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -E $(subst .i,,$@) -o $@ $(LIBRARY_FLAGS)
-
-%.c.o: FORCE
-	$(check) $(CPPFLAGS) $(CFLAGS) -c $(subst .o,,$@) -o $@ $(LIBRARY_FLAGS)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -c  $(subst .o,,$@) -o $@ $(LIBRARY_FLAGS)
 
 all: $(progs)
 debug:
@@ -86,19 +59,9 @@ $(MANPAGES): %.8: markdown/%.md
 	pandoc --standalone markdown/$(subst .8,,$@).md --to man -o $(subst .8,,$@).8
 	pandoc --standalone markdown/$(subst .8,,$@).md --to html -o docs/$(subst .8,,$@).html
 
-#TODO: Replace this with an auto-dependency
-$(objects): $(HEADERS)
-duperemove: $(objects)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(objects) -o $@ $(LIBRARY_FLAGS)
-
-btrfs-extent-same: btrfs-extent-same.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $@.c
-
-csum-test: $(csum_test_obj) csum-test.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(csum_test_obj) -o $@ $@.c  $(LIBRARY_FLAGS)
-
-hashstats: $(hashstats_obj) hashstats.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(hashstats_obj) $@.c -o $@ $(LIBRARY_FLAGS)
+-include $(DEPENDS)
+$(progs): $(OBJECTS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(SHARED_OBJECTS) $@.o -o $@ $(LIBRARY_FLAGS)
 
 .PHONY: test
 test:
@@ -137,8 +100,6 @@ tarball: clean $(DIST_SOURCES)
 	rm -fr $(TEMP_INSTALL_DIR)
 
 clean:
-	rm -fr $(objects) $(progs) $(DIST_TARBALL) *~
+	rm -fr $(OBJECTS) $(progs) $(DIST_TARBALL) $(DEPENDS) *~
 
 doc: $(MANPAGES)
-
-FORCE:
