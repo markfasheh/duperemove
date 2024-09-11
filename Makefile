@@ -56,7 +56,7 @@ ifdef DEBUG
 			-DDEBUG_BUILD -DSQLITE_DEBUG -DSQLITE_MEMDEBUG \
 			-DSQLITE_ENABLE_EXPLAIN_COMMENTS -fsanitize-address-use-after-scope
 else
-	CFLAGS += -O2 --std=gnu2x
+	CFLAGS += -O2 --std=c23
 endif
 
 override CFLAGS += -D_FILE_OFFSET_BITS=64 -DVERSTRING=\"$(VERSION)\" \
