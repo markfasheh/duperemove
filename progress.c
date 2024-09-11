@@ -69,7 +69,7 @@ static uint64_t files_scanned, bytes_scanned;
 
 #define percent(val1, val2) ((double) val1 / (double) val2 * 100)
 
-void pscan_finish_listing()
+void pscan_finish_listing(void)
 {
 	pscan.listing_completed = true;
 }
@@ -118,7 +118,7 @@ static void print_thread_progress(struct pscan_thread *tprogress)
 	s_printf("%.*s\n", w_col, buf);
 }
 
-static void print_total_progress()
+static void print_total_progress(void)
 {
 	s_printf("\tFiles scanned: %lu/%lu (%05.2f%%)\n",
 	      files_scanned, pscan.total_files_count,
@@ -131,7 +131,7 @@ static void print_total_progress()
 		pscan.listing_completed ? "completed" : "in progress");
 }
 
-static void prepare_screen_area()
+static void prepare_screen_area(void)
 {
 	/*
 	 * Prepare one empty line for each scan threads
@@ -152,7 +152,7 @@ static void prepare_screen_area()
 	s_save_pos()
 }
 
-static void *print_progress()
+static void *print_progress(void)
 {
 	files_scanned = 0;
 	bytes_scanned = 0;

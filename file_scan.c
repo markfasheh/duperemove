@@ -194,7 +194,7 @@ static void cleanup_dbhandle(void *db)
 	dbfile_close_handle(db);
 }
 
-static struct dbhandle *get_db()
+static struct dbhandle *get_db(void)
 {
 	struct dbhandle *db;
 
@@ -1212,14 +1212,14 @@ int add_exclude_pattern(const char *pattern)
 	return 0;
 }
 
-void filescan_prepare_pool()
+void filescan_prepare_pool(void)
 {
 	abort_on(scan_pool.pool);
 	setup_pool(&scan_pool, csum_whole_file, NULL);
 	abort_on(!scan_pool.pool);
 }
 
-void filescan_free_pool()
+void filescan_free_pool(void)
 {
 	free_pool(&scan_pool);
 }

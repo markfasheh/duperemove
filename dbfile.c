@@ -48,12 +48,12 @@ struct dbhandle *dbfile_get_handle(void)
 	return gdb;
 }
 
-void dbfile_lock()
+void dbfile_lock(void)
 {
 	g_mutex_lock(&io_mutex);
 }
 
-void dbfile_unlock()
+void dbfile_unlock(void)
 {
 	g_mutex_unlock(&io_mutex);
 }
