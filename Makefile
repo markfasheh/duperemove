@@ -17,7 +17,7 @@ progs = $(install_progs) csum-test
 PROGS_OBJECTS := $(addsuffix .o,$(basename $(progs)))
 SHARED_OBJECTS := $(filter-out $(PROGS_OBJECTS),$(OBJECTS))
 
-DIST_SOURCES:=$(CFILES) $(wildcard *.h) LICENSE LICENSE.xxhash Makefile \
+DIST_SOURCES:=$(CFILES) $(wildcard *.h) LICENSE Makefile \
 	rbtree.txt README.md $(MANPAGES) SubmittingPatches docs/duperemove.html
 DIST=duperemove-$(VERSION)
 DIST_TARBALL=$(VERSION).tar.gz

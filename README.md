@@ -28,6 +28,7 @@ The latest stable code can be found in [the release page](https://github.com/mar
 - pkg-config
 - glib2
 - sqlite3
+- libxxhash 0.8.0 or later
 - util-linux (for libuuid, libmount, libblkid)
 
 Then to build Duperemove run `make`.
