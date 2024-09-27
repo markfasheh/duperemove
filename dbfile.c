@@ -359,16 +359,10 @@ static sqlite3 *__dbfile_open_handle(char *filename, bool force_create)
 		return NULL;
 	}
 
-	/* The handle is now created
-	 * If force_create is true, then this is a new database, either
-	 * on disk or in memory, which shall be initialized
-	 */
-	if (force_create) {
-		ret = dbfile_prepare(db);
-		if (ret) {
-			sqlite3_close(db);
-			return NULL;
-		}
+	ret = dbfile_prepare(db);
+	if (ret) {
+		sqlite3_close(db);
+		return NULL;
 	}
 
 	return db;
