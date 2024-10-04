@@ -488,7 +488,7 @@ struct dbhandle *dbfile_open_handle(char *filename)
  * to the current batch.
  */
 #define GET_DUPLICATE_FILES							\
-"select id, size, digest from files "						\
+"select id, size, digest, filename from files "					\
 "where dedupe_seq <= ?1 and not (flags & 1) and (digest, size) in ( "		\
 "	select digest, size from files "					\
 "	where dedupe_seq <= ?1 and not (flags & 1) and (digest, size) in ( "	\
@@ -1436,6 +1436,7 @@ int dbfile_load_same_files(struct dbhandle *db, struct results_tree *res,
 	int64_t fileid;
 	unsigned char *digest;
 	struct filerec *file;
+	const unsigned char *filename;
 
 	ret = sqlite3_bind_int64(stmt, 1, seq);
 	if (ret) {
@@ -1447,16 +1448,13 @@ int dbfile_load_same_files(struct dbhandle *db, struct results_tree *res,
 		fileid = sqlite3_column_int64(stmt, 0);
 		size = sqlite3_column_int64(stmt, 1);
 		digest = (unsigned char *)sqlite3_column_blob(stmt, 2);
+		filename = sqlite3_column_text(stmt, 3);
 
 		file = filerec_find(fileid);
 		if (!file) {
-			ret = dbfile_load_one_filerec(db, fileid, &file);
-			if (ret) {
-				eprintf("Error loading filerec (%"
-					PRIu64") from db\n",
-					fileid);
-				return ret;
-			}
+			file = filerec_new((const char *)filename, fileid, size);
+			if (!file)
+				return ENOMEM;
 		}
 
 		ret = insert_one_result(res, digest, file, 0, size, 0);
