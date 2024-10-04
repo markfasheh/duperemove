@@ -1432,7 +1432,7 @@ int dbfile_load_same_files(struct dbhandle *db, struct results_tree *res,
 {
 	int ret;
 	_cleanup_(sqlite3_reset_stmt) sqlite3_stmt *stmt = db->stmts.get_duplicate_files;
-	uint64_t len;
+	uint64_t size;
 	int64_t fileid;
 	unsigned char *digest;
 	struct filerec *file;
@@ -1445,7 +1445,7 @@ int dbfile_load_same_files(struct dbhandle *db, struct results_tree *res,
 
 	while ((ret = sqlite3_step(stmt)) == SQLITE_ROW) {
 		fileid = sqlite3_column_int64(stmt, 0);
-		len = sqlite3_column_int64(stmt, 1);
+		size = sqlite3_column_int64(stmt, 1);
 		digest = (unsigned char *)sqlite3_column_blob(stmt, 2);
 
 		file = filerec_find(fileid);
@@ -1459,7 +1459,7 @@ int dbfile_load_same_files(struct dbhandle *db, struct results_tree *res,
 			}
 		}
 
-		ret = insert_one_result(res, digest, file, 0, len, 0);
+		ret = insert_one_result(res, digest, file, 0, size, 0);
 		if (ret)
 			return ENOMEM;
 	}
