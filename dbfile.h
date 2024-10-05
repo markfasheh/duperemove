@@ -10,6 +10,7 @@
 
 #include "util.h"
 #include "csum.h"
+#include "threads.h"
 
 struct filerec;
 struct block_csum;
@@ -69,6 +70,12 @@ struct file {
 
 struct dbhandle *dbfile_open_handle(char *filename);
 void dbfile_close_handle(struct dbhandle *db);
+
+/*
+ * Open the database
+ * On success, the handle is registered to be freed when the thread pool is freed
+ */
+struct dbhandle *dbfile_open_handle_thread(char *filename, struct threads_pool *pool);
 
 void dbfile_lock();
 void dbfile_unlock();

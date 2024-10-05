@@ -561,6 +561,18 @@ void dbfile_close_handle(struct dbhandle *db)
 	}
 }
 
+struct dbhandle *dbfile_open_handle_thread(char *filename, struct threads_pool *pool)
+{
+	struct dbhandle *db;
+	dbfile_lock();
+	db = dbfile_open_handle(options.hashfile);
+	dbfile_unlock();
+
+	if (db)
+		register_cleanup(pool, (void*)&dbfile_close_handle, db);
+	return db;
+}
+
 uint64_t count_file_by_digest(struct dbhandle *db, unsigned char *digest,
 				bool show_block_hashes)
 {

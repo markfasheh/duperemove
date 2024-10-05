@@ -194,23 +194,6 @@ static void free_scan_ctxt(struct scan_ctxt *ctxt)
 		finish_running_checksum(ctxt->extent_csum, NULL);
 }
 
-static void cleanup_dbhandle(void *db)
-{
-	dbfile_close_handle(db);
-}
-
-static struct dbhandle *get_db(void)
-{
-	struct dbhandle *db;
-
-	dbfile_lock();
-	db = dbfile_open_handle(options.hashfile);
-	dbfile_unlock();
-	if (db)
-		register_cleanup(&scan_pool, (void*)&cleanup_dbhandle, db);
-	return db;
-}
-
 static int is_excluded(const char *name)
 {
 	struct exclude_file *exclude;
@@ -1020,7 +1003,7 @@ static void csum_whole_file(struct file_to_scan *file)
 	}
 
 	if (!db)
-		db = get_db();
+		db = dbfile_open_handle_thread(options.hashfile, &scan_pool);
 	if (!db) {
 		eprintf("csum_whole_file: unable to connect to the database\n");
 		return;
