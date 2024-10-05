@@ -1229,7 +1229,7 @@ void add_file_fdupes(char *path)
 	struct statx st;
 	int ret;
 
-	ret = statx(0, path, 0, STATX_BASIC_STATS, &st);
+	ret = statx(AT_FDCWD, path, 0, STATX_BASIC_STATS, &st);
 	if (ret || !(st.stx_mask & STATX_BASIC_STATS)) {
 		eprintf("statx on %s: %s\n", path, strerror(errno));
 		return;
