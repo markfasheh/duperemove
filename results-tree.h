@@ -47,7 +47,6 @@ struct dupe_extents {
 	GMutex			de_mutex;
 };
 
-struct extent_dedupe_info;
 struct extent {
 	struct dupe_extents	*e_parent;
 
