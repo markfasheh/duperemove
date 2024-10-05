@@ -12,6 +12,7 @@
  *
  */
 #include <sys/ioctl.h>
+#include <stdatomic.h>
 
 #include "debug.h"
 #include "opt.h"
@@ -61,6 +62,11 @@ unsigned int w_col;
 
 /* Sums of the per-thread stats */
 static uint64_t files_scanned, bytes_scanned;
+
+/*
+ * Used to track the status of our search extents from blocks
+ */
+static uint64_t search_total, search_processed;
 
 #define s_save_pos() if (tty) printf("\33[s");
 #define s_restore_pos() if (tty) printf("\33[u");
@@ -170,7 +176,7 @@ static void *print_progress(void)
 	return NULL;
 }
 
-static void *progress_thread(void *)
+static void *pscan_progress_thread(void *)
 {
 	struct winsize w;
 	do {
@@ -221,7 +227,7 @@ void pscan_run()
 	}
 
 	/* Will abort on failure */
-	printer = g_thread_new("progress_printer", progress_thread, NULL);
+	printer = g_thread_new("progress_printer", pscan_progress_thread, NULL);
 }
 
 void pscan_join()
@@ -271,7 +277,7 @@ void pscan_reset_thread(struct pscan_thread **progress)
 	(*progress)->file_path[0] = '\0';
 }
 
-bool is_pscan_running()
+bool is_progress_printer_running()
 {
 	return printer ? true : false;
 }
@@ -304,4 +310,55 @@ void pscan_printf(char *fmt, ...)
 	 */
 	print_progress();
 	g_mutex_unlock(&pscan.mutex);
+}
+
+static void *psearch_progress_thread(void *)
+{
+	static int last_pos = -1;
+
+	do {
+		int pos;
+		int width = 40;
+
+		pos = (float) search_processed / search_total * width;
+
+		/* Only update our status every width% */
+		if (pos > last_pos) {
+			last_pos = pos;
+
+			printf("\r[");
+			for(int i = 0; i < width; i++) {
+				if (i < pos)
+					printf("#");
+				else if (i == pos)
+					printf("%%");
+				else
+					printf(" ");
+			}
+			printf("]");
+		}
+
+		/* Do not waste too much cpu */
+		usleep(100);
+	} while (search_total != search_processed);
+	printf("\n");
+	return NULL;
+}
+
+void psearch_run(uint64_t num_filerecs)
+{
+	search_processed = 0;
+	search_total = num_filerecs;
+	printer = g_thread_new("progress_printer", psearch_progress_thread, NULL);
+}
+
+void psearch_join(void)
+{
+	g_thread_join(printer);
+	printer = NULL;
+}
+
+void psearch_update_processed_count(unsigned int processed)
+{
+	atomic_fetch_add(&search_processed, processed);
 }

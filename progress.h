@@ -69,11 +69,29 @@ void pscan_join();
  */
 void pscan_reset_thread(struct pscan_thread **progress);
 
-bool is_pscan_running();
+bool is_progress_printer_running();
 
 /*
  * The progress thread overwrites its area.
  * This function is used to write something before that area
  */
 void pscan_printf(char *fmt, ...);
+
+/*
+ * Start the "extent search" progress thread
+ * The thread will run until the search is done, that is when we
+ * processed all filerecs
+ */
+void psearch_run(uint64_t num_filerecs);
+
+/*
+ * Wait for the progress thread to finish
+ */
+void psearch_join();
+
+/*
+ * extent search: update the number of processed filerecs
+ */
+void psearch_update_processed_count(unsigned int processed);
+
 #endif	/* __PROGRESS_H__ */

@@ -31,7 +31,7 @@ extern int quiet;
 #define unlikely(x)	__builtin_expect(!!(x), 0)
 
 #define progress_print(stream, format, ...) do {			\
-	if (is_pscan_running())						\
+	if (is_progress_printer_running())						\
 		pscan_printf(format, ##__VA_ARGS__);			\
 	else								\
 		fprintf(stream, format, ##__VA_ARGS__);         	\

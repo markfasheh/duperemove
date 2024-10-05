@@ -25,7 +25,6 @@
 #include <unistd.h>
 
 #include <inttypes.h>
-#include <glib.h>
 
 #include "csum.h"
 #include "rbtree.h"
@@ -36,101 +35,9 @@
 #include "dbfile.h"
 #include "memstats.h"
 #include "debug.h"
+#include "progress.h"
 
 #include "find_dupes.h"
-
-/*
- * Extent search status globals. This could be an atomic but GCond
- * requires a mutex so we might as well use it...
- */
-static unsigned long long	search_total;
-static unsigned long long	search_processed;
-static GMutex			progress_mutex;
-static GCond			progress_updated;
-
-/* XXX: This is allowed to be called *after* update_extent_search_status() */
-static void set_extent_search_status_count(unsigned long long nr_items)
-{
-	search_total = nr_items;
-}
-
-static void print_extent_search_status(unsigned long long processed)
-{
-	static int last_pos = -1;
-	int i, pos;
-	int width = 40;
-	float progress;
-
-	progress = (float) processed / search_total;
-	pos = width * progress;
-
-	/* Only update our status every width% */
-	if (pos <= last_pos)
-		return;
-	last_pos = pos;
-
-	printf("\r[");
-	for(i = 0; i < width; i++) {
-		if (i < pos)
-			printf("#");
-		else if (i == pos)
-			printf("%%");
-		else
-			printf(" ");
-	}
-	printf("]");
-}
-
-/*
- * 'err' is impossible in the current code when this is called, but we
- * can keep the handling here in case that changes.
- */
-static void clear_extent_search_status(unsigned long long processed,
-				       int err)
-{
-	if (err)
-		printf("\nSearch exited (%llu processed) with error %d: "
-		       "\"%s\"\n", processed, err, strerror(err));
-	else
-		printf("\nSearch completed with no errors.             \n");
-}
-
-static void update_extent_search_status(unsigned long long processed)
-{
-	g_mutex_lock(&progress_mutex);
-	search_processed += processed;
-	g_cond_signal(&progress_updated);
-	g_mutex_unlock(&progress_mutex);
-}
-
-static void wait_update_extent_search_status()
-{
-	uint64_t end_time = g_get_monotonic_time () + 1 * G_TIME_SPAN_SECOND;
-	unsigned long long tmp, last = 0;
-
-	if (!isatty(STDOUT_FILENO) || verbose || debug)
-		return;
-
-	/* Get the bar started */
-	print_extent_search_status(0);
-
-	g_mutex_lock(&progress_mutex);
-	while (search_processed < search_total) {
-		g_cond_wait_until(&progress_updated, &progress_mutex, end_time);
-		tmp = search_processed;
-		g_mutex_unlock(&progress_mutex);
-
-		if (tmp != last)
-			print_extent_search_status(tmp);
-		last = tmp;
-
-		g_mutex_lock(&progress_mutex);
-	}
-	g_mutex_unlock(&progress_mutex);
-
-	print_extent_search_status(search_processed);
-	clear_extent_search_status(search_processed, 0);
-}
 
 static inline unsigned long block_len(struct file_block *block)
 {
@@ -441,7 +348,7 @@ static void search_file_extents(struct filerec *file, struct results_tree *dupe_
 	}
 
 out:
-	update_extent_search_status(1);
+	psearch_update_processed_count(1);
 	if (extents)
 		free(extents);
 
@@ -486,7 +393,7 @@ int find_additional_dedupe(struct results_tree *dupe_extents)
 		return ENOMEM;
 	}
 
-	set_extent_search_status_count(num_filerecs);
+	psearch_run(num_filerec);
 
 	SLIST_FOREACH(file, &filerec_head, rec_list) {
 		/*
@@ -494,7 +401,7 @@ int find_additional_dedupe(struct results_tree *dupe_extents)
 		 * Anyway, let's skip it and mark it as "processed"
 		 */
 		if (file->size == 0) {
-			update_extent_search_status(1);
+			psearch_update_processed_count(1);
 			continue;
 		}
 
@@ -517,8 +424,7 @@ int find_additional_dedupe(struct results_tree *dupe_extents)
 		/* XXX: Need to throttle here? */
 	}
 
-	wait_update_extent_search_status();
-
+	psearch_join();
 	g_thread_pool_free(pool, FALSE, TRUE);
 
 	return ret;
