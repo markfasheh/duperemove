@@ -19,11 +19,13 @@
 #include <stdint.h>
 #include <time.h>
 #include <glib.h>
+#include <bsd/sys/queue.h>
 #include "rbtree.h"
-#include "list.h"
 #include "results-tree.h"
 
-extern struct list_head filerec_list;
+SLIST_HEAD(filerec_list, filerec);
+extern struct filerec_list filerec_head;
+
 extern unsigned long long num_filerecs;
 extern unsigned int dedupe_seq; /* This is incremented on every dedupe pass */
 
@@ -39,7 +41,7 @@ struct filerec {
 	uint64_t		size;
 	struct rb_root		block_tree;	/* root for hash blocks tree */
 
-	struct list_head	rec_list;	/* all filerecs */
+	SLIST_ENTRY(filerec)	rec_list;	/* all filerecs */
 };
 
 void init_filerec(void);
@@ -49,7 +51,6 @@ struct filerec *filerec_new(const char *filename, int64_t fileid,
 			    uint64_t size);
 struct filerec *filerec_find(int64_t fileid);
 
-void filerec_free(struct filerec *file);
 int filerec_open(struct filerec *file, bool quiet);
 void filerec_close(struct filerec *file);
 

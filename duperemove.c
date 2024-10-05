@@ -590,7 +590,7 @@ static int scan_files(int argc, char **argv, int filelist_idx, struct dbhandle *
 {
 	int ret;
 
-	filescan_prepare_pool();
+	filescan_init();
 	if (!quiet)
 		pscan_run();
 
@@ -601,7 +601,7 @@ static int scan_files(int argc, char **argv, int filelist_idx, struct dbhandle *
 					     &argv[filelist_idx], db);
 
 	pscan_finish_listing();
-	filescan_free_pool();
+	filescan_free();
 	if (!quiet)
 		pscan_join();
 

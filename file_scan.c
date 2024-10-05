@@ -41,11 +41,11 @@
 #include <libmount/libmount.h>
 #include <sys/sysmacros.h>
 #include <uuid/uuid.h>
+#include <bsd/sys/queue.h>
 
 #include <glib.h>
 
 #include "csum.h"
-#include "list.h"
 #include "filerec.h"
 #include "hash-tree.h"
 #include "btrfs-util.h"
@@ -63,13 +63,18 @@
 #define	XFS_SB_MAGIC		0x58465342	/* 'XFSB' */
 #endif
 
+struct exclude_file {
+	char *pattern;
+	SLIST_ENTRY(exclude_file) list;
+};
+
+SLIST_HEAD(exclude_list, exclude_file) exclude_head = SLIST_HEAD_INITIALIZER(exclude_head);
+
 static int __scan_file(char *path, struct dbhandle *db, struct statx *st);
 
 static struct threads_pool scan_pool;
 
 #define READ_BUF_LEN (8*1024*1024) // 8MB
-
-LIST_HEAD(exclude_list);
 
 struct buffer {
 	char *buf;
@@ -208,9 +213,9 @@ static struct dbhandle *get_db(void)
 
 static int is_excluded(const char *name)
 {
-	struct exclude_file *exclude, *tmp;
+	struct exclude_file *exclude;
 
-	list_for_each_entry_safe(exclude, tmp, &exclude_list, list) {
+	SLIST_FOREACH(exclude, &exclude_head, list) {
 		if (fnmatch(exclude->pattern, name, 0) == 0) {
 			vprintf("Excluding: %s (matches %s)\n", name,
 				exclude->pattern);
@@ -1208,18 +1213,19 @@ int add_exclude_pattern(const char *pattern)
 
 	vprintf("Adding exclude pattern: %s\n", exclude->pattern);
 
-	list_add_tail(&exclude->list, &exclude_list);
+	SLIST_INSERT_HEAD(&exclude_head, exclude, list);
 	return 0;
 }
 
-void filescan_prepare_pool(void)
+void filescan_init(void)
 {
+	SLIST_INIT(&exclude_head);
 	abort_on(scan_pool.pool);
 	setup_pool(&scan_pool, csum_whole_file, NULL);
 	abort_on(!scan_pool.pool);
 }
 
-void filescan_free_pool(void)
+void filescan_free(void)
 {
 	free_pool(&scan_pool);
 }

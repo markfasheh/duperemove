@@ -21,6 +21,11 @@
 
 #include "csum.h"
 
+// TODO: delete this
+struct list_head {
+	struct list_head *next, *prev;
+};
+
 struct results_tree {
 	struct rb_root	root;
 	unsigned int	num_dupes;

@@ -488,7 +488,7 @@ int find_additional_dedupe(struct results_tree *dupe_extents)
 
 	set_extent_search_status_count(num_filerecs);
 
-	list_for_each_entry(file, &filerec_list, rec_list) {
+	SLIST_FOREACH(file, &filerec_head, rec_list) {
 		/*
 		 * This is an empty file - or maybe an error somewhere ?
 		 * Anyway, let's skip it and mark it as "processed"

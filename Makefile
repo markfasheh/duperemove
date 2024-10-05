@@ -23,7 +23,7 @@ DIST=duperemove-$(VERSION)
 DIST_TARBALL=$(VERSION).tar.gz
 TEMP_INSTALL_DIR:=$(shell mktemp -du -p .)
 
-EXTRA_CFLAGS=$(shell $(PKG_CONFIG) --cflags glib-2.0,sqlite3,blkid,mount,uuid)
+EXTRA_CFLAGS=$(shell $(PKG_CONFIG) --cflags glib-2.0,sqlite3,blkid,mount,uuid,libbsd)
 EXTRA_LIBS=$(shell $(PKG_CONFIG) --libs glib-2.0,sqlite3,blkid,mount,uuid)
 
 ifdef DEBUG

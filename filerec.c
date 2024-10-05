@@ -23,7 +23,6 @@
 
 #include "util.h"
 #include "rbtree.h"
-#include "list.h"
 #include "debug.h"
 #include "memstats.h"
 #include "fiemap.h"
@@ -31,7 +30,8 @@
 #include "filerec.h"
 
 static GMutex filerec_fd_mutex;
-struct list_head filerec_list;
+struct filerec_list filerec_head = SLIST_HEAD_INITIALIZER(filerec_head);
+
 static struct rb_root filerec_by_fileid = RB_ROOT;
 unsigned long long num_filerecs = 0ULL;
 unsigned int dedupe_seq = 0;
@@ -41,7 +41,7 @@ declare_alloc_tracking(filerec_token);
 
 void init_filerec(void)
 {
-	INIT_LIST_HEAD(&filerec_list);
+	SLIST_INIT(&filerec_head);
 }
 
 struct filerec_token *find_filerec_token_rb(struct rb_root *root,
@@ -187,7 +187,7 @@ static struct filerec *filerec_alloc_insert(const char *filename,
 	file->size = size;
 
 	insert_filerec(file);
-	list_add_tail(&file->rec_list, &filerec_list);
+	SLIST_INSERT_HEAD(&filerec_head, file, rec_list);
 	num_filerecs++;
 
 	return file;
@@ -201,7 +201,7 @@ struct filerec *filerec_new(const char *filename, int64_t fileid,
 	return file;
 }
 
-void filerec_free(struct filerec *file)
+static void filerec_free(struct filerec *file)
 {
 	if (file) {
 		free(file->filename);
@@ -211,7 +211,7 @@ void filerec_free(struct filerec *file)
 		 * file_block's from free_all_filerecs()
 		 */
 //		abort_on(!RB_EMPTY_ROOT(&file->block_tree));
-		list_del(&file->rec_list);
+		SLIST_REMOVE(&filerec_head, file, filerec, rec_list);
 
 		if (!RB_EMPTY_NODE(&file->fileid_node))
 			rb_erase(&file->fileid_node, &filerec_by_fileid);
@@ -224,7 +224,7 @@ void free_all_filerecs(void)
 {
 	struct filerec *file, *tmp;
 
-	list_for_each_entry_safe(file, tmp, &filerec_list, rec_list) {
+	SLIST_FOREACH_SAFE(file, &filerec_head, rec_list, tmp) {
 		filerec_free(file);
 	}
 }

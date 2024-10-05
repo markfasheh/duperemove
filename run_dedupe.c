@@ -637,7 +637,7 @@ int fdupes_dedupe(void)
 	uint64_t bytes = 0;
 	OPEN_ONCE(open_files);
 
-	list_for_each_entry(file, &filerec_list, rec_list) {
+	SLIST_FOREACH(file, &filerec_head, rec_list) {
 		ret = filerec_open_once(file, &open_files);
 		if (ret) {
 			eprintf("%s: Skipping dedupe.\n", file->filename);
@@ -663,8 +663,7 @@ int fdupes_dedupe(void)
 			eprintf("%s: Request not queued.\n", file->filename);
 			ret = ENOMEM;
 			goto out;
-		} else if (ret == 0 ||
-			   list_is_last(&file->rec_list, &filerec_list)) {
+		} else if (ret == 0 || SLIST_NEXT(file, rec_list) == 0) {
 			ret = dedupe_extents(ctxt);
 			if (ret) {
 				ret = errno;

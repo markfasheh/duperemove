@@ -6,7 +6,6 @@
 
 #include "dbfile.h"
 
-#include "list.h"
 #include "csum.h"
 
 #define MIN_BLOCKSIZE   (4U*1024)
@@ -34,11 +33,6 @@ struct extent_csum {
 	unsigned char	digest[DIGEST_LEN];
 };
 
-struct exclude_file {
-	char *pattern;
-	struct list_head list;
-};
-
 struct file_to_scan {
 	char *path;
 	int64_t fileid;
@@ -53,8 +47,8 @@ struct file_to_scan {
 
 int add_exclude_pattern(const char *pattern);
 
-void filescan_prepare_pool();
-void filescan_free_pool();
+void filescan_init();
+void filescan_free();
 
 void add_file_fdupes(char *path);
 #endif	/* __FILE_SCAN_H__ */

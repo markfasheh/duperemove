@@ -26,6 +26,7 @@
 #include "rbtree.h"
 #include "list.h"
 
+#include "list.h"
 #include "csum.h"	/* for DIGEST_LEN */
 
 #include "filerec.h"
