@@ -306,14 +306,14 @@ static void search_file_extents(struct filerec *file, struct results_tree *dupe_
 {
 
 	int ret;
-	struct dbhandle *db;
+	static __thread struct dbhandle *db = NULL;
 	struct file_extent *extents = NULL;
 	struct file_extent *extent;
 	unsigned int num_extents, i;
 
-	dbfile_lock();
-	db = dbfile_open_handle(options.hashfile);
-	dbfile_unlock();
+	if (!db)
+		db = dbfile_open_handle_thread(options.hashfile, &search_pool);
+
 	if (!db) {
 		eprintf("ERROR: Couldn't open db file %s\n",
 			options.hashfile == NULL ? "(null)" : options.hashfile);
@@ -352,10 +352,6 @@ static void search_file_extents(struct filerec *file, struct results_tree *dupe_
 out:
 	if (extents)
 		free(extents);
-
-	dbfile_lock();
-	dbfile_close_handle(db);
-	dbfile_unlock();
 }
 
 struct cmp_ctxt {
