@@ -42,12 +42,6 @@ struct dedupe_ctxt {
 	unsigned int		same_size;
 
 	/*
-	 * Keep blocksize 64 bits wide here so we can use it for
-	 * aligning the (64 bits wide) context length.
-	 */
-	uint64_t		fs_blocksize;
-
-	/*
 	 * request tracking.
 	 *	queued: request is awaiting dedupe
 	 *	in_progress: currently undergoing dedupe operations

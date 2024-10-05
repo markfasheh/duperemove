@@ -30,7 +30,11 @@
 #include "dedupe.h"
 #include "debug.h"
 
-static int must_align_len = 0;
+/*
+ * Used to determine if requests must be aligned with the underlying block size
+ * If 0, there is no need to align requests
+ */
+static unsigned int fs_blocksize = 0;
 
 struct dedupe_req {
 	struct filerec		*req_file;
@@ -139,20 +143,16 @@ void free_dedupe_ctxt(struct dedupe_ctxt *ctxt)
 	}
 }
 
-static unsigned int get_fs_blocksize(struct filerec *file)
+static unsigned int get_fs_blocksize(int fd)
 {
 	int ret;
 	struct statfs fs;
-	static int bsize_warned = 0;
 
-	ret = fstatfs(file->fd, &fs);
+	ret = fstatfs(fd, &fs);
 	if (ret) {
-		if (!bsize_warned) {
-			eprintf("Error %d (\"%s\") while getting fs "
-				"blocksize, defaulting to 4096 bytes for this "
-				"dedupe.\n", errno, strerror(errno));
-			bsize_warned = 1;
-		}
+		eprintf("Error %d (\"%s\") while getting fs "
+			"blocksize, defaulting to 4096 bytes for this "
+			"dedupe.\n", errno, strerror(errno));
 		return 4096;
 	}
 	return fs.f_bsize;
@@ -193,8 +193,6 @@ struct dedupe_ctxt *new_dedupe_ctxt(unsigned int max_extents, uint64_t loff,
 	INIT_LIST_HEAD(&ctxt->queued);
 	INIT_LIST_HEAD(&ctxt->in_progress);
 	INIT_LIST_HEAD(&ctxt->completed);
-
-	ctxt->fs_blocksize = get_fs_blocksize(ioctl_file);
 
 	return ctxt;
 }
@@ -240,8 +238,8 @@ static void set_aligned_same_length(struct dedupe_ctxt *ctxt,
 				    struct file_dedupe_range *same)
 {
 	same->src_length = ctxt->len;
-	if (must_align_len && ctxt->len > ctxt->fs_blocksize)
-		same->src_length = ctxt->len & ~(ctxt->fs_blocksize - 1);
+	if (fs_blocksize != 0 && ctxt->len > fs_blocksize)
+		same->src_length = ctxt->len & ~(fs_blocksize - 1);
 }
 
 static void populate_dedupe_request(struct dedupe_ctxt *ctxt,
@@ -302,12 +300,13 @@ static void process_dedupes(struct dedupe_ctxt *ctxt,
 	ctxt->len -= max_deduped;
 	ctxt->ioctl_file_off += max_deduped;
 
-	if (ctxt->len < ctxt->fs_blocksize && must_align_len) {
+	if (fs_blocksize != 0 && ctxt->len < fs_blocksize) {
 		/*
 		 * If we go around again in this situation, we'll just
 		 * get -EINVAL on all the fds. Short circuit this then
 		 * by moving everything off the queued list.
 		 */
+		fs_blocksize = get_fs_blocksize(ctxt->ioctl_file->fd);
 		list_splice_init(&ctxt->queued, &ctxt->completed);
 	}
 }
@@ -328,8 +327,7 @@ retry:
 		if (debug)
 			print_btrfs_same_info(ctxt);
 
-		if (ctxt->same->info[0].status == -EINVAL && !must_align_len) {
-			must_align_len = 1;
+		if (ctxt->same->info[0].status == -EINVAL && !fs_blocksize) {
 			set_aligned_same_length(ctxt, ctxt->same);
 			goto retry;
 		}
