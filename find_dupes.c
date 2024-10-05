@@ -31,13 +31,15 @@
 #include "list.h"
 #include "filerec.h"
 #include "hash-tree.h"
-#include "results-tree.h"
 #include "dbfile.h"
 #include "memstats.h"
 #include "debug.h"
 #include "progress.h"
+#include "threads.h"
 
 #include "find_dupes.h"
+
+static struct threads_pool search_pool;
 
 static inline unsigned long block_len(struct file_block *block)
 {
@@ -348,7 +350,6 @@ static void search_file_extents(struct filerec *file, struct results_tree *dupe_
 	}
 
 out:
-	psearch_update_processed_count(1);
 	if (extents)
 		free(extents);
 
@@ -371,27 +372,23 @@ static void find_dupes_thread(struct cmp_ctxt *ctxt, void *priv [[maybe_unused]]
 	free(ctxt);
 
 	search_file_extents(file, dupe_extents);
+
+	/*
+	 * Always bump the processed count, regardless of
+	 * the function's outcome.
+	 */
+	psearch_update_processed_count(1);
 }
 
 int find_additional_dedupe(struct results_tree *dupe_extents)
 {
 	int ret = 0;
 	GError *err = NULL;
-	GThreadPool *pool = NULL;
 	struct filerec *file;
 
 	qprintf("Using %u threads to search within extents for "
 		"additional dedupe. This process will take some time, during "
 		"which Duperemove can safely be ctrl-c'd.\n", options.cpu_threads);
-
-	pool = g_thread_pool_new((GFunc) find_dupes_thread, NULL,
-				 options.cpu_threads, TRUE, &err);
-	if (err) {
-		eprintf("Unable to create find file dupes thread pool: %s\n",
-			err->message);
-		g_error_free(err);
-		return ENOMEM;
-	}
 
 	psearch_run(num_filerec);
 
@@ -413,19 +410,26 @@ int find_additional_dedupe(struct results_tree *dupe_extents)
 		ctxt->file = file;
 		ctxt->dupe_extents = dupe_extents;
 
-		g_thread_pool_push(pool, ctxt, &err);
+		g_thread_pool_push(search_pool.pool, ctxt, &err);
 		if (err) {
 			eprintf("Error from thread pool: %s\n ",
 				err->message);
 			g_error_free(err);
 			return ENOMEM;
 		}
-
-		/* XXX: Need to throttle here? */
 	}
 
 	psearch_join();
-	g_thread_pool_free(pool, FALSE, TRUE);
 
 	return ret;
+}
+
+void extents_search_init(void)
+{
+	setup_pool(&search_pool, find_dupes_thread, NULL);
+}
+
+void extents_search_free(void)
+{
+	free_pool(&search_pool);
 }

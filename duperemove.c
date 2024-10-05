@@ -566,6 +566,10 @@ static void process_duplicates(struct dbhandle *db)
 {
 	unsigned int max = get_max_dedupe_seq(db);
 
+	/* Spawn a dedicated thread pool to block-based lookup */
+	if (options.do_block_hash)
+		extents_search_init();
+
 	for (unsigned int i = dedupe_seq; i < max; i++) {
 		/* Drop all filerecs from the previous iteration. Needed filerecs will be
 		 * recreated by __process_duplicates()
@@ -584,6 +588,9 @@ static void process_duplicates(struct dbhandle *db)
 			dbfile_sync_config(db, &dbfile_cfg);
 		}
 	}
+
+	if (options.do_block_hash)
+		extents_search_free();
 }
 
 static int scan_files(int argc, char **argv, int filelist_idx, struct dbhandle *db)
