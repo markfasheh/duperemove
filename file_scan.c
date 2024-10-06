@@ -1202,7 +1202,6 @@ int add_exclude_pattern(const char *pattern)
 
 void filescan_init(void)
 {
-	SLIST_INIT(&exclude_head);
 	abort_on(scan_pool.pool);
 	setup_pool(&scan_pool, csum_whole_file, NULL);
 	abort_on(!scan_pool.pool);
