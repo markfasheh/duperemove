@@ -306,7 +306,7 @@ static void search_file_extents(struct filerec *file, struct results_tree *dupe_
 {
 	int ret;
 	static __thread struct dbhandle *db = NULL;
-	struct file_extent *extents = NULL;
+	_cleanup_(freep) struct file_extent *extents = NULL;
 	struct file_extent *extent;
 	unsigned int num_extents, i;
 
@@ -325,10 +325,8 @@ static void search_file_extents(struct filerec *file, struct results_tree *dupe_
 	 * returned here is what was given to us by fiemap.
 	 */
 	ret = dbfile_load_nondupe_file_extents(db, file, &extents, &num_extents);
-	if (ret)
-		goto out;
-	if (!num_extents)
-		goto out;
+	if (ret || !num_extents)
+		return;
 
 	dprintf("search_file_extents: %s (size=%"PRIu64" ret %d num_extents: "
 		"%u\n", file->filename, file->size, ret, num_extents);
@@ -347,12 +345,8 @@ static void search_file_extents(struct filerec *file, struct results_tree *dupe_
 
 		ret = search_extent(file, extent, dupe_extents, db);
 		if (ret)
-			goto out;
+			return;
 	}
-
-out:
-	if (extents)
-		free(extents);
 }
 
 struct cmp_ctxt {
