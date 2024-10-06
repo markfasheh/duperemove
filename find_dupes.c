@@ -304,21 +304,22 @@ static int search_extent(struct filerec *file, struct file_extent *extent,
  */
 static void search_file_extents(struct filerec *file, struct results_tree *dupe_extents)
 {
-
 	int ret;
 	static __thread struct dbhandle *db = NULL;
 	struct file_extent *extents = NULL;
 	struct file_extent *extent;
 	unsigned int num_extents, i;
 
-	if (!db)
+	if (!db) {
 		db = dbfile_open_handle_thread(options.hashfile, &search_pool);
 
-	if (!db) {
-		eprintf("ERROR: Couldn't open db file %s\n",
-			options.hashfile == NULL ? "(null)" : options.hashfile);
-		return;
+		if (!db) {
+			eprintf("ERROR: Couldn't open db file %s\n",
+				options.hashfile == NULL ? "(null)" : options.hashfile);
+			return;
+		}
 	}
+
 	/*
 	 * Pick a non-deduped extent from file. The extent info
 	 * returned here is what was given to us by fiemap.
@@ -361,7 +362,6 @@ struct cmp_ctxt {
 
 static void find_dupes_thread(struct cmp_ctxt *ctxt, void *priv [[maybe_unused]])
 {
-
 	struct results_tree *dupe_extents = ctxt->dupe_extents;
 	struct filerec *file = ctxt->file;
 
