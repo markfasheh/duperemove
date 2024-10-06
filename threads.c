@@ -15,13 +15,13 @@
 #include "threads.h"
 #include "debug.h"
 
-void setup_pool(struct threads_pool *pool, void *function, void *arg)
+void setup_pool(struct threads_pool *pool, void *function, void *arg, unsigned int max_threads)
 {
 	GError *err = NULL;
 
 	pool->item_count = 0;
 	pool->items = NULL;
-	pool->pool = g_thread_pool_new((GFunc) function, arg, options.io_threads, FALSE,
+	pool->pool = g_thread_pool_new((GFunc) function, arg, max_threads, FALSE,
 					&err);
 	if (err != NULL) {
 		eprintf("Unable to create thread pool: %s\n", err->message);

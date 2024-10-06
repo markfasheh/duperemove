@@ -1203,7 +1203,7 @@ int add_exclude_pattern(const char *pattern)
 void filescan_init(void)
 {
 	abort_on(scan_pool.pool);
-	setup_pool(&scan_pool, csum_whole_file, NULL);
+	setup_pool(&scan_pool, csum_whole_file, NULL, options.io_threads);
 	abort_on(!scan_pool.pool);
 }
 

@@ -33,7 +33,7 @@ struct threads_pool {
 	GMutex mutex; /* Protect the cleanup items operations */
 };
 
-void setup_pool(struct threads_pool *pool, void *function, void *arg);
+void setup_pool(struct threads_pool *pool, void *function, void *arg, unsigned int max_threads);
 void register_cleanup(struct threads_pool *pool, void *function, void *ptr);
 void free_pool(struct threads_pool *pool);
 #endif	/* __THREADS_H__ */

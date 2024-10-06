@@ -422,7 +422,7 @@ int find_additional_dedupe(struct results_tree *dupe_extents)
 
 void extents_search_init(void)
 {
-	setup_pool(&search_pool, find_dupes_thread, NULL);
+	setup_pool(&search_pool, find_dupes_thread, NULL, options.cpu_threads);
 }
 
 void extents_search_free(void)
