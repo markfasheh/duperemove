@@ -441,6 +441,20 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 	else if (update_hashes)
 		use_hashfile = H_UPDATE;
 
+	/*
+	 * Always add the hashfile and its wal etc to the exclude list
+	 * A wildcard would be easier but may exclude extra files silently,
+	 * this would be confusing for the user.
+	 */
+	if (options.hashfile != NULL) {
+		char tmp[PATH_MAX + 10 ] = {0,};
+		add_exclude_pattern(options.hashfile);
+		snprintf(tmp, PATH_MAX + 9, "%s-wal", options.hashfile);
+		add_exclude_pattern(tmp);
+		snprintf(tmp, PATH_MAX + 9, "%s-shm", options.hashfile);
+		add_exclude_pattern(tmp);
+	}
+
 	if (read_hashes) {
 		if (numfiles) {
 			eprintf("Error: --read-hashes option does not take a "
