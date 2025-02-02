@@ -20,11 +20,7 @@
 #include <glib.h>
 
 #include "csum.h"
-
-// TODO: delete this
-struct list_head {
-	struct list_head *next, *prev;
-};
+#include "list.h"
 
 struct results_tree {
 	struct rb_root	root;
