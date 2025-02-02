@@ -220,6 +220,30 @@ static inline dev_t stx_to_dev(struct statx *stx)
 	return makedev(stx->stx_dev_major, stx->stx_dev_minor);
 }
 
+static char *extract_first_device(const char *fs_source)
+{
+	char *first_device = NULL;
+	const char *colon;
+
+	if (!fs_source)
+		return NULL;
+
+	colon = strchr(fs_source, ':');
+	if (colon) {
+		size_t len = colon - fs_source;
+		first_device = malloc(len + 1);
+		if (!first_device)
+			return NULL;
+		memcpy(first_device, fs_source, len);
+		first_device[len] = '\0';
+	} else {
+		first_device = strdup(fs_source);
+		if (!first_device)
+			return NULL;
+	}
+	return first_device;
+}
+
 /* Get the UUID associated with the FS that stores path */
 int get_uuid(char *path, uuid_t *uuid)
 {
@@ -245,6 +269,9 @@ int get_uuid(char *path, uuid_t *uuid)
 			return 1;
 		}
 	} else {
+		const char *fs_source;
+		char *first_device;
+
 		dprintf("get_uuid: %s do not live on btrfs\n", path);
 
 		ret = statx(0, path, 0, STATX_BASIC_STATS, &st);
@@ -274,7 +301,16 @@ int get_uuid(char *path, uuid_t *uuid)
 			return 1;
 		}
 
-		uuid_found = blkid_get_tag_value(NULL, "UUID", mnt_fs_get_source(dev));
+		fs_source = mnt_fs_get_source(dev);
+		first_device = extract_first_device(fs_source);
+
+		if (!first_device) {
+			eprintf("Memory allocation failed\n");
+			return 1;
+		}
+
+		uuid_found = blkid_get_tag_value(NULL, "UUID", first_device);
+		free(first_device);
 		if (!uuid_found) {
 			eprintf("libblkid could not get uuid for "
 					"device %s. Run blkid as root to "
