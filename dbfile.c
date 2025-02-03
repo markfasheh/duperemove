@@ -561,6 +561,17 @@ void dbfile_close_handle(struct dbhandle *db)
 	}
 }
 
+/*
+ * dbfile_close_handle takes struct dbhandle*.
+ * we need a function that takes void* so we
+ * can pass it to register_cleanup without
+ * causing UB.
+ */
+static void cleanup_dbhandle(void *db)
+{
+	dbfile_close_handle(db);
+}
+
 struct dbhandle *dbfile_open_handle_thread(char *filename, struct threads_pool *pool)
 {
 	struct dbhandle *db;
@@ -569,7 +580,7 @@ struct dbhandle *dbfile_open_handle_thread(char *filename, struct threads_pool *
 	dbfile_unlock();
 
 	if (db)
-		register_cleanup(pool, (void*)&dbfile_close_handle, db);
+		register_cleanup(pool, (void*)&cleanup_dbhandle, db);
 	return db;
 }
 
