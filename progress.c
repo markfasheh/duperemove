@@ -66,7 +66,7 @@ static uint64_t files_scanned, bytes_scanned;
 /*
  * Used to track the status of our search extents from blocks
  */
-static uint64_t search_total, search_processed;
+static _Atomic uint64_t search_total, search_processed;
 
 #define s_save_pos() if (tty) printf("\33[s");
 #define s_restore_pos() if (tty) printf("\33[u");
