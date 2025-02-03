@@ -561,10 +561,15 @@ static int push_extents(struct results_tree *res)
 		 * around the rbtree code here so rb_erase doesn't
 		 * change the tree underneath us.
 		 */
-
 		g_mutex_lock(&mutex);
 		node = rb_next(node);
 		g_mutex_unlock(&mutex);
+
+		if (dext->de_num_dupes < 2) {
+			qprintf("Skipping extent - insufficient duplicates (%u)\n",
+				   dext->de_num_dupes);
+			continue;
+		}
 
 		g_thread_pool_push(dedupe_pool, dext, &err);
 		if (err) {
