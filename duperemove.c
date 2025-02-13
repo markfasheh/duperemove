@@ -130,7 +130,7 @@ static int rm_db_files(int numfiles, char **files)
 	return 0;
 }
 
-static void print_version()
+static void print_version(void)
 {
 	char *s = NULL;
 #ifdef	DEBUG_BUILD
@@ -206,7 +206,7 @@ enum {
 	BATCH_SIZE_OPTION,
 };
 
-static int process_fdupes()
+static int process_fdupes(void)
 {
 	int ret = 0;
 	_cleanup_(freep) char *path = NULL;
@@ -285,7 +285,7 @@ static int scan_files_from_cmdline(int numfiles, char **files, struct dbhandle *
 	return 0;
 }
 
-static void help()
+static void help(void)
 {
 	execlp("man", "man", "8", "duperemove", NULL);
 }
