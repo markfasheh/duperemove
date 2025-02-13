@@ -77,8 +77,8 @@ void dbfile_close_handle(struct dbhandle *db);
  */
 struct dbhandle *dbfile_open_handle_thread(char *filename, struct threads_pool *pool);
 
-void dbfile_lock();
-void dbfile_unlock();
+void dbfile_lock(void);
+void dbfile_unlock(void);
 
 struct dbfile_config {
 	unsigned int	blocksize;

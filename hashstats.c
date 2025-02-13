@@ -138,7 +138,7 @@ static void print_file_info(char *fname, struct dbfile_config *cfg,
 	       stats->num_files, stats->num_b_hashes, stats->num_e_hashes);
 }
 
-static void version()
+static void version(void)
 {
 	printf("hashstats %s\n", VERSTRING);
 }

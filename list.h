@@ -31,6 +31,7 @@ struct hlist_node {
 
 #define LIST_HEAD_INIT(name) { &(name), &(name) }
 
+#undef LIST_HEAD // <bsd/sys/queue.h>
 #define LIST_HEAD(name) \
 	struct list_head name = LIST_HEAD_INIT(name)
 
