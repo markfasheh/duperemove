@@ -2,7 +2,7 @@ VERSION ?= $(shell git describe --abbrev=4 --dirty --always --tags;)
 IS_RELEASE ?= $(if $(filter $(shell git rev-list $(shell git describe --abbrev=0 --tags --exclude '*dev';)..HEAD --count;),0),1,0)
 
 CC ?= gcc
-CFLAGS ?= -Wall -ggdb --std=c23 -MMD
+CFLAGS ?= -Wall -ggdb -std=gnu11 -Werror=strict-prototypes -MMD
 PKG_CONFIG ?= pkg-config
 
 MANPAGES=duperemove.8 btrfs-extent-same.8 hashstats.8 show-shared-extents.8

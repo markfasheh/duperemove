@@ -176,7 +176,7 @@ static void *print_progress(void)
 	return NULL;
 }
 
-static void *pscan_progress_thread(void *)
+static void *pscan_progress_thread(void * p)
 {
 	struct winsize w;
 	do {
@@ -215,7 +215,7 @@ struct pscan_thread *pscan_register_thread(pid_t tid)
 	return tprogress;
 }
 
-void pscan_run()
+void pscan_run(void)
 {
 	tty = isatty(STDOUT_FILENO);
 
@@ -230,7 +230,7 @@ void pscan_run()
 	printer = g_thread_new("progress_printer", pscan_progress_thread, NULL);
 }
 
-void pscan_join()
+void pscan_join(void)
 {
 	g_thread_join(printer);
 
@@ -277,7 +277,7 @@ void pscan_reset_thread(struct pscan_thread **progress)
 	(*progress)->file_path[0] = '\0';
 }
 
-bool is_progress_printer_running()
+bool is_progress_printer_running(void)
 {
 	return printer ? true : false;
 }
@@ -312,7 +312,7 @@ void pscan_printf(char *fmt, ...)
 	g_mutex_unlock(&pscan.mutex);
 }
 
-static void *psearch_progress_thread(void *)
+static void *psearch_progress_thread(void * p)
 {
 	static int last_pos = -1;
 

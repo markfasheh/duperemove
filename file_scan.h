@@ -47,8 +47,8 @@ struct file_to_scan {
 
 int add_exclude_pattern(const char *pattern);
 
-void filescan_init();
-void filescan_free();
+void filescan_init(void);
+void filescan_free(void);
 
 void add_file_fdupes(char *path);
 #endif	/* __FILE_SCAN_H__ */
