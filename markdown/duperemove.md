@@ -2,8 +2,8 @@
 title: Duperemove
 section: 8
 header: System Manager’s Manual
-footer: duperemove 0.15
-date: 02 Nov 2025
+footer: duperemove 0.15.1
+date: 01 Mar 2025
 ---
 # NAME
 `duperemove` - Find duplicate regions in files and submit them for deduplication
