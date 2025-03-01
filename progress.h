@@ -39,7 +39,7 @@ struct pscan_global {
 	struct pscan_thread	**threads;
 };
 
-void pscan_finish_listing();
+void pscan_finish_listing(void);
 
 /* Used to increment the global todo list */
 void pscan_set_progress(uint64_t added_files, uint64_t added_bytes);
@@ -53,13 +53,13 @@ struct pscan_thread *pscan_register_thread(pid_t tid);
  * - the listing is completed - pscan_finish_listing() has been called
  * - the sum of all threads progresses equals to the global totals
  */
-void pscan_run();
+void pscan_run(void);
 
 /*
  * Wait for the progress thread to finish
  * Also cleanup per-thread progresses and print the global totals
  */
-void pscan_join();
+void pscan_join(void);
 
 /*
  * Reset file tracking data
@@ -69,7 +69,7 @@ void pscan_join();
  */
 void pscan_reset_thread(struct pscan_thread **progress);
 
-bool is_progress_printer_running();
+bool is_progress_printer_running(void);
 
 /*
  * The progress thread overwrites its area.
@@ -87,7 +87,7 @@ void psearch_run(uint64_t num_filerecs);
 /*
  * Wait for the progress thread to finish
  */
-void psearch_join();
+void psearch_join(void);
 
 /*
  * extent search: update the number of processed filerecs
