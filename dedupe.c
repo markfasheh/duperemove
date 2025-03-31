@@ -306,7 +306,6 @@ static void process_dedupes(struct dedupe_ctxt *ctxt,
 		 * get -EINVAL on all the fds. Short circuit this then
 		 * by moving everything off the queued list.
 		 */
-		fs_blocksize = get_fs_blocksize(ctxt->ioctl_file->fd);
 		list_splice_init(&ctxt->queued, &ctxt->completed);
 	}
 }
@@ -328,6 +327,7 @@ retry:
 			print_btrfs_same_info(ctxt);
 
 		if (ctxt->same->info[0].status == -EINVAL && !fs_blocksize) {
+			fs_blocksize = get_fs_blocksize(ctxt->ioctl_file->fd);
 			set_aligned_same_length(ctxt, ctxt->same);
 			goto retry;
 		}
