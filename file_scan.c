@@ -117,6 +117,7 @@ struct scan_ctxt {
 	struct fiemap *fiemap;
 	struct running_checksum *file_csum;
 	struct running_checksum *extent_csum;
+	unsigned int extent_hint; /* cached index for get_extent lookups */
 };
 
 /*
@@ -776,12 +777,13 @@ static int add_block_hash(struct hashes *hashes,
 /*
  * Check if the area should be scanned.
  */
-static bool is_area_ignored(struct fiemap *fiemap, size_t start, size_t len)
+static bool is_area_ignored(struct fiemap *fiemap, size_t start, size_t len,
+			    unsigned int *extent_hint)
 {
 	size_t end = start + len;
 	struct fiemap_extent *current_extent;
 	while (start < end) {
-		current_extent = get_extent(fiemap, start, NULL);
+		current_extent = get_extent(fiemap, start, extent_hint);
 
 		/* File changed since we fiemap */
 		if (!current_extent)
@@ -800,9 +802,10 @@ static bool is_area_ignored(struct fiemap *fiemap, size_t start, size_t len)
 /*
  * Check if the block starting at off should be ignored.
  */
-static inline bool is_block_ignored(struct fiemap *fiemap, size_t off)
+static inline bool is_block_ignored(struct fiemap *fiemap, size_t off,
+				    unsigned int *extent_hint)
 {
-	return is_area_ignored(fiemap, off, blocksize);
+	return is_area_ignored(fiemap, off, blocksize, extent_hint);
 }
 
 static int process_block(char *buf, unsigned int bsize,
@@ -830,7 +833,7 @@ static ssize_t process_blocks(struct scan_ctxt *ctxt, struct buffer *buffer,
 		return buffer->dl_len;
 
 	for (unsigned int i = 0; i < nb_blocks; i++) {
-		if (!is_block_ignored(ctxt->fiemap, curr_file_off) &&
+		if (!is_block_ignored(ctxt->fiemap, curr_file_off, &ctxt->extent_hint) &&
 		    !(options.skip_zeroes &&
 		      is_block_zeroed(buffer->buf + buffer->dl_offset))) {
 			ret = process_block(buffer->buf + i * blocksize,
@@ -885,7 +888,7 @@ static int process_extents(struct scan_ctxt *ctxt, struct buffer *buffer,
 	size_t to_add;
 
 	while (file_off < ctxt->off + bytes) {
-		extent = get_extent(ctxt->fiemap, file_off, NULL);
+		extent = get_extent(ctxt->fiemap, file_off, &ctxt->extent_hint);
 		if (!extent) {
 			eprintf("process_extents: unable to get extent\n");
 
@@ -955,7 +958,7 @@ static int fill_buffer(struct scan_ctxt *ctxt, struct buffer *buffer)
 	 * The entire buffer could be ignored. Let's fast forward
 	 * and mark the buffer as faked
 	 */
-	if (is_area_ignored(ctxt->fiemap, ctxt->off, buffer->size)
+	if (is_area_ignored(ctxt->fiemap, ctxt->off, buffer->size, &ctxt->extent_hint)
 			&& ctxt->off + buffer->size <= ctxt->filesize) {
 		memset(buffer->buf, 0, buffer->size);
 		buffer->dl_len = buffer->size;

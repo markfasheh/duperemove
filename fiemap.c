@@ -48,8 +48,14 @@ struct fiemap_extent *get_extent(struct fiemap *fiemap, size_t loff,
 {
 	struct fiemap_extent *extent;
 	size_t ext_end_off;
+	unsigned int start = 0;
 
-	for (unsigned int i = 0; i < fiemap->fm_mapped_extents; i++) {
+	/* Use hint if it doesn't point past the target offset */
+	if (index && *index < fiemap->fm_mapped_extents &&
+	    fiemap->fm_extents[*index].fe_logical <= loff)
+		start = *index;
+
+	for (unsigned int i = start; i < fiemap->fm_mapped_extents; i++) {
 		extent = &fiemap->fm_extents[i];
 		ext_end_off = extent->fe_logical + extent->fe_length - 1;
 		if (ext_end_off < loff)
