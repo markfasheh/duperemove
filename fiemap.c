@@ -43,6 +43,24 @@ static unsigned int fiemap_count_extents(int fd)
 	return fiemap.fm_mapped_extents;
 }
 
+static unsigned int fiemap_count_extents_range(int fd, uint64_t start,
+					       uint64_t length)
+{
+	struct fiemap fiemap = {0,};
+	int err;
+
+	fiemap.fm_start = start;
+	fiemap.fm_length = length;
+
+	err = ioctl(fd, FS_IOC_FIEMAP, &fiemap);
+	if (err < 0) {
+		perror("fiemap_count_extents_range");
+		return 0;
+	}
+
+	return fiemap.fm_mapped_extents;
+}
+
 struct fiemap_extent *get_extent(struct fiemap *fiemap, size_t loff,
 				 unsigned int *index)
 {
@@ -98,6 +116,37 @@ struct fiemap *do_fiemap(int fd)
 	return fiemap;
 }
 
+struct fiemap *do_fiemap_range(int fd, uint64_t start, uint64_t length)
+{
+	int err;
+	struct fiemap *fiemap = NULL;
+	unsigned int count = fiemap_count_extents_range(fd, start, length);
+
+	if (count == 0)
+		return NULL;
+
+	fiemap = calloc(1, sizeof(struct fiemap) +
+			count * sizeof(struct fiemap_extent));
+	if (!fiemap)
+		return NULL;
+
+	fiemap->fm_start = start;
+	fiemap->fm_length = length;
+	fiemap->fm_extent_count = count;
+
+	err = ioctl(fd, FS_IOC_FIEMAP, fiemap);
+	if (err < 0) {
+		perror("do_fiemap_range");
+		free(fiemap);
+		return NULL;
+	}
+
+	if (fiemap->fm_mapped_extents != count)
+		dprintf("do_fiemap_range: file changed between fiemap calls\n");
+
+	return fiemap;
+}
+
 int fiemap_count_shared(int fd, size_t start_off, size_t end_off, uint64_t *shared)
 {
 	_cleanup_(freep) struct fiemap *fiemap = NULL;
@@ -108,9 +157,11 @@ int fiemap_count_shared(int fd, size_t start_off, size_t end_off, uint64_t *shar
 
 	abort_on(start_off >= end_off);
 
-	fiemap = do_fiemap(fd);
-	if (!fiemap)
-		return 1;
+	fiemap = do_fiemap_range(fd, start_off, end_off - start_off);
+	if (!fiemap) {
+		*shared = 0;
+		return 0;
+	}
 
 	*shared = 0;
 

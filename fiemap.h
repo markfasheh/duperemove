@@ -24,6 +24,12 @@ struct fiemap_extent *get_extent(struct fiemap *fiemap, size_t loff,
 struct fiemap *do_fiemap(int fd);
 
 /*
+ * Extract extents mapping for a specific byte range.
+ * Only returns extents overlapping [start, start+length).
+ */
+struct fiemap *do_fiemap_range(int fd, uint64_t start, uint64_t length);
+
+/*
  * Count how much of the area between start_off and end_off is shared.
  */
 int fiemap_count_shared(int fd, size_t start_off, size_t end_off, uint64_t *shared);
