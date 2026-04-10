@@ -316,25 +316,19 @@ int fiemap_scan_extent(struct extent *extent)
 {
 	int ret = 0;
 	_cleanup_(freep) struct fiemap *fiemap = NULL;
-	struct fiemap_extent *result;
 
 	ret = filerec_open(extent->e_file, true);
 	if (ret)
 		return ret;
 
-	fiemap = do_fiemap(extent->e_file->fd);
-	if (!fiemap) {
+	fiemap = do_fiemap_range(extent->e_file->fd, extent->e_loff,
+				 extent_len(extent));
+	if (!fiemap || fiemap->fm_mapped_extents == 0) {
 		filerec_close(extent->e_file);
 		return -1;
 	}
 
-	result = get_extent(fiemap, extent->e_loff, NULL);
-	if (!result) {
-		filerec_close(extent->e_file);
-		return -1;
-	}
-
-	extent->e_poff = result->fe_physical;
+	extent->e_poff = fiemap->fm_extents[0].fe_physical;
 	filerec_close(extent->e_file);
 	return ret;
 }

@@ -140,9 +140,6 @@ static void add_shared_extents(struct dupe_extents *dext, uint64_t *shared)
 
 /*
  * Fiemap the file and get our post-dedupe extent state.
- *
- * XXX: We're running fiemap too much for this. At the least we should
- * shoot for one fiemap call(s) per filerec.
  */
 static void add_shared_extents_post(struct dupe_extents *dext, uint64_t *shared)
 {
