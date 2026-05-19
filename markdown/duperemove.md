@@ -220,6 +220,10 @@ shells usually expand glob pattern so the passed in pattern ought to also be
 quoted. Taking everything into consideration the correct way to pass an exclusion
 pattern is `duperemove --exclude "/path/to/dir/file*" /path/to/dir`
 
+**-m** `N`, **\--min-filesize**=`N`
+  ~ All files smaller than the given size are excluded from the deduplication process.
+This may speed up things significantly.
+
 # EXAMPLES
 
 ## Simple Usage

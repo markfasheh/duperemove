@@ -204,6 +204,7 @@ enum {
 	QUIET_OPTION,
 	EXCLUDE_OPTION,
 	BATCH_SIZE_OPTION,
+	MIN_FILESIZE_OPTION,
 };
 
 static int process_fdupes(void)
@@ -316,6 +317,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		{ "quiet", 0, NULL, QUIET_OPTION },
 		{ "exclude", 1, NULL, EXCLUDE_OPTION },
 		{ "batchsize", 1, NULL, BATCH_SIZE_OPTION },
+		{ "min-filesize", 1, NULL, MIN_FILESIZE_OPTION },
 		{ NULL, 0, NULL, 0}
 	};
 
@@ -323,7 +325,7 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		help(); /* Never returns */
 	}
 
-	while ((c = getopt_long(argc, argv, "b:vdDrh?LRqB:", long_ops, NULL))
+	while ((c = getopt_long(argc, argv, "b:vdDrh?LRqBm:", long_ops, NULL))
 	       != -1) {
 		switch (c) {
 		case 'b':
@@ -410,6 +412,15 @@ static int parse_options(int argc, char **argv, int *filelist_idx)
 		case BATCH_SIZE_OPTION:
 		case 'B':
 			options.batch_size = parse_size(optarg);
+			break;
+		case MIN_FILESIZE_OPTION:
+		case 'm':
+			options.min_filesize = parse_size(optarg);
+			if (options.min_filesize == 0){
+				eprintf("Error: --min-filesize must be "
+					"larger zero\n");
+				return EINVAL;
+			}
 			break;
 		case HELP_OPTION:
 			help();

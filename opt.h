@@ -15,6 +15,7 @@
 #define	__OPT_H__
 
 #include <stdbool.h>
+#include <stdint.h>
 
 struct options {
 	int run_dedupe;
@@ -27,6 +28,7 @@ struct options {
 	bool dedupe_same_file : 1;
 	unsigned int batch_size;
 	bool fdupes_mode : 1;
+	uint64_t min_filesize;
 	char *hashfile;
 };
 

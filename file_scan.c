@@ -372,8 +372,8 @@ bool check_file(struct dbhandle *db, char *path, struct statx *st, bool parent_c
 		return false;
 	}
 
-	if (S_ISREG(st->stx_mode) && st->stx_size == 0) {
-		vprintf("Skipping empty file %s\n", path);
+	if (S_ISREG(st->stx_mode) && st->stx_size < options.min_filesize) {
+		vprintf("Skipping too small file %s (is %llu, minimum %lu)\n", path, st->stx_size, options.min_filesize);
 		return false;
 	}
 

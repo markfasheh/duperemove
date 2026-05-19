@@ -24,4 +24,5 @@ struct options options = {
 	.dedupe_same_file = true,
 	.batch_size = 1024,
 	.fdupes_mode = false,
+	.min_filesize = 1,
 };
