@@ -832,7 +832,7 @@ static ssize_t process_blocks(struct scan_ctxt *ctxt, struct buffer *buffer,
 	for (unsigned int i = 0; i < nb_blocks; i++) {
 		if (!is_block_ignored(ctxt->fiemap, curr_file_off) &&
 		    !(options.skip_zeroes &&
-		      is_block_zeroed(buffer->buf + buffer->dl_offset))) {
+		      is_block_zeroed(buffer->buf + i * blocksize))) {
 			ret = process_block(buffer->buf + i * blocksize,
 					    blocksize, curr_file_off, hashes);
 			if (ret)
