@@ -466,7 +466,7 @@ static int get_dirent_type(struct dirent *entry, int fd, const char *path)
 	 * convenience of the caller.
 	 */
 	ret = statx(fd, entry->d_name, AT_SYMLINK_NOFOLLOW, STATX_BASIC_STATS, &st);
-	if (ret || !(st.stx_mask & STATX_BASIC_STATS)) {
+	if (ret || (st.stx_mask & STATX_BASIC_STATS) != STATX_BASIC_STATS) {
 		eprintf("Error %d: %s while getting type of file %s/%s. "
 			"Skipping.\n",
 			errno, strerror(errno), path, entry->d_name);
@@ -541,7 +541,7 @@ static int walk_dir(char *path, struct dbhandle *db)
 			sprintf(child, "%s/%s", path, entry->d_name);
 
 		ret = statx(0, child, 0, STATX_BASIC_STATS, &st);
-		if (ret || !(st.stx_mask | STATX_BASIC_STATS)) {
+		if (ret || (st.stx_mask & STATX_BASIC_STATS) != STATX_BASIC_STATS) {
 			eprintf("Failed to stat %s: %s\n",
 					path, strerror(errno));
 			continue;
@@ -731,7 +731,7 @@ int scan_file(char *in_path, struct dbhandle *db)
 	}
 
 	ret = statx(0, path, 0, STATX_BASIC_STATS, &st);
-	if (ret || !(st.stx_mask & STATX_BASIC_STATS)) {
+	if (ret || (st.stx_mask & STATX_BASIC_STATS) != STATX_BASIC_STATS) {
 		eprintf("Error %d: %s while stating file %s. "
 			"Skipping.\n",
 			errno, strerror(errno), path);
