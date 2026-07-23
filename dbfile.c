@@ -863,7 +863,13 @@ static int get_config_text(sqlite3_stmt *stmt, const char *name, char *val, int 
 static int __dbfile_get_config(sqlite3 *db, struct dbfile_config *cfg)
 {
 	int ret;
-	char uuid[37]; /* 36-bytes uuid + \0 */
+	/*
+	 * Zero-initialised so the buffer is always NUL-terminated: get_config_text
+	 * memcpy()s exactly `len` (36) bytes without terminating, and if the
+	 * config row is absent it writes nothing at all - either way uuid_parse()
+	 * below would otherwise strlen() past uninitialised bytes.
+	 */
+	char uuid[37] = "";	/* 36-byte uuid + NUL */
 	_cleanup_(sqlite3_stmt_cleanup) sqlite3_stmt *stmt = NULL;
 
 #define SELECT_CONFIG "select keyval from config where keyname=?1;"
