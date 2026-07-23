@@ -887,15 +887,18 @@ static int process_extents(struct scan_ctxt *ctxt, struct buffer *buffer,
 	while (file_off < ctxt->off + bytes) {
 		extent = get_extent(ctxt->fiemap, file_off, NULL);
 		if (!extent) {
-			eprintf("process_extents: unable to get extent\n");
-
-			/* Cleanup the partial checksum and skip
-			 * the rest of the buffer
+			/*
+			 * No extent covers this offset: we've walked past the
+			 * last mapped extent into a trailing hole (data followed
+			 * by a hole up to EOF, which FIEMAP never reports). That
+			 * is not an error - finish the pending checksum and stop
+			 * cleanly. Treating it as a failure made the caller
+			 * declare the file "changed" and never hash or dedupe it.
 			 */
 			if (ctxt->extent_csum)
 				finish_running_checksum(ctxt->extent_csum, NULL);
 			ctxt->extent_csum = NULL;
-			return 1;
+			return 0;
 		}
 
 		ext_end_off = extent->fe_logical + extent->fe_length;
@@ -929,7 +932,8 @@ static int process_extents(struct scan_ctxt *ctxt, struct buffer *buffer,
 		 * the part that will never exist.
 		 */
 		size_t dummy = 0;
-		if (extent->fe_flags & FIEMAP_EXTENT_LAST)
+		if ((extent->fe_flags & FIEMAP_EXTENT_LAST) &&
+		    ext_end_off > ctxt->filesize)
 			dummy = ext_end_off - ctxt->filesize;
 		if (file_off + dummy == ext_end_off) {
 			ret = store_extent(ctxt, hashes, extent);
