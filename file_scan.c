@@ -1258,5 +1258,17 @@ void add_file_fdupes(char *path)
 		eprintf("statx on %s: %s\n", path, strerror(errno));
 		return;
 	}
+
+	/*
+	 * Filerecs are keyed by inode. Two hardlinks in the same fdupes group
+	 * would produce a duplicate key and abort in insert_filerec(). They
+	 * already share storage, so deduping them is pointless anyway - skip
+	 * any inode we've already listed.
+	 */
+	if (filerec_find(st.stx_ino)) {
+		vprintf("Skipping %s: hardlink to an already-listed file\n",
+			path);
+		return;
+	}
 	filerec_new(path, st.stx_ino, st.stx_size);
 }
