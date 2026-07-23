@@ -315,6 +315,8 @@ int dedupe_extents(struct dedupe_ctxt *ctxt)
 	int ret = 0;
 
 	while (!list_empty(&ctxt->queued)) {
+		uint64_t round;
+
 		/* Convert the queued list into an actual request */
 		populate_dedupe_request(ctxt, ctxt->same);
 
@@ -332,7 +334,26 @@ retry:
 			goto retry;
 		}
 
+		round = 0;
+		for (unsigned int i = 0; i < ctxt->same->dest_count; i++)
+			round += ctxt->same->info[i].bytes_deduped;
+
 		process_dedupes(ctxt, ctxt->same);
+
+		/*
+		 * Guard against an infinite loop (#396/#407): if a full round
+		 * deduped nothing yet the kernel reported no error, every
+		 * still-queued request just got requeued unchanged. Reissuing
+		 * the identical ioctl would return the same zero, so stop here
+		 * and account the stuck requests as completed instead of
+		 * spinning at 100% CPU forever. Productive dedupe always moves
+		 * >0 bytes per round (a large extent progresses in fs-block
+		 * chunks), so this never cuts real work short.
+		 */
+		if (round == 0 && !list_empty(&ctxt->queued)) {
+			list_splice_init(&ctxt->queued, &ctxt->completed);
+			break;
+		}
 	}
 
 	return ret;
