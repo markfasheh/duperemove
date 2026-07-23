@@ -20,6 +20,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <sys/vfs.h>
+#include <sys/stat.h>
 #include <sys/ioctl.h>
 
 #include <errno.h>
@@ -310,9 +311,62 @@ static void process_dedupes(struct dedupe_ctxt *ctxt,
 	}
 }
 
+/*
+ * The kernel rejects the *entire* FIDEDUPERANGE ioctl with EINVAL when the
+ * source range extends past the end of the source (ioctl) file, see the
+ * "off + len > i_size_read(src)" check in vfs_dedupe_file_range().
+ *
+ * This happens more often than one might expect: extent lengths are recorded
+ * from fiemap's fe_length, which is rounded up to the filesystem block size,
+ * so a file's final extent typically reports a length that overshoots the real
+ * end of file. It can also happen if a file shrank since it was scanned. Either
+ * way, clamp our request to the file's current size so we dedupe what actually
+ * exists instead of failing the whole batch (a too-short *destination* file is
+ * fine, the kernel reports that per-file via info->status).
+ */
+static void clamp_len_to_ioctl_file(struct dedupe_ctxt *ctxt)
+{
+	struct stat st;
+	uint64_t src_size;
+
+	if (fstat(ctxt->ioctl_file->fd, &st))
+		return; /* Let the ioctl surface whatever the real error is */
+
+	src_size = st.st_size;
+
+	if (ctxt->ioctl_file_off + ctxt->len <= src_size)
+		return;
+
+	if (ctxt->ioctl_file_off >= src_size) {
+		/*
+		 * The source range no longer exists at all. Move every queued
+		 * request to the completed list so the caller cleans up without
+		 * issuing a doomed ioctl.
+		 */
+		dprintf("Skipping dedupe: source offset %llu is past the end "
+			"of file \"%s\" (size %llu)\n",
+			(unsigned long long)ctxt->ioctl_file_off,
+			ctxt->ioctl_file->filename,
+			(unsigned long long)src_size);
+		list_splice_init(&ctxt->queued, &ctxt->completed);
+		ctxt->num_queued = 0;
+		return;
+	}
+
+	dprintf("Clamping dedupe length for \"%s\" from %llu to %llu to fit "
+		"source file size %llu\n", ctxt->ioctl_file->filename,
+		(unsigned long long)ctxt->len,
+		(unsigned long long)(src_size - ctxt->ioctl_file_off),
+		(unsigned long long)src_size);
+
+	ctxt->len = ctxt->orig_len = src_size - ctxt->ioctl_file_off;
+}
+
 int dedupe_extents(struct dedupe_ctxt *ctxt)
 {
 	int ret = 0;
+
+	clamp_len_to_ioctl_file(ctxt);
 
 	while (!list_empty(&ctxt->queued)) {
 		/* Convert the queued list into an actual request */
