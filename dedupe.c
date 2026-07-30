@@ -279,7 +279,14 @@ static void process_dedupes(struct dedupe_ctxt *ctxt,
 		req->req_loff += info->bytes_deduped;
 		req->req_total += info->bytes_deduped;
 
-		if (info->status || req->req_total >= ctxt->orig_len) {
+		/*
+		 * A successful ioctl that deduped nothing has made no
+		 * progress, so re-queueing would resubmit an identical
+		 * request forever. Treat it as complete instead: req_total
+		 * already reflects what was really deduped.
+		 */
+		if (info->status || req->req_total >= ctxt->orig_len ||
+		    !info->bytes_deduped) {
 			/*
 			 * Only bother taking the final status (the
 			 * rest will be 0)
