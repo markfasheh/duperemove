@@ -443,6 +443,13 @@ close_files:
 		}
 	}
 
+	/*
+	 * A full batch reopens the target for the next round. If every remaining
+	 * member is skipped before a context is allocated, that target is still
+	 * open when the loop ends. Close it before checking the cleanup invariant.
+	 */
+	filerec_close_open_list(&open_files);
+
 	abort_on(ctxt != NULL);
 	abort_on(!RB_EMPTY_ROOT(&open_files.root));
 

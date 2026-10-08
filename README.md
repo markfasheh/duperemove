@@ -34,6 +34,12 @@ The latest stable code can be found in [the release page](https://github.com/mar
 
 Then to build Duperemove run `make`.
 
+The regression for issue #392 runs with `make test-large-group`. It needs
+Python 3 and a non-root Linux user on a reflink-capable XFS or Btrfs filesystem.
+Set `TMPDIR` to a directory on that filesystem if the default temporary
+directory is elsewhere. The test reports a skip when those prerequisites are
+not met.
+
 # FAQ
 
 Please see the FAQ section in [the duperemove man page](http://markfasheh.github.io/duperemove/duperemove.html#10)

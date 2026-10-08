@@ -68,6 +68,10 @@ test:
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) tests.c -o $@ $(LIBRARY_FLAGS)
 	./test
 
+.PHONY: test-large-group
+test-large-group: duperemove
+	python3 tests/test_large_group_dedupe.py ./duperemove
+
 install: $(install_progs) $(MANPAGES) $(ZSH_COMPLETION)
 	mkdir -p -m 0755 $(DESTDIR)$(BINDIR)
 	for prog in $(install_progs); do \
