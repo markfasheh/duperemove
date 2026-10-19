@@ -63,13 +63,21 @@ struct fiemap_extent *get_extent(struct fiemap *fiemap, size_t loff,
 	return NULL;
 }
 
+/*
+ * How often do_fiemap() asks again when the map did not fit, doubling the
+ * slots each time.
+ */
+#define FIEMAP_TRIES	4
+
 struct fiemap *do_fiemap(int fd)
 {
 	int err;
 
 	struct fiemap *fiemap = NULL;
 	unsigned int count = fiemap_count_extents(fd);
+	int tries = 0;
 
+again:
 	/*
 	 * Our structure must be large enough to fit:
 	 * - one struct fiemap = 32 bytes
@@ -92,8 +100,29 @@ struct fiemap *do_fiemap(int fd)
 		return NULL;
 	}
 
-	if (fiemap->fm_mapped_extents != count)
-		dprintf("do_fiemap: file changed between fiemap calls\n");
+	/*
+	 * The count is only a lower bound. btrfs skips its shared check when it
+	 * only counts, so two extents next to each other on disk, one shared
+	 * and one not, are one record when counting and two when mapping. A
+	 * deduplicated file has exactly that layout. When every slot is used
+	 * and the last record is not the file's last, the map may be cut short.
+	 */
+	if (fiemap->fm_mapped_extents >= count && fiemap->fm_mapped_extents &&
+	    !(count && fiemap->fm_extents[count - 1].fe_flags &
+	      FIEMAP_EXTENT_LAST) &&
+	    ++tries < FIEMAP_TRIES) {
+		dprintf("do_fiemap: %u slots did not hold the whole map\n",
+			count);
+		if (fiemap->fm_mapped_extents > count)
+			count = fiemap->fm_mapped_extents;
+		count *= 2;
+		free(fiemap);
+		goto again;
+	}
+
+	/* With fewer slots than extents the kernel only counts. */
+	if (fiemap->fm_mapped_extents > count)
+		fiemap->fm_mapped_extents = count;
 
 	return fiemap;
 }
